@@ -34,13 +34,32 @@ export interface SubscriptionInfo {
   cancelAtPeriodEnd: boolean;
 }
 
+export interface Order {
+  id: string;
+  createdAt: string;
+  amount: number;
+  currency: string;
+  status: string;
+  productName: string;
+}
+
+export interface BillingData {
+  subscription: {
+    tier: SubscriptionTier;
+    status: SubscriptionStatus;
+    expiresAt: string | null;
+    cancelAtPeriodEnd: boolean;
+  };
+  orders: Order[];
+}
+
 // Query keys
 export const queryKeys = {
   stats: (token?: string) => ["stats", token] as const,
   repos: (token?: string, query?: string) => ["repos", token, query] as const,
   activatedRepos: (token?: string) => ["activatedRepos", token] as const,
   settings: (owner: string, repo: string) => ["settings", owner, repo] as const,
-  subscriptionStatus: (token?: string) => ["subscriptionStatus", token] as const,
+  billing: (token?: string) => ["billing", token] as const,
 };
 
 // Fetch helpers
@@ -178,6 +197,62 @@ export function useCreateSubscription(token?: string) {
         subscriptionUpdated?: boolean;
         type?: "upgrade" | "downgrade";
       };
+    },
+  });
+}
+
+// Billing hooks - single endpoint for subscription + orders
+export function useBilling(token?: string) {
+  return useQuery<BillingData>({
+    queryKey: queryKeys.billing(token),
+    queryFn: () => fetchWithAuth(`${API_URL}/api/billing`, token),
+    enabled: !!token,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useCancelSubscription(token?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/subscription/cancel`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to cancel subscription");
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["billing"] });
+    },
+  });
+}
+
+export function useGetInvoice(token?: string) {
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await fetch(`${API_URL}/api/billing/invoice/${orderId}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get invoice");
+      }
+
+      return data as { invoiceUrl: string };
     },
   });
 }

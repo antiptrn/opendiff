@@ -1,0 +1,14 @@
+{
+  "name": "antiptrn",
+  "private": true,
+  "workspaces": [
+    "antiptrn-*"
+  ],
+  "scripts": {
+    "dev:server": "bun run --cwd antiptrn-server dev",
+    "dev:website": "bun run --cwd antiptrn-website dev",
+    "dev:agent": "bun run --cwd antiptrn-review-agent dev",
+    "build": "bun run --cwd antiptrn-website build",
+    "lint": "bun run --cwd antiptrn-website lint"
+  }
+}

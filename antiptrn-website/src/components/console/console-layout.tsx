@@ -9,12 +9,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Home, Settings, LogOut, Loader2, ChevronsUpDown } from "lucide-react";
+import { Home, Settings, LogOut, Loader2, ChevronsUpDown, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sidebarItems = [
   { label: "Dashboard", href: "/console", icon: Home },
   { label: "Settings", href: "/console/settings", icon: Settings },
+  { label: "Billing", href: "/console/billing", icon: CreditCard },
 ];
 
 export function ConsoleLayout() {
