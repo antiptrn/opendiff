@@ -15,7 +15,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
-import { Loader2, Lock, Globe, LogIn, Check, MessageSquare } from "lucide-react";
+import { Loader2, Lock, Globe, LogIn, ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -319,11 +319,33 @@ export function SettingsPage() {
       <h1 className="text-2xl mb-6">Repository Settings</h1>
 
       <div className="max-w-2xl space-y-6">
+        {/* Install GitHub App */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Install GitHub App</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Install the GitHub App on your repositories to enable code reviews. You can install it on your personal account or any organization you have access to.
+            </p>
+            <Button asChild>
+              <a
+                href="https://github.com/apps/antiptrn-review-agent/installations/new"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Install GitHub App
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Add Repository Dropdown */}
         <Card>
           <CardHeader>
             <CardTitle>
-              {activatedRepos.length > 0 ? "Add Repository" : "Select Repository"}
+              Add Repository
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -491,9 +513,9 @@ export function SettingsPage() {
         )}
 
         {/* Active Repositories as Accordions */}
-        {user?.access_token && (isLoadingActivated || activatedRepos.length > 0) && (
+        {user?.access_token && (
           <div>
-            <h2 className="text-lg mb-4">Active Repositories</h2>
+            <h2 className="text-lg mb-2">Active Repositories</h2>
 
             {isLoadingActivated && (
               <div className="space-y-2">
@@ -508,7 +530,13 @@ export function SettingsPage() {
               </div>
             )}
 
-            {!isLoadingActivated && (() => {
+            {!isLoadingActivated && activatedRepos.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No repositories configured yet. Add one above to get started.
+              </p>
+            )}
+
+            {!isLoadingActivated && activatedRepos.length > 0 && (() => {
               const reviewsPausedCount = activatedRepos.filter(
                 (repo) => repo.enabled && !repo.effectiveEnabled
               ).length;

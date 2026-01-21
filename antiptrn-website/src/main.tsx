@@ -12,6 +12,7 @@ import { AuthCallbackPage } from "./pages/auth-callback.tsx"
 import { ConsoleLayout } from "./components/console/console-layout.tsx"
 import { ConsolePage } from "./pages/console.tsx"
 import { SettingsPage } from "./pages/settings.tsx"
+import { BillingPage } from "./pages/billing.tsx"
 import { PricingPage } from "./pages/pricing.tsx"
 import { SubscriptionSuccessPage } from "./pages/subscription-success.tsx"
 
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <ConsolePage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "billing", element: <BillingPage /> },
     ],
   },
 ])

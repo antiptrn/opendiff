@@ -546,6 +546,71 @@ app.get("/api/subscription/status", async (c) => {
   });
 });
 
+// Sync subscription status from Polar (for local dev without webhooks)
+app.post("/api/subscription/sync", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user || !user.email) {
+    return c.json({ error: "User not found or no email" }, 404);
+  }
+
+  try {
+    // Find subscriptions for this customer by email
+    const subscriptions = await polar.subscriptions.list({
+      customerEmail: user.email,
+      active: true,
+    });
+
+    const activeSubscription = subscriptions.result.items[0];
+
+    if (activeSubscription) {
+      const tier = getTierFromProductId(activeSubscription.productId);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionTier: tier as SubscriptionTier,
+          subscriptionStatus: "ACTIVE",
+          polarSubscriptionId: activeSubscription.id,
+          subscriptionExpiresAt: activeSubscription.currentPeriodEnd
+            ? new Date(activeSubscription.currentPeriodEnd)
+            : null,
+          cancelAtPeriodEnd: activeSubscription.cancelAtPeriodEnd ?? false,
+        },
+      });
+
+      return c.json({
+        synced: true,
+        subscriptionTier: tier,
+        subscriptionStatus: "ACTIVE",
+      });
+    } else {
+      return c.json({
+        synced: true,
+        subscriptionTier: "FREE",
+        subscriptionStatus: "INACTIVE",
+        message: "No active subscription found",
+      });
+    }
+  } catch (error) {
+    console.error("Error syncing subscription:", error);
+    return c.json({ error: "Failed to sync subscription" }, 500);
+  }
+});
+
 // Create checkout session for subscription
 app.post("/api/subscription/create", async (c) => {
   const authHeader = c.req.header("Authorization");
@@ -629,6 +694,131 @@ app.post("/api/subscription/create", async (c) => {
   } catch (error) {
     console.error("Error creating checkout:", error);
     return c.json({ error: "Failed to create checkout" }, 500);
+  }
+});
+
+// Get all billing data (subscription + orders) in one call
+app.get("/api/billing", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  // Default response for users without subscription
+  const defaultResponse = {
+    subscription: {
+      tier: "FREE" as const,
+      status: "INACTIVE" as const,
+      expiresAt: null,
+      cancelAtPeriodEnd: false,
+    },
+    orders: [],
+  };
+
+  if (!user) {
+    return c.json(defaultResponse);
+  }
+
+  // Build subscription info from database
+  const subscription = {
+    tier: user.subscriptionTier,
+    status: user.subscriptionStatus,
+    expiresAt: user.subscriptionExpiresAt,
+    cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+  };
+
+  // If no email, can't fetch orders from Polar
+  if (!user.email) {
+    return c.json({ subscription, orders: [] });
+  }
+
+  try {
+    // Get user's Polar customer ID by looking up by email
+    const customers = await polar.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+
+    if (!customers.result.items.length) {
+      return c.json({ subscription, orders: [] });
+    }
+
+    const customer = customers.result.items[0];
+
+    // Fetch orders for this customer
+    const orders = await polar.orders.list({
+      customerId: customer.id,
+      limit: 50,
+    });
+
+    // Map orders to a simpler format
+    const formattedOrders = orders.result.items.map((order) => ({
+      id: order.id,
+      createdAt: order.createdAt,
+      amount: order.totalAmount,
+      currency: order.currency,
+      status: order.billingReason,
+      productName: order.product.name,
+    }));
+
+    return c.json({ subscription, orders: formattedOrders });
+  } catch (error) {
+    console.error("Error fetching billing data:", error);
+    // Still return subscription info even if orders fail
+    return c.json({ subscription, orders: [] });
+  }
+});
+
+// Get invoice URL for an order
+app.get("/api/billing/invoice/:orderId", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user?.email) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const orderId = c.req.param("orderId");
+
+  try {
+    // Verify this order belongs to the user by checking customer email
+    const order = await polar.orders.get({ id: orderId });
+
+    if (order.customer.email !== user.email) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    // Get the invoice URL
+    const invoice = await polar.orders.invoice({ id: orderId });
+
+    return c.json({ invoiceUrl: invoice.url });
+  } catch (error) {
+    console.error("Error fetching invoice:", error);
+    return c.json({ error: "Failed to fetch invoice" }, 500);
   }
 });
 

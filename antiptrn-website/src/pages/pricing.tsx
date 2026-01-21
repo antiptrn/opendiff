@@ -137,7 +137,7 @@ function PlanCard({
         <div className="text-xs text-primary mb-2">Most Popular</div>
       )}
       <h3 className="text-lg">{plan.name}</h3>
-      <p className="text-sm text-foreground mt-1">{plan.description}</p>
+      <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
 
       <div className="mt-4">
         <NumberFlow
@@ -251,7 +251,7 @@ export function PricingPage() {
     <section className="pt-40 pb-32 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto">
       <div className="flex flex-col text-center items-center justify-center">
         <h1 className="text-8xl mb-8">Built for developers</h1>
-        <p className="text-muted-foreground text-lg">Our services page content goes here.</p>
+        <p className="text-muted-foreground text-lg">Whether you're a solo developer or part of a team, we've got you covered.</p>
       </div>
       <div className="flex items-center justify-center gap-3 mb-8 mt-12">
         <Label
@@ -294,20 +294,6 @@ export function PricingPage() {
           />
         ))}
       </div>
-
-      {user?.subscriptionStatus === "ACTIVE" && user.subscriptionTier !== "FREE" && (
-        <div className="mt-12 text-center">
-          <p className="text-muted-foreground">
-            Need to manage your subscription?{" "}
-            <a
-              href={`${API_URL}/api/subscription/portal`}
-              className="text-primary hover:underline"
-            >
-              Go to billing portal
-            </a>
-          </p>
-        </div>
-      )}
     </section>
   );
 }
