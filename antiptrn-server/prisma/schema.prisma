@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionTier {
+  FREE
+  CODE_REVIEW
+  TRIAGE
+}
+
+enum SubscriptionStatus {
+  INACTIVE
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+}
+
+model User {
+  id                    String             @id @default(cuid())
+  githubId              Int                @unique
+  login                 String
+  name                  String?
+  email                 String?
+  avatarUrl             String?
+
+  // Subscription fields
+  subscriptionTier      SubscriptionTier   @default(FREE)
+  subscriptionStatus    SubscriptionStatus @default(INACTIVE)
+  polarSubscriptionId   String?            @unique
+  polarCustomerId       String?
+  subscriptionExpiresAt DateTime?
+  cancelAtPeriodEnd     Boolean            @default(false)
+
+  // Relations
+  repositorySettings    RepositorySettings[]
+
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+}
+
+model RepositorySettings {
+  id            String   @id @default(cuid())
+  owner         String   // GitHub org/user
+  repo          String   // Repository name
+  enabled       Boolean  @default(true)
+  triageEnabled Boolean  @default(true)
+  userId        String?  // User who enabled this repo
+  user          User?    @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([owner, repo])
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  owner         String   // GitHub org/user
+  repo          String   // Repository name
+  pullNumber    Int      // PR number
+  reviewType    String   // 'initial', 'comment_reply'
+  reviewId      Int?     // GitHub review ID
+  commentId     Int?     // GitHub comment ID for replies
+  createdAt     DateTime @default(now())
+
+  @@index([owner, repo])
+}

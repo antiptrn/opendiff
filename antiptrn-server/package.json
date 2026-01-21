@@ -1,0 +1,22 @@
+{
+  "name": "antiptrn-server",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch index.ts",
+    "start": "bun run index.ts"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@polar-sh/sdk": "^0.34.6",
+    "@prisma/client": "^6.3.1",
+    "hono": "^4.11.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prisma": "^6.3.1"
+  }
+}
