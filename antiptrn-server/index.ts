@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { PrismaClient, SubscriptionTier, SubscriptionStatus } from "@prisma/client";
-import { polar, getTierFromProductId, TIER_HIERARCHY } from "./lib/polar";
+import { polar, getTierFromProductId, TIER_HIERARCHY, getReviewQuota } from "./lib/polar";
 
 const prisma = new PrismaClient();
 const app = new Hono();
@@ -257,9 +257,9 @@ app.get("/api/settings", async (c) => {
     }) : null;
 
     const tier = user?.subscriptionTier || "FREE";
-    const hasActiveSubscription = user?.subscriptionStatus === "ACTIVE";
-    const canEnableReviews = hasActiveSubscription && (tier === "CODE_REVIEW" || tier === "TRIAGE");
-    const canEnableTriage = hasActiveSubscription && tier === "TRIAGE";
+    // Allow access if user has a paid tier (tier itself is the source of truth)
+    const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+    const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
     // Get settings for user's repos that are enabled
     const settings = await prisma.repositorySettings.findMany({
@@ -318,9 +318,9 @@ app.get("/api/settings/:owner/:repo", async (c) => {
 
   // Calculate effective state based on user's subscription
   const tier = settings.user?.subscriptionTier || "FREE";
-  const hasActiveSubscription = settings.user?.subscriptionStatus === "ACTIVE";
-  const canEnableReviews = hasActiveSubscription && (tier === "CODE_REVIEW" || tier === "TRIAGE");
-  const canEnableTriage = hasActiveSubscription && tier === "TRIAGE";
+  // Allow access if user has a paid tier (tier itself is the source of truth)
+  const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+  const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
   return c.json({
     owner: settings.owner,
@@ -356,20 +356,20 @@ app.put("/api/settings/:owner/:repo", async (c) => {
       if (user) {
         userId = user.id;
         const tier = user.subscriptionTier;
-        const hasActiveSubscription = user.subscriptionStatus === "ACTIVE";
-        canEnableReviews = hasActiveSubscription && (tier === "CODE_REVIEW" || tier === "TRIAGE");
-        canEnableTriage = hasActiveSubscription && tier === "TRIAGE";
+        // Allow access if user has a paid tier (tier itself is the source of truth)
+        canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+        canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
         // Enforce subscription limits
         if (enabled && !canEnableReviews) {
           return c.json({
-            error: "Reviews require a Code Review or Triage subscription"
+            error: "Reviews require an active paid subscription (BYOK, Code Review, or Triage)"
           }, 403);
         }
 
         if (triageEnabled && !canEnableTriage) {
           return c.json({
-            error: "Triage mode requires a Triage subscription"
+            error: "Triage mode requires a BYOK or Triage subscription"
           }, 403);
         }
       }
@@ -491,6 +491,33 @@ app.post("/api/reviews", async (c) => {
   }
 
   try {
+    // Get repo settings to find the user who enabled this repo
+    const repoSettings = await prisma.repositorySettings.findUnique({
+      where: { owner_repo: { owner, repo } },
+      include: { user: true },
+    });
+
+    const user = repoSettings?.user;
+
+    // Check quota if user exists and has a subscription
+    if (user) {
+      const quota = getReviewQuota(user.subscriptionTier, user.polarProductId);
+      // quota of -1 means unlimited (BYOK plan)
+      if (quota !== -1 && user.reviewsUsedThisCycle >= quota) {
+        return c.json({
+          error: "Review quota exceeded",
+          quota,
+          used: user.reviewsUsedThisCycle,
+        }, 403);
+      }
+
+      // Increment usage counter (even for BYOK to track usage)
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { reviewsUsedThisCycle: { increment: 1 } },
+      });
+    }
+
     const review = await prisma.review.create({
       data: {
         owner,
@@ -534,6 +561,9 @@ app.get("/api/subscription/status", async (c) => {
       subscriptionTier: "FREE",
       subscriptionStatus: "INACTIVE",
       polarSubscriptionId: null,
+      polarProductId: null,
+      reviewsUsed: 0,
+      reviewsQuota: 0,
     });
   }
 
@@ -541,8 +571,11 @@ app.get("/api/subscription/status", async (c) => {
     subscriptionTier: user.subscriptionTier,
     subscriptionStatus: user.subscriptionStatus,
     polarSubscriptionId: user.polarSubscriptionId,
+    polarProductId: user.polarProductId,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
     cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+    reviewsUsed: user.reviewsUsedThisCycle,
+    reviewsQuota: getReviewQuota(user.subscriptionTier, user.polarProductId),
   });
 });
 
@@ -585,6 +618,7 @@ app.post("/api/subscription/sync", async (c) => {
           subscriptionTier: tier as SubscriptionTier,
           subscriptionStatus: "ACTIVE",
           polarSubscriptionId: activeSubscription.id,
+          polarProductId: activeSubscription.productId,
           subscriptionExpiresAt: activeSubscription.currentPeriodEnd
             ? new Date(activeSubscription.currentPeriodEnd)
             : null,
@@ -596,6 +630,7 @@ app.post("/api/subscription/sync", async (c) => {
         synced: true,
         subscriptionTier: tier,
         subscriptionStatus: "ACTIVE",
+        polarProductId: activeSubscription.productId,
       });
     } else {
       return c.json({
@@ -609,6 +644,59 @@ app.post("/api/subscription/sync", async (c) => {
     console.error("Error syncing subscription:", error);
     return c.json({ error: "Failed to sync subscription" }, 500);
   }
+});
+
+// Debug: Get actual subscription status from Polar
+app.get("/api/subscription/debug", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const result: Record<string, unknown> = {
+    database: {
+      polarSubscriptionId: user.polarSubscriptionId,
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+      subscriptionExpiresAt: user.subscriptionExpiresAt,
+    },
+    polar: null as unknown,
+  };
+
+  if (user.polarSubscriptionId) {
+    try {
+      const subscription = await polar.subscriptions.get({
+        id: user.polarSubscriptionId,
+      });
+      result.polar = {
+        id: subscription.id,
+        status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        productId: subscription.productId,
+      };
+    } catch (error) {
+      result.polar = { error: String(error) };
+    }
+  }
+
+  return c.json(result);
 });
 
 // Create checkout session for subscription
@@ -636,18 +724,29 @@ app.post("/api/subscription/create", async (c) => {
     }
   }
 
-  // If user has active subscription, handle upgrade/downgrade
+  // If user has active subscription, handle upgrade/downgrade/billing switch
   if (user?.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
+    // Check if trying to switch to the exact same product (same tier AND billing interval)
+    if (user.polarProductId === productId) {
+      return c.json({ error: "Already on this plan" }, 400);
+    }
+
     const newTier = getTierFromProductId(productId);
     const currentTierLevel = TIER_HIERARCHY[user.subscriptionTier];
     const newTierLevel = TIER_HIERARCHY[newTier];
 
-    if (newTierLevel === currentTierLevel) {
-      return c.json({ error: "Already on this plan" }, 400);
-    }
-
     try {
-      // Update existing subscription
+      // If subscription is set to cancel, first uncancel it
+      if (user.cancelAtPeriodEnd) {
+        await polar.subscriptions.update({
+          id: user.polarSubscriptionId,
+          subscriptionUpdate: {
+            cancelAtPeriodEnd: false,
+          },
+        });
+      }
+
+      // Update existing subscription to new product
       await polar.subscriptions.update({
         id: user.polarSubscriptionId,
         subscriptionUpdate: {
@@ -660,17 +759,35 @@ app.post("/api/subscription/create", async (c) => {
         where: { id: user.id },
         data: {
           subscriptionTier: newTier as SubscriptionTier,
+          polarProductId: productId,
           cancelAtPeriodEnd: false,
         },
       });
 
       return c.json({
         subscriptionUpdated: true,
+        polarProductId: productId,
         type: newTierLevel > currentTierLevel ? "upgrade" : "downgrade",
       });
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      return c.json({ error: "Failed to update subscription" }, 500);
+    } catch (error: unknown) {
+      // If subscription is already cancelled on Polar's side, fall through to create new checkout
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("AlreadyCanceledSubscription")) {
+        console.log("Subscription already cancelled on Polar, creating new checkout");
+        // Clear the old subscription ID since it's cancelled
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            polarSubscriptionId: null,
+            subscriptionStatus: "CANCELLED",
+            cancelAtPeriodEnd: false,
+          },
+        });
+        // Fall through to create new checkout below
+      } else {
+        console.error("Error updating subscription:", error);
+        return c.json({ error: "Failed to update subscription" }, 500);
+      }
     }
   }
 
@@ -859,10 +976,322 @@ app.post("/api/subscription/cancel", async (c) => {
     });
 
     return c.json({ success: true, message: "Subscription will cancel at period end" });
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // If already cancelled, update our database to match
+    if (errorMessage.includes("AlreadyCanceledSubscription")) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { cancelAtPeriodEnd: true },
+      });
+      return c.json({ success: true, message: "Subscription is already set to cancel" });
+    }
+
     console.error("Error canceling subscription:", error);
     return c.json({ error: "Failed to cancel subscription" }, 500);
   }
+});
+
+// Resubscribe (uncancel) subscription
+app.post("/api/subscription/resubscribe", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user?.polarSubscriptionId) {
+    return c.json({ error: "No subscription to reactivate" }, 400);
+  }
+
+  if (!user.cancelAtPeriodEnd) {
+    return c.json({ error: "Subscription is not scheduled for cancellation" }, 400);
+  }
+
+  try {
+    // Uncancel by setting cancelAtPeriodEnd to false
+    await polar.subscriptions.update({
+      id: user.polarSubscriptionId,
+      subscriptionUpdate: {
+        cancelAtPeriodEnd: false,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        cancelAtPeriodEnd: false,
+        subscriptionStatus: "ACTIVE",
+      },
+    });
+
+    return c.json({ success: true, message: "Subscription reactivated" });
+  } catch (error) {
+    console.error("Error resubscribing:", error);
+    return c.json({ error: "Failed to reactivate subscription" }, 500);
+  }
+});
+
+// ==================== BYOK API KEY ENDPOINTS ====================
+
+// Get API key status (never returns the actual key)
+app.get("/api/settings/api-key", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Only return whether a key is set and a masked version
+  const hasKey = !!user.anthropicApiKey;
+  const maskedKey = hasKey
+    ? `sk-ant-...${user.anthropicApiKey!.slice(-4)}`
+    : null;
+
+  return c.json({
+    hasKey,
+    maskedKey,
+    tier: user.subscriptionTier,
+  });
+});
+
+// Set API key (BYOK users only)
+app.put("/api/settings/api-key", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  if (user.subscriptionTier !== "BYOK") {
+    return c.json({ error: "API key is only available for BYOK plan" }, 403);
+  }
+
+  const body = await c.req.json();
+  const { apiKey } = body;
+
+  if (!apiKey || typeof apiKey !== "string") {
+    return c.json({ error: "API key is required" }, 400);
+  }
+
+  // Basic validation for Anthropic API key format
+  if (!apiKey.startsWith("sk-ant-")) {
+    return c.json({ error: "Invalid Anthropic API key format" }, 400);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { anthropicApiKey: apiKey },
+  });
+
+  return c.json({
+    success: true,
+    maskedKey: `sk-ant-...${apiKey.slice(-4)}`,
+  });
+});
+
+// Delete API key
+app.delete("/api/settings/api-key", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { anthropicApiKey: null },
+  });
+
+  return c.json({ success: true });
+});
+
+// ==================== CUSTOM REVIEW RULES ENDPOINTS ====================
+
+// Get custom review rules
+app.get("/api/settings/review-rules", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  return c.json({
+    rules: user.customReviewRules || "",
+  });
+});
+
+// Update custom review rules
+app.put("/api/settings/review-rules", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Check subscription tier - all paid plans have access
+  const tier = user.subscriptionTier;
+  if (tier === "FREE") {
+    return c.json({ error: "Custom review rules require a paid subscription" }, 403);
+  }
+
+  const body = await c.req.json();
+  const { rules } = body;
+
+  if (typeof rules !== "string") {
+    return c.json({ error: "Rules must be a string" }, 400);
+  }
+
+  // Limit rules to 5000 characters
+  if (rules.length > 5000) {
+    return c.json({ error: "Rules must be 5000 characters or less" }, 400);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { customReviewRules: rules || null },
+  });
+
+  return c.json({ success: true, rules });
+});
+
+// Get custom review rules for review agent (internal use only)
+app.get("/api/internal/review-rules/:owner/:repo", async (c) => {
+  const { owner, repo } = c.req.param();
+  const apiKey = c.req.header("X-API-Key");
+
+  // Validate internal API key
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || apiKey !== expectedApiKey) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Get repo settings to find the user
+  const repoSettings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+    include: { user: true },
+  });
+
+  if (!repoSettings?.user) {
+    return c.json({ rules: null });
+  }
+
+  return c.json({ rules: repoSettings.user.customReviewRules || null });
+});
+
+// Get API key for review agent (internal use only)
+app.get("/api/internal/api-key/:owner/:repo", async (c) => {
+  const { owner, repo } = c.req.param();
+  const apiKey = c.req.header("X-API-Key");
+
+  // Validate internal API key
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || apiKey !== expectedApiKey) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Get repo settings to find the user
+  const repoSettings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+    include: { user: true },
+  });
+
+  if (!repoSettings?.user) {
+    return c.json({ error: "No user associated with this repo" }, 404);
+  }
+
+  const user = repoSettings.user;
+
+  if (user.subscriptionTier !== "BYOK") {
+    return c.json({ error: "Not a BYOK user", useDefault: true });
+  }
+
+  if (!user.anthropicApiKey) {
+    return c.json({ error: "No API key configured", useDefault: false });
+  }
+
+  return c.json({ apiKey: user.anthropicApiKey });
 });
 
 // Polar webhook handler
@@ -910,7 +1339,9 @@ app.post("/api/webhooks/polar", async (c) => {
                   subscriptionTier: tier as SubscriptionTier,
                   subscriptionStatus: "ACTIVE",
                   polarSubscriptionId: subscriptionId,
+                  polarProductId: productId,
                   cancelAtPeriodEnd: false,
+                  reviewsUsedThisCycle: 0, // Reset quota on new subscription
                 },
               });
               console.log(`Activated subscription for user ${user.login}: ${tier}`);
@@ -950,17 +1381,18 @@ app.post("/api/webhooks/polar", async (c) => {
               subscriptionTier: mappedStatus === "ACTIVE" ? tier as SubscriptionTier : user.subscriptionTier,
               subscriptionStatus: mappedStatus as SubscriptionStatus,
               polarSubscriptionId: subscriptionId,
+              polarProductId: productId,
               cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
               subscriptionExpiresAt: subscription.current_period_end ? new Date(subscription.current_period_end) : null,
             },
           });
-          console.log(`Updated subscription for user ${user.login}: ${tier}, status: ${mappedStatus}`);
+          console.log(`Updated subscription for user ${user.login}: ${tier}, productId: ${productId}, status: ${mappedStatus}`);
         }
         break;
       }
 
-      case "subscription.canceled":
-      case "subscription.revoked": {
+      case "subscription.canceled": {
+        // Fired when cancelAtPeriodEnd is set - subscription is still ACTIVE until period ends
         const subscription = payload.data;
         const subscriptionId = subscription.id;
 
@@ -969,37 +1401,72 @@ app.post("/api/webhooks/polar", async (c) => {
         });
 
         if (user) {
-          // Check if subscription has fully ended
-          const endedAt = subscription.ended_at;
-          if (endedAt && new Date(endedAt) <= new Date()) {
-            // Subscription has ended - downgrade to FREE
-            await prisma.user.update({
-              where: { id: user.id },
-              data: {
-                subscriptionTier: "FREE",
-                subscriptionStatus: "CANCELLED",
-                polarSubscriptionId: null,
-                cancelAtPeriodEnd: false,
-              },
-            });
-            console.log(`Subscription ended for user ${user.login}, downgraded to FREE`);
-          } else {
-            // Subscription will end later
-            await prisma.user.update({
-              where: { id: user.id },
-              data: {
-                subscriptionStatus: "CANCELLED",
-                cancelAtPeriodEnd: true,
-              },
-            });
-            console.log(`Subscription marked for cancellation for user ${user.login}`);
-          }
+          // Subscription is still active, just scheduled to cancel
+          // Keep status as ACTIVE, just mark cancelAtPeriodEnd
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              subscriptionStatus: subscription.status === "active" ? "ACTIVE" : "CANCELLED",
+              cancelAtPeriodEnd: true,
+              subscriptionExpiresAt: subscription.current_period_end
+                ? new Date(subscription.current_period_end)
+                : null,
+            },
+          });
+          console.log(`Subscription scheduled for cancellation for user ${user.login}`);
+        }
+        break;
+      }
+
+      case "subscription.revoked": {
+        // Fired when subscription is immediately canceled or period ends
+        const subscription = payload.data;
+        const subscriptionId = subscription.id;
+
+        const user = await prisma.user.findFirst({
+          where: { polarSubscriptionId: subscriptionId },
+        });
+
+        if (user) {
+          // Subscription has fully ended - downgrade to FREE
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              subscriptionTier: "FREE",
+              subscriptionStatus: "CANCELLED",
+              polarSubscriptionId: null,
+              cancelAtPeriodEnd: false,
+            },
+          });
+          console.log(`Subscription revoked for user ${user.login}, downgraded to FREE`);
+        }
+        break;
+      }
+
+      case "subscription.uncanceled": {
+        // Fired when cancelAtPeriodEnd is set back to false
+        const subscription = payload.data;
+        const subscriptionId = subscription.id;
+
+        const user = await prisma.user.findFirst({
+          where: { polarSubscriptionId: subscriptionId },
+        });
+
+        if (user) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              subscriptionStatus: "ACTIVE",
+              cancelAtPeriodEnd: false,
+            },
+          });
+          console.log(`Subscription uncanceled for user ${user.login}`);
         }
         break;
       }
 
       case "order.paid": {
-        // Primary event for successful payments
+        // Primary event for successful payments - also resets review quota
         const order = payload.data;
         const email = order.customer?.email;
         const productId = order.product_id;
@@ -1018,10 +1485,12 @@ app.post("/api/webhooks/polar", async (c) => {
                 subscriptionTier: tier as SubscriptionTier,
                 subscriptionStatus: "ACTIVE",
                 polarSubscriptionId: subscriptionId,
+                polarProductId: productId,
                 cancelAtPeriodEnd: false,
+                reviewsUsedThisCycle: 0, // Reset quota on payment
               },
             });
-            console.log(`Order paid - activated subscription for user ${user.login}: ${tier}`);
+            console.log(`Order paid - activated subscription for user ${user.login}: ${tier}, productId: ${productId}, quota reset`);
           }
         }
         break;

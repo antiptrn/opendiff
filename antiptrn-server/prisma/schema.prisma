@@ -11,6 +11,7 @@ enum SubscriptionTier {
   FREE
   CODE_REVIEW
   TRIAGE
+  BYOK
 }
 
 enum SubscriptionStatus {
@@ -32,9 +33,13 @@ model User {
   subscriptionTier      SubscriptionTier   @default(FREE)
   subscriptionStatus    SubscriptionStatus @default(INACTIVE)
   polarSubscriptionId   String?            @unique
+  polarProductId        String?            // Current product ID (includes billing interval)
   polarCustomerId       String?
   subscriptionExpiresAt DateTime?
   cancelAtPeriodEnd     Boolean            @default(false)
+  reviewsUsedThisCycle  Int                @default(0)
+  anthropicApiKey       String?            // BYOK: User's own Anthropic API key
+  customReviewRules     String?            // Custom rules for AI code reviews
 
   // Relations
   repositorySettings    RepositorySettings[]

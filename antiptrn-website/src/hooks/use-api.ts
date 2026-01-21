@@ -237,6 +237,32 @@ export function useCancelSubscription(token?: string) {
   });
 }
 
+export function useResubscribe(token?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/subscription/resubscribe`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to reactivate subscription");
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["billing"] });
+    },
+  });
+}
+
 export function useGetInvoice(token?: string) {
   return useMutation({
     mutationFn: async (orderId: string) => {
@@ -253,6 +279,118 @@ export function useGetInvoice(token?: string) {
       }
 
       return data as { invoiceUrl: string };
+    },
+  });
+}
+
+// BYOK API key hooks
+export interface ApiKeyStatus {
+  hasKey: boolean;
+  maskedKey: string | null;
+  tier: string;
+}
+
+export function useApiKeyStatus(token?: string) {
+  return useQuery<ApiKeyStatus>({
+    queryKey: ["apiKey", token],
+    queryFn: () => fetchWithAuth(`${API_URL}/api/settings/api-key`, token),
+    enabled: !!token,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpdateApiKey(token?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (apiKey: string) => {
+      const response = await fetch(`${API_URL}/api/settings/api-key`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save API key");
+      }
+
+      return data as { success: boolean; maskedKey: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["apiKey"] });
+    },
+  });
+}
+
+export function useDeleteApiKey(token?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/settings/api-key`, {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete API key");
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["apiKey"] });
+    },
+  });
+}
+
+// Custom review rules hooks
+export interface ReviewRulesStatus {
+  rules: string;
+}
+
+export function useReviewRules(token?: string) {
+  return useQuery<ReviewRulesStatus>({
+    queryKey: ["reviewRules", token],
+    queryFn: () => fetchWithAuth(`${API_URL}/api/settings/review-rules`, token),
+    enabled: !!token,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpdateReviewRules(token?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (rules: string) => {
+      const response = await fetch(`${API_URL}/api/settings/review-rules`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ rules }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save review rules");
+      }
+
+      return data as { success: boolean; rules: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reviewRules"] });
     },
   });
 }

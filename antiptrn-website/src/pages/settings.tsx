@@ -23,9 +23,16 @@ import {
   useRepositorySettings,
   useUpdateSettings,
   useActivatedRepos,
+  useApiKeyStatus,
+  useUpdateApiKey,
+  useDeleteApiKey,
+  useReviewRules,
+  useUpdateReviewRules,
   type Repository,
   type RepositorySettings,
 } from "@/hooks/use-api";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
 
@@ -147,7 +154,7 @@ function RepoSettingsForm({
         disabled={isSaving}
         size="sm"
       >
-        {isSaving && <Loader2 className="size-4 animate-spin mr-2" />}
+        {isSaving && <Loader2 className="size-4 animate-spin" />}
         Save Settings
       </Button>
     </div>
@@ -224,6 +231,219 @@ function ActiveRepoAccordion({
         />
       </AccordionContent>
     </AccordionItem>
+  );
+}
+
+function ApiKeyCard({ token }: { token?: string }) {
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showInput, setShowInput] = useState(false);
+
+  const { data: apiKeyStatus, isLoading } = useApiKeyStatus(token);
+  const updateApiKey = useUpdateApiKey(token);
+  const deleteApiKey = useDeleteApiKey(token);
+
+  const handleSave = async () => {
+    if (!apiKeyInput.trim()) return;
+    try {
+      await updateApiKey.mutateAsync(apiKeyInput);
+      setApiKeyInput("");
+      setShowInput(false);
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteApiKey.mutateAsync();
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Anthropic API Key</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Anthropic API Key</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Your BYOK plan requires your own Anthropic API key. You pay Anthropic directly for API usage.
+        </p>
+
+        {(updateApiKey.error || deleteApiKey.error) && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {updateApiKey.error?.message || deleteApiKey.error?.message}
+          </div>
+        )}
+
+        {apiKeyStatus?.hasKey && !showInput ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <code className="bg-muted px-2 py-1 rounded text-sm">
+                {apiKeyStatus.maskedKey}
+              </code>
+              <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setShowInput(true)}
+              >
+                Update Key
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteApiKey.isPending}
+              >
+                {deleteApiKey.isPending && <Loader2 className="size-4 animate-spin mr-2" />}
+                Remove Key
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                placeholder="sk-ant-..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="font-mono"
+              />
+              <Button
+                onClick={handleSave}
+                disabled={!apiKeyInput.trim() || updateApiKey.isPending}
+              >
+                {updateApiKey.isPending && <Loader2 className="size-4 animate-spin" />}
+                {updateApiKey.isPending ? "Saving..." : "Save"}
+              </Button>
+              {showInput && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowInput(false);
+                    setApiKeyInput("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Get your API key from{" "}
+              <a
+                href="https://console.anthropic.com/settings/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                console.anthropic.com
+              </a>
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CustomReviewRulesCard({ token }: { token?: string }) {
+  const [localRules, setLocalRules] = useState("");
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const { data: rulesData, isLoading } = useReviewRules(token);
+  const updateRules = useUpdateReviewRules(token);
+
+  useEffect(() => {
+    if (rulesData?.rules !== undefined) {
+      setLocalRules(rulesData.rules);
+    }
+  }, [rulesData?.rules]);
+
+  const handleSave = async () => {
+    setSuccessMessage(null);
+    try {
+      await updateRules.mutateAsync(localRules);
+      setSuccessMessage("Review rules saved");
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const hasChanges = rulesData?.rules !== localRules;
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom Review Rules</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-32 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Custom Review Rules</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Define custom rules and guidelines for the AI to follow when reviewing your code. These rules will be included in every review.
+        </p>
+
+        {updateRules.error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {updateRules.error?.message}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
+            {successMessage}
+          </div>
+        )}
+
+        <Textarea
+          placeholder="Example rules:&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
+          value={localRules}
+          onChange={(e) => setLocalRules(e.target.value)}
+          className="min-h-[150px] font-mono text-sm"
+          maxLength={5000}
+        />
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {localRules.length}/5000 characters
+          </p>
+          <Button
+            onClick={handleSave}
+            disabled={!hasChanges || updateRules.isPending}
+          >
+            {updateRules.isPending && <Loader2 className="size-4 animate-spin" />}
+            {updateRules.isPending ? "Saving..." : "Save Rules"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -306,8 +526,8 @@ export function SettingsPage() {
   };
 
   const tier = user?.subscriptionTier || "FREE";
-  const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE";
-  const canEnableTriage = tier === "TRIAGE";
+  const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+  const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
   // Check if selected repo is already in activated list
   const isRepoAlreadyActive = selectedRepo && activatedRepos.some(
@@ -340,6 +560,12 @@ export function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* BYOK API Key Card */}
+        {tier === "BYOK" && <ApiKeyCard token={user?.access_token} />}
+
+        {/* Custom Review Rules - available for all paid plans */}
+        {tier !== "FREE" && <CustomReviewRulesCard token={user?.access_token} />}
 
         {/* Add Repository Dropdown */}
         <Card>

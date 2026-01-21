@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 export function HeroSection() {
   return (
@@ -21,12 +22,12 @@ export function HeroSection() {
 
           <div className="flex flex-col lg:items-end md:items-end items-center gap-3 justify-center">
             <Button className="w-fit" size="lg" asChild>
-              <a href="#contact">
-                Try antiptrn
-              </a>
+              <Link to="/pricing">
+                Let's go
+              </Link>
             </Button>
             <p className="text-muted-foreground text-xs">
-              14-day free trial - cancel anytime.
+              No credit card needed.
             </p>
           </div>
         </div>

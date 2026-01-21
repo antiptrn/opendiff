@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-export type SubscriptionTier = "FREE" | "CODE_REVIEW" | "TRIAGE";
+export type SubscriptionTier = "FREE" | "CODE_REVIEW" | "TRIAGE" | "BYOK";
 export type SubscriptionStatus = "INACTIVE" | "ACTIVE" | "CANCELLED" | "PAST_DUE";
 
 export interface User {
@@ -13,6 +13,8 @@ export interface User {
   access_token?: string;
   subscriptionTier?: SubscriptionTier;
   subscriptionStatus?: SubscriptionStatus;
+  polarProductId?: string | null;
+  cancelAtPeriodEnd?: boolean;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -62,6 +64,31 @@ export function useAuth() {
     queryClient.setQueryData(["auth", "user"], newUser);
   };
 
+  const refreshSubscription = async () => {
+    if (!user?.access_token) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/subscription/status`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const updatedUser = {
+          ...user,
+          subscriptionTier: data.subscriptionTier,
+          subscriptionStatus: data.subscriptionStatus,
+          polarProductId: data.polarProductId,
+          cancelAtPeriodEnd: data.cancelAtPeriodEnd,
+        };
+        setStoredUser(updatedUser);
+        queryClient.setQueryData(["auth", "user"], updatedUser);
+      }
+    } catch (error) {
+      console.error("Failed to refresh subscription:", error);
+    }
+  };
+
   return {
     user: user ?? null,
     isLoading,
@@ -69,5 +96,6 @@ export function useAuth() {
     login,
     logout,
     setUser,
+    refreshSubscription,
   };
 }
