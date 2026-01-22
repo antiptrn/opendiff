@@ -1,6 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { createBrowserRouter, RouterProvider } from "react-router-dom"
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import "./index.css"
@@ -12,7 +12,6 @@ import { AuthCallbackPage } from "./pages/auth-callback.tsx"
 import { ConsoleLayout } from "./components/console/console-layout.tsx"
 import { ConsolePage } from "./pages/console.tsx"
 import { SettingsPage } from "./pages/settings.tsx"
-import { BillingPage } from "./pages/billing.tsx"
 import { PricingPage } from "./pages/pricing.tsx"
 import { SubscriptionSuccessPage } from "./pages/subscription-success.tsx"
 
@@ -37,7 +36,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <ConsolePage /> },
       { path: "settings", element: <SettingsPage /> },
-      { path: "billing", element: <BillingPage /> },
+      { path: "reviews", element: <Navigate to="/console/settings" replace /> },
+      { path: "billing", element: <Navigate to="/console/settings" replace /> },
     ],
   },
 ])

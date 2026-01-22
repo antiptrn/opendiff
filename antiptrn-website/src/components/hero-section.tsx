@@ -6,12 +6,12 @@ export function HeroSection() {
     <section className="lg:pt-40 md:pt-40 pt-30 pb-20 px-4 sm:px-6 lg:px-8 container mx-auto flex w-full items-start justify-center">
       <div className="w-full text-start flex flex-col items-start justify-center">
 
-        <div className="w-full flex lg:flex-row md:flex-row flex-col justify-between gap-7">
+        <div className="xl:px-24 w-full flex lg:flex-row md:flex-row flex-col justify-between gap-7">
           <div className="lg:text-left md:text-left text-center flex flex-col lg:items-start md:items-start items-center">
             <h1
               className="font-interphases lg:text-4xl md:text-4xl text-3xl tracking-tight mb-3"
             >
-              Building the future of work.
+              Building the future of work
 
             </h1>
 
@@ -23,11 +23,11 @@ export function HeroSection() {
           <div className="flex flex-col lg:items-end md:items-end items-center gap-3 justify-center">
             <Button className="w-fit" size="lg" asChild>
               <Link to="/pricing">
-                Let's go
+                Get started
               </Link>
             </Button>
             <p className="text-muted-foreground text-xs">
-              No credit card needed.
+              Money-back guarantee.
             </p>
           </div>
         </div>

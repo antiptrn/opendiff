@@ -64,6 +64,29 @@ interface RepositorySettings {
   effectiveTriageEnabled: boolean;
 }
 
+// Fetch custom review rules from the server
+async function getCustomReviewRules(owner: string, repo: string): Promise<string | null> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/review-rules/${owner}/${repo}`, {
+      headers: {
+        'X-API-Key': REVIEW_AGENT_API_KEY,
+      },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as { rules?: string };
+    return data.rules || null;
+  } catch (error) {
+    console.warn(`Error fetching custom rules for ${owner}/${repo}:`, error);
+    return null;
+  }
+}
+
 // Fetch repository settings from the server
 async function getRepositorySettings(owner: string, repo: string): Promise<RepositorySettings> {
   // Default settings - features disabled until explicitly enabled by a subscriber
@@ -87,7 +110,7 @@ async function getRepositorySettings(owner: string, repo: string): Promise<Repos
       console.warn(`Failed to fetch settings for ${owner}/${repo}, features disabled`);
       return defaultSettings;
     }
-    return await response.json();
+    return (await response.json()) as RepositorySettings;
   } catch (error) {
     console.warn(`Error fetching settings for ${owner}/${repo}:`, error);
     return defaultSettings;
@@ -203,8 +226,14 @@ app.post('/webhook', async (c) => {
           return c.json({ status: 'skipped', reason: 'draft' });
         }
 
+        // Fetch custom review rules
+        const customRules = await getCustomReviewRules(owner, repo);
+        if (customRules) {
+          console.log(`Using custom review rules for ${owner}/${repo}`);
+        }
+
         // Process the PR
-        const result = await handler.handlePullRequestOpened(payload, BOT_USERNAME);
+        const result = await handler.handlePullRequestOpened(payload, BOT_USERNAME, customRules);
 
         if (result.skipped) {
           console.log('PR skipped (opened by bot)');
@@ -255,7 +284,10 @@ app.post('/webhook', async (c) => {
       const formatter = new ReviewFormatter();
       const handler = new WebhookHandler(githubClient, agent, formatter);
 
-      const result = await handler.handleReviewComment(payload, BOT_USERNAME);
+      // Fetch custom review rules
+      const customRules = await getCustomReviewRules(owner, repo);
+
+      const result = await handler.handleReviewComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
         console.log('Review comment skipped (not for bot)');
@@ -305,7 +337,10 @@ app.post('/webhook', async (c) => {
       const formatter = new ReviewFormatter();
       const handler = new WebhookHandler(githubClient, agent, formatter);
 
-      const result = await handler.handleIssueComment(payload, BOT_USERNAME);
+      // Fetch custom review rules
+      const customRules = await getCustomReviewRules(owner, repo);
+
+      const result = await handler.handleIssueComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
         console.log('Issue comment skipped (not for bot or not a PR)');
