@@ -43,6 +43,7 @@ model User {
 
   // Relations
   repositorySettings    RepositorySettings[]
+  auditLogs             AuditLog[]
 
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
@@ -73,4 +74,20 @@ model Review {
   createdAt     DateTime @default(now())
 
   @@index([owner, repo])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // e.g., "repo.settings.updated", "subscription.cancelled"
+  target    String?  // Resource identifier (e.g., "owner/repo")
+  metadata  Json?    // Additional context
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
 }

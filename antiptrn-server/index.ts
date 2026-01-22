@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { PrismaClient, SubscriptionTier, SubscriptionStatus } from "@prisma/client";
 import { polar, getTierFromProductId, TIER_HIERARCHY, getReviewQuota } from "./lib/polar";
+import { logAudit } from "./lib/audit";
 
 const prisma = new PrismaClient();
 const app = new Hono();
@@ -132,6 +133,13 @@ app.get("/auth/github/callback", async (c) => {
       subscriptionTier: user.subscriptionTier,
       subscriptionStatus: user.subscriptionStatus,
     };
+
+    await logAudit({
+      userId: user.id,
+      action: "user.login",
+      metadata: { login: userData.login },
+      c,
+    });
 
     const encodedUser = encodeURIComponent(JSON.stringify(authData));
     return c.redirect(`${FRONTEND_URL}/auth/callback?user=${encodedUser}`);
@@ -390,6 +398,14 @@ app.put("/api/settings/:owner/:repo", async (c) => {
       triageEnabled: triageEnabled ?? false,
       userId: userId,
     },
+  });
+
+  await logAudit({
+    userId,
+    action: "repo.settings.updated",
+    target: `${owner}/${repo}`,
+    metadata: { enabled, triageEnabled },
+    c,
   });
 
   return c.json({
@@ -764,10 +780,18 @@ app.post("/api/subscription/create", async (c) => {
         },
       });
 
+      const changeType = newTierLevel > currentTierLevel ? "upgrade" : "downgrade";
+      await logAudit({
+        userId: user.id,
+        action: "subscription.updated",
+        metadata: { fromTier: user.subscriptionTier, toTier: newTier, changeType },
+        c,
+      });
+
       return c.json({
         subscriptionUpdated: true,
         polarProductId: productId,
-        type: newTierLevel > currentTierLevel ? "upgrade" : "downgrade",
+        type: changeType,
       });
     } catch (error: unknown) {
       // If subscription is already cancelled on Polar's side, fall through to create new checkout
@@ -975,6 +999,13 @@ app.post("/api/subscription/cancel", async (c) => {
       data: { cancelAtPeriodEnd: true },
     });
 
+    await logAudit({
+      userId: user.id,
+      action: "subscription.cancelled",
+      metadata: { tier: user.subscriptionTier },
+      c,
+    });
+
     return c.json({ success: true, message: "Subscription will cancel at period end" });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1034,6 +1065,13 @@ app.post("/api/subscription/resubscribe", async (c) => {
         cancelAtPeriodEnd: false,
         subscriptionStatus: "ACTIVE",
       },
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: "subscription.resubscribed",
+      metadata: { tier: user.subscriptionTier },
+      c,
     });
 
     return c.json({ success: true, message: "Subscription reactivated" });
@@ -1123,6 +1161,12 @@ app.put("/api/settings/api-key", async (c) => {
     data: { anthropicApiKey: apiKey },
   });
 
+  await logAudit({
+    userId: user.id,
+    action: "api_key.updated",
+    c,
+  });
+
   return c.json({
     success: true,
     maskedKey: `sk-ant-...${apiKey.slice(-4)}`,
@@ -1154,6 +1198,12 @@ app.delete("/api/settings/api-key", async (c) => {
   await prisma.user.update({
     where: { id: user.id },
     data: { anthropicApiKey: null },
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: "api_key.deleted",
+    c,
   });
 
   return c.json({ success: true });
@@ -1233,6 +1283,13 @@ app.put("/api/settings/review-rules", async (c) => {
     data: { customReviewRules: rules || null },
   });
 
+  await logAudit({
+    userId: user.id,
+    action: "review_rules.updated",
+    metadata: { rulesLength: rules.length },
+    c,
+  });
+
   return c.json({ success: true, rules });
 });
 
@@ -1292,6 +1349,155 @@ app.get("/api/internal/api-key/:owner/:repo", async (c) => {
   }
 
   return c.json({ apiKey: user.anthropicApiKey });
+});
+
+// ==================== ACCOUNT MANAGEMENT ENDPOINTS ====================
+
+// Export all user data (GDPR compliance)
+app.get("/api/account/export", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+    include: {
+      repositorySettings: true,
+      auditLogs: {
+        orderBy: { createdAt: "desc" },
+        take: 1000,
+      },
+    },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Get reviews for user's repos
+  const repoIdentifiers = user.repositorySettings.map((r) => ({
+    owner: r.owner,
+    repo: r.repo,
+  }));
+
+  const reviews = repoIdentifiers.length > 0 ? await prisma.review.findMany({
+    where: {
+      OR: repoIdentifiers.map((r) => ({
+        owner: r.owner,
+        repo: r.repo,
+      })),
+    },
+    orderBy: { createdAt: "desc" },
+  }) : [];
+
+  // Build export data
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    user: {
+      id: user.id,
+      githubId: user.githubId,
+      login: user.login,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+    repositorySettings: user.repositorySettings.map((r) => ({
+      owner: r.owner,
+      repo: r.repo,
+      enabled: r.enabled,
+      triageEnabled: r.triageEnabled,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+    reviews: reviews.map((r) => ({
+      owner: r.owner,
+      repo: r.repo,
+      pullNumber: r.pullNumber,
+      reviewType: r.reviewType,
+      createdAt: r.createdAt,
+    })),
+    auditLogs: user.auditLogs.map((log) => ({
+      action: log.action,
+      target: log.target,
+      metadata: log.metadata,
+      createdAt: log.createdAt,
+    })),
+  };
+
+  await logAudit({
+    userId: user.id,
+    action: "user.data_export",
+    c,
+  });
+
+  return c.json(exportData);
+});
+
+// Delete user account (GDPR compliance)
+app.delete("/api/account", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { githubId: githubUser.id },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Cancel subscription if active
+  if (user.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
+    try {
+      await polar.subscriptions.update({
+        id: user.polarSubscriptionId,
+        subscriptionUpdate: {
+          cancelAtPeriodEnd: true,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to cancel subscription during account deletion:", error);
+      // Continue with deletion even if subscription cancellation fails
+    }
+  }
+
+  // Delete in order: audit logs, repository settings, then user
+  await prisma.auditLog.deleteMany({
+    where: { userId: user.id },
+  });
+
+  await prisma.repositorySettings.deleteMany({
+    where: { userId: user.id },
+  });
+
+  await prisma.user.delete({
+    where: { id: user.id },
+  });
+
+  console.log(`Account deleted for user ${user.login} (${user.id})`);
+
+  return c.json({ success: true, message: "Account deleted successfully" });
 });
 
 // Polar webhook handler
