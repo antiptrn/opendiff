@@ -2,6 +2,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type SubscriptionTier = "FREE" | "CODE_REVIEW" | "TRIAGE" | "BYOK";
 export type SubscriptionStatus = "INACTIVE" | "ACTIVE" | "CANCELLED" | "PAST_DUE";
+export type OrganizationRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export interface UserOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  avatarUrl: string | null;
+  subscriptionTier: SubscriptionTier;
+  subscriptionStatus: SubscriptionStatus;
+  role: OrganizationRole;
+}
 
 export interface User {
   id: number;
@@ -15,6 +26,8 @@ export interface User {
   subscriptionStatus?: SubscriptionStatus;
   polarProductId?: string | null;
   cancelAtPeriodEnd?: boolean;
+  organizations?: UserOrganization[];
+  hasOrganizations?: boolean;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";

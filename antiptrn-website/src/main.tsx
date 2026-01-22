@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { OrganizationProvider } from "./contexts/organization-context"
 
 import "./index.css"
 import App from "./App.tsx"
@@ -12,8 +13,11 @@ import { AuthCallbackPage } from "./pages/auth-callback.tsx"
 import { ConsoleLayout } from "./components/console/console-layout.tsx"
 import { ConsolePage } from "./pages/console.tsx"
 import { SettingsPage } from "./pages/settings.tsx"
+import { AdminPage } from "./pages/admin.tsx"
 import { PricingPage } from "./pages/pricing.tsx"
 import { SubscriptionSuccessPage } from "./pages/subscription-success.tsx"
+import CreateOrganizationPage from "./pages/create-organization.tsx"
+import InvitePage from "./pages/invite.tsx"
 
 const queryClient = new QueryClient()
 
@@ -30,14 +34,19 @@ const router = createBrowserRouter([
       { path: "subscription/success", element: <SubscriptionSuccessPage /> },
     ],
   },
+  // Standalone pages without header/footer
+  { path: "/create-organization", element: <CreateOrganizationPage /> },
+  { path: "/invite/:token", element: <InvitePage /> },
   {
     path: "/console",
     element: <ConsoleLayout />,
     children: [
       { index: true, element: <ConsolePage /> },
       { path: "settings", element: <SettingsPage /> },
-      { path: "reviews", element: <Navigate to="/console/settings" replace /> },
-      { path: "billing", element: <Navigate to="/console/settings" replace /> },
+      { path: "admin", element: <AdminPage /> },
+      { path: "organization", element: <Navigate to="/console/settings?tab=organization" replace /> },
+      { path: "reviews", element: <Navigate to="/console/settings?tab=reviews" replace /> },
+      { path: "billing", element: <Navigate to="/console/settings?tab=billing" replace /> },
     ],
   },
 ])
@@ -45,7 +54,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <OrganizationProvider>
+        <RouterProvider router={router} />
+      </OrganizationProvider>
     </QueryClientProvider>
   </StrictMode>
 )

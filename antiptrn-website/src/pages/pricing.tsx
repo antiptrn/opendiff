@@ -1,6 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   TooltipContent,
   TooltipRoot,
@@ -9,12 +7,12 @@ import {
 import { useCreateSubscription } from "@/hooks/use-api";
 import type { SubscriptionTier } from "@/hooks/use-auth";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Info, Loader2, X } from "lucide-react";
 import { useState } from "react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
   FREE: 0,
@@ -203,8 +201,9 @@ function PlanCard({
                 <NumberFlow
                   value={isYearly ? plan.monthlyReviewQuota * 12 : plan.monthlyReviewQuota}
                   className="tabular-nums"
+                  suffix={isYearly ? " reviews/year" : " reviews/month"}
                 />
-                {isYearly ? " reviews/year" : " reviews/month"}
+
               </>
             ) : (
               "No reviews included"
@@ -308,27 +307,21 @@ export function PricingPage() {
         <h1 className="text-8xl mb-8">Built for developers</h1>
         <p className="text-muted-foreground text-lg">Whether you're a solo developer or part of a team, we've got you covered.</p>
       </div>
-      <div className="flex items-center justify-center gap-3 mb-8 mt-12">
-        <Label
-          htmlFor="billing-toggle"
-          className={cn("text-base", isYearly && "text-muted-foreground")}
+      <div className="flex items-center justify-center mb-8 mt-12">
+        <Tabs
+          value={isYearly ? "yearly" : "monthly"}
+          onValueChange={(value) => setIsYearly(value === "yearly")}
         >
-          Monthly
-        </Label>
-        <Switch
-          id="billing-toggle"
-          checked={isYearly}
-          onCheckedChange={setIsYearly}
-        />
-        <Label
-          htmlFor="billing-toggle"
-          className={cn("text-base", !isYearly && "text-muted-foreground")}
-        >
-          Yearly
-          <span className={cn("text-sm text-green-600 dark:text-green-400", !isYearly && "text-green-800 dark:text-green-600")}>
-            Save 20%
-          </span>
-        </Label>
+          <TabsList>
+            <TabsTrigger value="monthly">Monthly</TabsTrigger>
+            <TabsTrigger value="yearly">
+              Yearly
+              <span className="text-xs text-green-600 dark:text-green-400">
+                (Save 20%)
+              </span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {createSubscription.error && (

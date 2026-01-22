@@ -14,7 +14,7 @@ export function SubscriptionSuccessPage() {
   const { user, setUser } = useAuth();
   const [status, setStatus] = useState<"polling" | "success" | "timeout">("polling");
   const [attempts, setAttempts] = useState(0);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkoutId = searchParams.get("checkout_id");
 

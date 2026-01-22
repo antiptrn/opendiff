@@ -22,8 +22,8 @@ export default function LoginPage() {
 
     return (
         <section className="pt-40 pb-32 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto">
-            <div className="flex flex-col items-center justify-center">
-                <h1 className="text-8xl mb-8">Login</h1>
+            <div className="flex flex-col items-center justify-center mb-10">
+                <h1 className="text-8xl">Login</h1>
                 {error && (
                     <p className="text-red-500 mb-4">
                         Authentication error: {error.replace(/_/g, " ")}
