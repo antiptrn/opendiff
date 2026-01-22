@@ -15,15 +15,84 @@ const TYPE_LABELS = {
   'bug-risk': '🐛 Bug Risk',
 } as const;
 
-export class ReviewFormatter {
-  formatReview(result: ReviewResult): Review {
-    const event = this.mapVerdict(result.verdict);
-    const body = this.formatSummary(result);
+// Parse a unified diff patch to extract valid line numbers for comments
+// Returns a Set of line numbers (in the new file) that are within the diff
+function parseValidLinesFromPatch(patch: string): Set<number> {
+  const validLines = new Set<number>();
+  const lines = patch.split('\n');
+  let currentNewLine = 0;
 
-    // Only include comments if there are issues
+  for (const line of lines) {
+    // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      currentNewLine = parseInt(hunkMatch[1], 10);
+      continue;
+    }
+
+    // Skip diff header lines
+    if (line.startsWith('diff ') || line.startsWith('index ') ||
+        line.startsWith('---') || line.startsWith('+++')) {
+      continue;
+    }
+
+    // Context line (unchanged) - valid for comments
+    if (line.startsWith(' ')) {
+      validLines.add(currentNewLine);
+      currentNewLine++;
+      continue;
+    }
+
+    // Added line - valid for comments
+    if (line.startsWith('+')) {
+      validLines.add(currentNewLine);
+      currentNewLine++;
+      continue;
+    }
+
+    // Deleted line - skip (doesn't exist in new file)
+    if (line.startsWith('-')) {
+      continue;
+    }
+
+    // Any other line (empty, etc.) - advance counter if we're in a hunk
+    if (currentNewLine > 0 && line !== '') {
+      currentNewLine++;
+    }
+  }
+
+  return validLines;
+}
+
+export interface DiffPatches {
+  [filename: string]: string;
+}
+
+export class ReviewFormatter {
+  formatReview(result: ReviewResult, patches?: DiffPatches): Review {
+    const event = this.mapVerdict(result.verdict);
+
+    // Filter issues to only include those with valid line numbers in the diff
+    const validIssues = patches
+      ? result.issues.filter((issue) => {
+          const patch = patches[issue.file];
+          if (!patch) {
+            // No patch means file wasn't in the diff - skip inline comment
+            return false;
+          }
+          const validLines = parseValidLinesFromPatch(patch);
+          return validLines.has(issue.line);
+        })
+      : result.issues;
+
+    const body = this.formatSummary(result, validIssues.length < result.issues.length
+      ? result.issues.length - validIssues.length
+      : 0);
+
+    // Only include comments if there are valid issues
     const comments =
-      result.issues.length > 0
-        ? result.issues.map((issue) => this.formatComment(issue))
+      validIssues.length > 0
+        ? validIssues.map((issue) => this.formatComment(issue))
         : undefined;
 
     return {
@@ -62,7 +131,7 @@ export class ReviewFormatter {
     }
   }
 
-  private formatSummary(result: ReviewResult): string {
+  private formatSummary(result: ReviewResult, filteredCount = 0): string {
     const counts = this.countBySeverity(result.issues);
     let summary = '## AI Code Review\n\n';
     summary += `${result.summary}\n\n`;
@@ -78,6 +147,10 @@ export class ReviewFormatter {
       }
       if (counts.suggestion > 0) {
         summary += `- 💡 **${counts.suggestion} suggestion${counts.suggestion > 1 ? 's' : ''}**\n`;
+      }
+
+      if (filteredCount > 0) {
+        summary += `\n*Note: ${filteredCount} issue${filteredCount > 1 ? 's' : ''} could not be shown as inline comment${filteredCount > 1 ? 's' : ''} (referenced lines not in diff).*\n`;
       }
     }
 

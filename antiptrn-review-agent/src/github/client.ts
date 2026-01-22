@@ -91,7 +91,10 @@ export class GitHubClient {
       commit_id: commitId,
       body: review.body,
       event: review.event,
-      comments: review.comments,
+      comments: review.comments?.map(c => ({
+        ...c,
+        side: 'RIGHT' as const,  // Always comment on the new version of the file
+      })),
     });
 
     return { id: data.id };

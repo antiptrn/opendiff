@@ -9,13 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Home, Settings, LogOut, Loader2, ChevronsUpDown, CreditCard } from "lucide-react";
+import { Home, Settings, LogOut, Loader2, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sidebarItems = [
   { label: "Dashboard", href: "/console", icon: Home },
   { label: "Settings", href: "/console/settings", icon: Settings },
-  { label: "Billing", href: "/console/billing", icon: CreditCard },
 ];
 
 export function ConsoleLayout() {
@@ -36,14 +35,14 @@ export function ConsoleLayout() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <aside className="w-64 bg-background border-r flex flex-col">
+      <aside className="fixed left-0 top-0 w-64 h-screen bg-background flex flex-col">
         <div className="py-4 px-6">
           <Link to="/">
             <Logo />
           </Link>
         </div>
 
-        <nav className="flex-1 p-2 pt-0">
+        <nav className="flex-1 p-4 pr-5 pt-0">
           <ul className="space-y-1">
             {sidebarItems.map((item) => {
               const isActive = location.pathname === item.href;
@@ -52,10 +51,10 @@ export function ConsoleLayout() {
                   <Link
                     to={item.href}
                     className={cn(
-                      "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                      "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                       isActive
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-card"
+                        ? "bg-card text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <item.icon className="size-3.5" />
@@ -67,7 +66,7 @@ export function ConsoleLayout() {
           </ul>
         </nav>
 
-        <div className="p-3 border-border">
+        <div className="p-3">
           <DropdownMenu>
             <DropdownMenuTrigger className="cursor-pointer flex items-center gap-3 w-full p-2 rounded-md hover:bg-muted transition-colors text-left">
               <img
@@ -97,7 +96,7 @@ export function ConsoleLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto top-1 m-2 ml-0 w-[calc(100%-268px)] left-64 bg-card/50 h-[calc(100%-24px)] fixed">
         <Outlet />
       </main>
     </div>

@@ -48,7 +48,7 @@ export function Footer() {
 
   return (
     <footer className="py-16 w-full border-t">
-      <div className="max-w-[1200px] mx-auto w-full px-4 sm:px-6 lg:px-8">
+      <div className="container mx-auto w-full px-4 sm:px-6 lg:px-8">
         <div className="">
 
           <div className="flex gap-8 mb-16 justify-between">

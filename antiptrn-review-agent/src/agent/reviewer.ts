@@ -12,8 +12,8 @@ interface PRContext {
 export class CodeReviewAgent {
   constructor(private anthropic: Anthropic) {}
 
-  getSystemPrompt(): string {
-    return `You are antiptrn, a code reviewer specializing in identifying issues in pull requests.
+  getSystemPrompt(customRules?: string | null): string {
+    let prompt = `You are antiptrn, a code reviewer specializing in identifying issues in pull requests.
 
 Your job is to analyze code changes and provide constructive, actionable feedback.
 
@@ -82,15 +82,28 @@ You MUST respond with valid JSON in this exact format:
 - Use "approve" if code is good (minor suggestions OK)
 - Use "request_changes" only for critical/security issues
 - Use "comment" for moderate issues that should be addressed`;
+
+    // Add custom rules if provided
+    if (customRules?.trim()) {
+      prompt += `
+
+## Custom Review Rules (from repository owner)
+
+The repository owner has defined the following custom rules that you MUST follow:
+
+${customRules}`;
+    }
+
+    return prompt;
   }
 
-  async reviewFiles(files: FileToReview[], context: PRContext): Promise<ReviewResult> {
+  async reviewFiles(files: FileToReview[], context: PRContext, customRules?: string | null): Promise<ReviewResult> {
     const userPrompt = this.buildUserPrompt(files, context);
 
     const response = await this.anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: this.getSystemPrompt(),
+      system: this.getSystemPrompt(customRules),
       messages: [
         {
           role: 'user',
@@ -175,8 +188,8 @@ You MUST respond with valid JSON in this exact format:
     }
   }
 
-  getConversationSystemPrompt(): string {
-    return `You are antiptrn, a helpful code review assistant. You're having a conversation about code in a GitHub pull request.
+  getConversationSystemPrompt(customRules?: string | null): string {
+    let prompt = `You are antiptrn, a helpful code review assistant. You're having a conversation about code in a GitHub pull request.
 
 ## Your role:
 - Answer questions about your previous review comments
@@ -193,11 +206,25 @@ You MUST respond with valid JSON in this exact format:
 - If you don't know something, say so
 
 Respond naturally in markdown format. Do NOT use JSON for conversation responses.`;
+
+    // Add custom rules if provided
+    if (customRules?.trim()) {
+      prompt += `
+
+## Custom Review Rules (from repository owner)
+
+Keep these custom rules in mind during the conversation:
+
+${customRules}`;
+    }
+
+    return prompt;
   }
 
   async respondToComment(
     conversation: Array<{ user: string; body: string }>,
-    codeContext?: { filename: string; content: string; diff?: string }
+    codeContext?: { filename: string; content: string; diff?: string },
+    customRules?: string | null
   ): Promise<string> {
     let prompt = '';
 
@@ -220,7 +247,7 @@ Respond naturally in markdown format. Do NOT use JSON for conversation responses
     const response = await this.anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
-      system: this.getConversationSystemPrompt(),
+      system: this.getConversationSystemPrompt(customRules),
       messages: [
         {
           role: 'user',

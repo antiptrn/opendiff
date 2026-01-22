@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, Download } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useBilling, useCancelSubscription, useGetInvoice } from "@/hooks/use-api";
+import { useBilling, useCancelSubscription, useResubscribe, useGetInvoice } from "@/hooks/use-api";
 
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "";
@@ -25,6 +25,8 @@ function formatDate(dateString: string | null | undefined): string {
 
 function getTierName(tier?: string | null): string {
   switch (tier) {
+    case "BYOK":
+      return "BYOK";
     case "CODE_REVIEW":
       return "Code Review";
     case "TRIAGE":
@@ -42,13 +44,14 @@ function formatCurrency(amount: number, currency: string): string {
 }
 
 export function BillingPage() {
-  const { user } = useAuth();
+  const { user, refreshSubscription } = useAuth();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { data: billing, isLoading } = useBilling(user?.access_token);
   const cancelSubscription = useCancelSubscription(user?.access_token);
+  const resubscribe = useResubscribe(user?.access_token);
   const getInvoice = useGetInvoice(user?.access_token);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
 
@@ -65,10 +68,23 @@ export function BillingPage() {
 
     try {
       await cancelSubscription.mutateAsync();
+      await refreshSubscription();
       setSuccessMessage("Subscription cancelled. You will have access until the end of your billing period.");
-      setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to cancel subscription");
+    }
+  };
+
+  const handleResubscribe = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      await resubscribe.mutateAsync();
+      await refreshSubscription();
+      setSuccessMessage("Subscription reactivated!");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to reactivate subscription");
     }
   };
 
@@ -138,9 +154,19 @@ export function BillingPage() {
                 <div className="flex gap-2">
                   {hasSubscription ? (
                     cancelAtPeriodEnd ? (
-                      <Link to="/pricing">
-                        <Button>Resubscribe</Button>
-                      </Link>
+                      <Button
+                        onClick={handleResubscribe}
+                        disabled={resubscribe.isPending}
+                      >
+                        {resubscribe.isPending ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Reactivating...
+                          </>
+                        ) : (
+                          "Resubscribe"
+                        )}
+                      </Button>
                     ) : (
                       <>
                         <Link to="/pricing">
@@ -157,7 +183,7 @@ export function BillingPage() {
                               Cancelling...
                             </>
                           ) : (
-                            "Cancel Subscription"
+                            "Downgrade to Free"
                           )}
                         </Button>
                       </>
@@ -306,12 +332,12 @@ export function BillingPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+              <AlertDialogCancel className="bg-primary text-background hover:bg-primary/90">Keep Subscription</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleCancelSubscription}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                variant="destructive"
               >
-                Cancel Subscription
+                Downgrade to Free
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

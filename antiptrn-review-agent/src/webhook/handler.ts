@@ -1,7 +1,7 @@
 import type { CodeReviewAgent } from '../agent/reviewer';
 import type { FileToReview } from '../agent/types';
 import type { GitHubClient } from '../github/client';
-import type { ReviewFormatter } from '../review/formatter';
+import type { DiffPatches, ReviewFormatter } from '../review/formatter';
 
 // File extensions to review
 const CODE_EXTENSIONS = new Set([
@@ -87,7 +87,8 @@ export class WebhookHandler {
 
   async handlePullRequestOpened(
     payload: WebhookPayload,
-    botUsername: string
+    botUsername: string,
+    customRules?: string | null
   ): Promise<HandlerResult> {
     if (!payload.pull_request) {
       return { success: true, skipped: true };
@@ -98,13 +99,14 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload);
+    return this.performReview(payload, customRules);
   }
 
   async handlePullRequestReviewRequested(
     payload: WebhookPayload,
     botUsername: string,
-    botTeams: string[] = []
+    botTeams: string[] = [],
+    customRules?: string | null
   ): Promise<HandlerResult> {
     // Check if the review was requested from our bot
     const isRequestedFromBot =
@@ -115,10 +117,10 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload);
+    return this.performReview(payload, customRules);
   }
 
-  private async performReview(payload: WebhookPayload): Promise<HandlerResult> {
+  private async performReview(payload: WebhookPayload, customRules?: string | null): Promise<HandlerResult> {
     const { repository, pull_request } = payload;
 
     if (!pull_request) {
@@ -169,10 +171,18 @@ export class WebhookHandler {
       const reviewResult = await this.agent.reviewFiles(filesToReview, {
         prTitle: pull_request.title,
         prBody: pull_request.body,
-      });
+      }, customRules);
 
-      // Format for GitHub
-      const review = this.formatter.formatReview(reviewResult);
+      // Build patches map for filtering inline comments to valid diff lines
+      const patches: DiffPatches = {};
+      for (const file of codeFiles) {
+        if (file.patch) {
+          patches[file.filename] = file.patch;
+        }
+      }
+
+      // Format for GitHub (with patches to filter comments to valid lines)
+      const review = this.formatter.formatReview(reviewResult, patches);
 
       // Submit review
       const { id } = await this.github.submitReview(
@@ -194,7 +204,8 @@ export class WebhookHandler {
 
   async handleReviewComment(
     payload: WebhookPayload,
-    botUsername: string
+    botUsername: string,
+    customRules?: string | null
   ): Promise<HandlerResult> {
     const { comment, repository, pull_request } = payload;
 
@@ -247,7 +258,7 @@ export class WebhookHandler {
       }));
 
       // Get AI response
-      const response = await this.agent.respondToComment(conversation, codeContext);
+      const response = await this.agent.respondToComment(conversation, codeContext, customRules);
 
       // Reply to the comment
       const { id } = await this.github.replyToReviewComment(owner, repo, prNumber, comment.id, response);
@@ -263,7 +274,8 @@ export class WebhookHandler {
 
   async handleIssueComment(
     payload: WebhookPayload,
-    botUsername: string
+    botUsername: string,
+    customRules?: string | null
   ): Promise<HandlerResult> {
     const { comment, repository, issue } = payload;
 
@@ -301,7 +313,7 @@ export class WebhookHandler {
       }));
 
       // Get AI response
-      const response = await this.agent.respondToComment(conversation);
+      const response = await this.agent.respondToComment(conversation, undefined, customRules);
 
       // Post reply
       const { id } = await this.github.createIssueComment(owner, repo, prNumber, response);
