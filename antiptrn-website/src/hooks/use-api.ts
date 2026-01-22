@@ -394,3 +394,45 @@ export function useUpdateReviewRules(token?: string) {
     },
   });
 }
+
+// Account management hooks
+export function useExportData(token?: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/account/export`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to export data");
+      }
+
+      return data;
+    },
+  });
+}
+
+export function useDeleteAccount(token?: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/account`, {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete account");
+      }
+
+      return data;
+    },
+  });
+}

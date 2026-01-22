@@ -43,6 +43,8 @@ import {
   useCancelSubscription,
   useResubscribe,
   useGetInvoice,
+  useExportData,
+  useDeleteAccount,
   type Repository,
   type RepositorySettings,
 } from "@/hooks/use-api";
@@ -305,7 +307,116 @@ function CustomReviewRulesCard({ token }: { token?: string }) {
   );
 }
 
-function GeneralTab({ user, tier }: { user: ReturnType<typeof useAuth>["user"]; tier: string }) {
+function AccountManagementCard({ token, logout }: { token?: string; logout: () => void }) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const exportData = useExportData(token);
+  const deleteAccount = useDeleteAccount(token);
+
+  const handleExportData = async () => {
+    setErrorMessage(null);
+    try {
+      const data = await exportData.mutateAsync();
+      // Download as JSON file
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `antiptrn-data-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to export data");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setShowDeleteDialog(false);
+    setErrorMessage(null);
+    try {
+      await deleteAccount.mutateAsync();
+      logout();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to delete account");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Account</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {errorMessage && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {errorMessage}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Export my data</p>
+            <p className="text-sm text-muted-foreground">
+              Download all your data as a JSON file.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={handleExportData}
+            disabled={exportData.isPending}
+          >
+            {exportData.isPending && <Loader2 className="size-4 animate-spin" />}
+            {exportData.isPending ? "Exporting..." : "Export Data"}
+          </Button>
+        </div>
+
+        <Separator />
+
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium text-destructive">Delete my account</p>
+            <p className="text-sm text-muted-foreground">
+              Permanently delete your account and all associated data.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={deleteAccount.isPending}
+          >
+            {deleteAccount.isPending && <Loader2 className="size-4 animate-spin" />}
+            {deleteAccount.isPending ? "Deleting..." : "Delete Account"}
+          </Button>
+        </div>
+      </CardContent>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete your account? This action cannot be undone. All your data, settings, and subscription will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
+function GeneralTab({ user, tier, logout }: { user: ReturnType<typeof useAuth>["user"]; tier: string; logout: () => void }) {
   return (
     <div className="space-y-6">
       {/* Install GitHub App */}
@@ -335,6 +446,9 @@ function GeneralTab({ user, tier }: { user: ReturnType<typeof useAuth>["user"]; 
 
       {/* Custom Review Rules - available for all paid plans */}
       {tier !== "FREE" && <CustomReviewRulesCard token={user?.access_token} />}
+
+      {/* Account Management */}
+      <AccountManagementCard token={user?.access_token} logout={logout} />
     </div>
   );
 }
@@ -1169,7 +1283,7 @@ function BillingTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
 type TabType = "general" | "reviews" | "billing";
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("general");
 
   const tier = user?.subscriptionTier || "FREE";
@@ -1192,7 +1306,7 @@ export function SettingsPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "px-4 py-2 text-sm font-medium transition-colors relative",
+                "px-4 py-2 text-sm transition-colors relative",
                 activeTab === tab.id
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -1207,7 +1321,7 @@ export function SettingsPage() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === "general" && <GeneralTab user={user} tier={tier} />}
+        {activeTab === "general" && <GeneralTab user={user} tier={tier} logout={logout} />}
         {activeTab === "reviews" && <ReviewsTab user={user} />}
         {activeTab === "billing" && <BillingTab user={user} />}
       </div>
