@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Building2, Plus, ChevronDown } from "lucide-react";
+import { Check, Building2, Plus, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,13 +24,13 @@ export function OrganizationSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="w-full justify-between h-9 rounded-lg"
+          className="justify-between h-9 rounded-lg"
         >
           <div className="flex items-center gap-2.5 truncate">
             <Building2 className="size-3.5 shrink-0" />
             <span className="truncate">{currentOrg.name}</span>
           </div>
-          <ChevronDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+          <ChevronDown className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[200px]">

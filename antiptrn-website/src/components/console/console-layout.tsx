@@ -1,7 +1,6 @@
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganization } from "@/hooks/use-organization";
-import Logo from "@/components/logo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import {
   DropdownMenu,
@@ -11,19 +10,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Home, Settings, LogOut, Loader2, ChevronsUpDown, Users } from "lucide-react";
+import { Home, Settings, LogOut, Loader2, ChevronsUpDown, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const sidebarItems = [
-  { label: "Dashboard", href: "/console", icon: Home },
-  { label: "Organization", href: "/console/organization", icon: Users },
-  { label: "Settings", href: "/console/settings", icon: Settings },
-];
 
 export function ConsoleLayout() {
   const { user, isLoading, logout } = useAuth();
-  const { hasOrganizations, isLoadingOrgs } = useOrganization();
+  const { hasOrganizations, isLoadingOrgs, canManageMembers } = useOrganization();
   const location = useLocation();
+
+  // Build sidebar items dynamically based on permissions
+  const sidebarItems = [
+    { label: "Dashboard", href: "/console", icon: Home },
+    { label: "Settings", href: "/console/settings", icon: Settings },
+    ...(canManageMembers ? [{ label: "Admin", href: "/console/admin", icon: Shield }] : []),
+  ];
 
   if (isLoading || isLoadingOrgs) {
     return (

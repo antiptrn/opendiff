@@ -26,7 +26,7 @@ function AccordionItem({
       defaultOpen={defaultOpen}
       open={open}
       onOpenChange={onOpenChange}
-      className={cn("border border-border rounded-lg", className)}
+      className={cn("border border-border rounded-xl overflow-hidden", className)}
     >
       {children}
     </Collapsible.Root>

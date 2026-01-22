@@ -60,6 +60,8 @@ export const queryKeys = {
   activatedRepos: (orgId?: string | null) => ["activatedRepos", orgId] as const,
   settings: (owner: string, repo: string) => ["settings", owner, repo] as const,
   billing: (orgId?: string | null) => ["billing", orgId] as const,
+  auditLogs: (orgId?: string | null, page?: number, search?: string, action?: string) =>
+    ["auditLogs", orgId, page, search, action] as const,
 };
 
 // Fetch helpers
@@ -134,7 +136,7 @@ export function useRepositorySettings(owner: string, repo: string) {
   });
 }
 
-export function useUpdateSettings(token?: string) {
+export function useUpdateSettings(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -154,6 +156,7 @@ export function useUpdateSettings(token?: string) {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
         body: JSON.stringify({ enabled, triageEnabled }),
       });
@@ -215,7 +218,7 @@ export function useBilling(token?: string, orgId?: string | null) {
   });
 }
 
-export function useCancelSubscription(token?: string) {
+export function useCancelSubscription(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -224,6 +227,7 @@ export function useCancelSubscription(token?: string) {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
       });
 
@@ -241,7 +245,7 @@ export function useCancelSubscription(token?: string) {
   });
 }
 
-export function useResubscribe(token?: string) {
+export function useResubscribe(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -250,6 +254,7 @@ export function useResubscribe(token?: string) {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
       });
 
@@ -303,7 +308,7 @@ export function useApiKeyStatus(token?: string, orgId?: string | null) {
   });
 }
 
-export function useUpdateApiKey(token?: string) {
+export function useUpdateApiKey(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -313,6 +318,7 @@ export function useUpdateApiKey(token?: string) {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
         body: JSON.stringify({ apiKey }),
       });
@@ -331,7 +337,7 @@ export function useUpdateApiKey(token?: string) {
   });
 }
 
-export function useDeleteApiKey(token?: string) {
+export function useDeleteApiKey(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -340,6 +346,7 @@ export function useDeleteApiKey(token?: string) {
         method: "DELETE",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
       });
 
@@ -362,6 +369,34 @@ export interface ReviewRulesStatus {
   rules: string;
 }
 
+// Audit log types
+export interface AuditLogUser {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  target: string | null;
+  metadata: Record<string, unknown> | null;
+  user: AuditLogUser | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogsResponse {
+  logs: AuditLog[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export function useReviewRules(token?: string, orgId?: string | null) {
   return useQuery<ReviewRulesStatus>({
     queryKey: ["reviewRules", orgId],
@@ -371,7 +406,7 @@ export function useReviewRules(token?: string, orgId?: string | null) {
   });
 }
 
-export function useUpdateReviewRules(token?: string) {
+export function useUpdateReviewRules(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -381,6 +416,7 @@ export function useUpdateReviewRules(token?: string) {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
         body: JSON.stringify({ rules }),
       });
@@ -400,12 +436,13 @@ export function useUpdateReviewRules(token?: string) {
 }
 
 // Account management hooks
-export function useExportData(token?: string) {
+export function useExportData(token?: string, orgId?: string | null) {
   return useMutation({
     mutationFn: async () => {
       const response = await fetch(`${API_URL}/api/account/export`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
       });
 
@@ -438,5 +475,30 @@ export function useDeleteAccount(token?: string) {
 
       return data;
     },
+  });
+}
+
+// Audit logs hook
+export function useAuditLogs(
+  token?: string,
+  orgId?: string | null,
+  options?: { page?: number; search?: string; action?: string }
+) {
+  const page = options?.page ?? 1;
+  const search = options?.search ?? "";
+  const action = options?.action ?? "";
+
+  return useQuery<AuditLogsResponse>({
+    queryKey: queryKeys.auditLogs(orgId, page, search, action),
+    queryFn: async () => {
+      const url = new URL(`${API_URL}/api/organizations/${orgId}/audit-logs`);
+      url.searchParams.set("page", page.toString());
+      url.searchParams.set("limit", "50");
+      if (search) url.searchParams.set("search", search);
+      if (action) url.searchParams.set("action", action);
+      return fetchWithAuth(url.toString(), token);
+    },
+    enabled: !!token && !!orgId,
+    staleTime: 30 * 1000,
   });
 }

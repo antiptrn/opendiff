@@ -29,6 +29,11 @@ async function getUserFromToken(token: string) {
   return userResponse.json();
 }
 
+// Helper to get organization ID from X-Organization-Id header
+function getOrgIdFromHeader(c: { req: { header: (name: string) => string | undefined } }): string | undefined {
+  return c.req.header("X-Organization-Id");
+}
+
 app.use(
   "*",
   cors({
@@ -408,6 +413,7 @@ app.put("/api/settings/:owner/:repo", async (c) => {
   });
 
   await logAudit({
+    organizationId: getOrgIdFromHeader(c),
     userId,
     action: "repo.settings.updated",
     target: `${owner}/${repo}`,
@@ -806,6 +812,7 @@ app.post("/api/subscription/create", async (c) => {
 
       const changeType = newTierLevel > currentTierLevel ? "upgrade" : "downgrade";
       await logAudit({
+        organizationId: getOrgIdFromHeader(c),
         userId: user.id,
         action: "subscription.updated",
         metadata: { fromTier: user.subscriptionTier, toTier: newTier, changeType },
@@ -1024,6 +1031,7 @@ app.post("/api/subscription/cancel", async (c) => {
     });
 
     await logAudit({
+      organizationId: getOrgIdFromHeader(c),
       userId: user.id,
       action: "subscription.cancelled",
       metadata: { tier: user.subscriptionTier },
@@ -1092,6 +1100,7 @@ app.post("/api/subscription/resubscribe", async (c) => {
     });
 
     await logAudit({
+      organizationId: getOrgIdFromHeader(c),
       userId: user.id,
       action: "subscription.resubscribed",
       metadata: { tier: user.subscriptionTier },
@@ -1186,6 +1195,7 @@ app.put("/api/settings/api-key", async (c) => {
   });
 
   await logAudit({
+    organizationId: getOrgIdFromHeader(c),
     userId: user.id,
     action: "api_key.updated",
     c,
@@ -1225,6 +1235,7 @@ app.delete("/api/settings/api-key", async (c) => {
   });
 
   await logAudit({
+    organizationId: getOrgIdFromHeader(c),
     userId: user.id,
     action: "api_key.deleted",
     c,
@@ -1308,6 +1319,7 @@ app.put("/api/settings/review-rules", async (c) => {
   });
 
   await logAudit({
+    organizationId: getOrgIdFromHeader(c),
     userId: user.id,
     action: "review_rules.updated",
     metadata: { rulesLength: rules.length },
@@ -1479,6 +1491,7 @@ app.get("/api/account/export", async (c) => {
   };
 
   await logAudit({
+    organizationId: getOrgIdFromHeader(c),
     userId: user.id,
     action: "user.data_export",
     c,
