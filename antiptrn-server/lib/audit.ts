@@ -7,6 +7,15 @@ export type AuditAction =
   | "user.login"
   | "user.data_export"
   | "user.account_deleted"
+  | "org.created"
+  | "org.updated"
+  | "org.deleted"
+  | "org.member.added"
+  | "org.member.updated"
+  | "org.member.removed"
+  | "org.invite.created"
+  | "org.invite.accepted"
+  | "org.invite.revoked"
   | "repo.settings.updated"
   | "subscription.created"
   | "subscription.updated"
@@ -17,14 +26,16 @@ export type AuditAction =
   | "review_rules.updated";
 
 interface AuditLogParams {
+  organizationId?: string;
   userId?: string;
   action: AuditAction;
   target?: string;
   metadata?: Record<string, unknown>;
-  c?: Context; // Hono context for IP/user agent
+  c?: Context;
 }
 
 export async function logAudit({
+  organizationId,
   userId,
   action,
   target,
@@ -39,16 +50,16 @@ export async function logAudit({
 
     await prisma.auditLog.create({
       data: {
+        organizationId,
         userId,
         action,
         target,
-        metadata: metadata ?? undefined,
+        metadata: metadata as object ?? undefined,
         ipAddress,
         userAgent,
       },
     });
   } catch (error) {
-    // Don't let audit logging failures break the main flow
     console.error("Failed to write audit log:", error);
   }
 }

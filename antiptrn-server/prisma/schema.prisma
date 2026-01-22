@@ -21,72 +21,160 @@ enum SubscriptionStatus {
   PAST_DUE
 }
 
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 model User {
-  id                    String             @id @default(cuid())
-  githubId              Int                @unique
-  login                 String
-  name                  String?
-  email                 String?
-  avatarUrl             String?
+  id        String  @id @default(cuid())
+  githubId  Int     @unique
+  login     String
+  name      String?
+  email     String?
+  avatarUrl String?
+
+  // Legacy subscription fields (kept for migration, will be removed later)
+  subscriptionTier      SubscriptionTier?
+  subscriptionStatus    SubscriptionStatus?
+  polarSubscriptionId   String?            @unique
+  polarProductId        String?
+  polarCustomerId       String?
+  subscriptionExpiresAt DateTime?
+  cancelAtPeriodEnd     Boolean?
+  reviewsUsedThisCycle  Int?
+  anthropicApiKey       String?
+  customReviewRules     String?
+
+  // Relations
+  memberships OrganizationMember[]
+  invitesSent OrganizationInvite[]
+  auditLogs   AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organization {
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  avatarUrl String?
 
   // Subscription fields
   subscriptionTier      SubscriptionTier   @default(FREE)
   subscriptionStatus    SubscriptionStatus @default(INACTIVE)
   polarSubscriptionId   String?            @unique
-  polarProductId        String?            // Current product ID (includes billing interval)
+  polarProductId        String?
   polarCustomerId       String?
   subscriptionExpiresAt DateTime?
   cancelAtPeriodEnd     Boolean            @default(false)
+  seatCount             Int                @default(1)
   reviewsUsedThisCycle  Int                @default(0)
-  anthropicApiKey       String?            // BYOK: User's own Anthropic API key
-  customReviewRules     String?            // Custom rules for AI code reviews
+  anthropicApiKey       String?
+  customReviewRules     String?
 
   // Relations
-  repositorySettings    RepositorySettings[]
-  auditLogs             AuditLog[]
+  members            OrganizationMember[]
+  invites            OrganizationInvite[]
+  repositorySettings RepositorySettings[]
+  auditLogs          AuditLog[]
 
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrganizationRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model OrganizationInvite {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String?
+  token          String           @unique @default(cuid())
+  role           OrganizationRole @default(MEMBER)
+  status         InviteStatus     @default(PENDING)
+  invitedById    String
+  invitedBy      User             @relation(fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([token])
+  @@index([email])
 }
 
 model RepositorySettings {
-  id            String   @id @default(cuid())
-  owner         String   // GitHub org/user
-  repo          String   // Repository name
-  enabled       Boolean  @default(true)
-  triageEnabled Boolean  @default(true)
-  userId        String?  // User who enabled this repo
-  user          User?    @relation(fields: [userId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String        @id @default(cuid())
+  owner          String
+  repo           String
+  enabled        Boolean       @default(true)
+  triageEnabled  Boolean       @default(true)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enabledById    String?
+  // Keep userId temporarily for migration
+  userId         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([owner, repo])
+  @@index([organizationId])
 }
 
 model Review {
-  id            String   @id @default(cuid())
-  owner         String   // GitHub org/user
-  repo          String   // Repository name
-  pullNumber    Int      // PR number
-  reviewType    String   // 'initial', 'comment_reply'
-  reviewId      BigInt?  // GitHub review ID (can exceed 32-bit int)
-  commentId     BigInt?  // GitHub comment ID for replies (can exceed 32-bit int)
-  createdAt     DateTime @default(now())
+  id         String   @id @default(cuid())
+  owner      String
+  repo       String
+  pullNumber Int
+  reviewType String
+  reviewId   BigInt?
+  commentId  BigInt?
+  createdAt  DateTime @default(now())
 
   @@index([owner, repo])
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  action    String   // e.g., "repo.settings.updated", "subscription.cancelled"
-  target    String?  // Resource identifier (e.g., "owner/repo")
-  metadata  Json?    // Additional context
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  target         String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime      @default(now())
 
+  @@index([organizationId])
   @@index([userId])
   @@index([createdAt])
   @@index([action])

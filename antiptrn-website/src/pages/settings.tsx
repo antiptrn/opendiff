@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -29,6 +29,7 @@ import {
 import { Loader2, Lock, Globe, LogIn, ExternalLink, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganization } from "@/hooks/use-organization";
 import {
   useRepositories,
   useRepositorySettings,
@@ -51,7 +52,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ==================== UTILITY FUNCTIONS ====================
 
@@ -94,11 +95,11 @@ function formatCurrency(amount: number, currency: string): string {
 
 // ==================== GENERAL TAB COMPONENTS ====================
 
-function ApiKeyCard({ token }: { token?: string }) {
+function ApiKeyCard({ token, orgId }: { token?: string; orgId?: string | null }) {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showInput, setShowInput] = useState(false);
 
-  const { data: apiKeyStatus, isLoading } = useApiKeyStatus(token);
+  const { data: apiKeyStatus, isLoading } = useApiKeyStatus(token, orgId);
   const updateApiKey = useUpdateApiKey(token);
   const deleteApiKey = useDeleteApiKey(token);
 
@@ -222,11 +223,11 @@ function ApiKeyCard({ token }: { token?: string }) {
   );
 }
 
-function CustomReviewRulesCard({ token }: { token?: string }) {
+function CustomReviewRulesCard({ token, orgId }: { token?: string; orgId?: string | null }) {
   const [localRules, setLocalRules] = useState("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const { data: rulesData, isLoading } = useReviewRules(token);
+  const { data: rulesData, isLoading } = useReviewRules(token, orgId);
   const updateRules = useUpdateReviewRules(token);
 
   useEffect(() => {
@@ -416,7 +417,7 @@ function AccountManagementCard({ token, logout }: { token?: string; logout: () =
   );
 }
 
-function GeneralTab({ user, tier, logout }: { user: ReturnType<typeof useAuth>["user"]; tier: string; logout: () => void }) {
+function GeneralTab({ user, tier, logout, orgId }: { user: ReturnType<typeof useAuth>["user"]; tier: string; logout: () => void; orgId?: string | null }) {
   return (
     <div className="space-y-6">
       {/* Install GitHub App */}
@@ -442,10 +443,10 @@ function GeneralTab({ user, tier, logout }: { user: ReturnType<typeof useAuth>["
       </Card>
 
       {/* BYOK API Key Card */}
-      {tier === "BYOK" && <ApiKeyCard token={user?.access_token} />}
+      {tier === "BYOK" && <ApiKeyCard token={user?.access_token} orgId={orgId} />}
 
       {/* Custom Review Rules - available for all paid plans */}
-      {tier !== "FREE" && <CustomReviewRulesCard token={user?.access_token} />}
+      {tier !== "FREE" && <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />}
 
       {/* Account Management */}
       <AccountManagementCard token={user?.access_token} logout={logout} />
@@ -642,7 +643,7 @@ function ActiveRepoAccordion({
   );
 }
 
-function ReviewsTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
+function ReviewsTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null }) {
   const { logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
@@ -657,12 +658,12 @@ function ReviewsTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const {
     data: activatedRepos = [],
     isLoading: isLoadingActivated,
-  } = useActivatedRepos(user?.access_token);
+  } = useActivatedRepos(user?.access_token, orgId);
 
   const {
     data: repositories = [],
     isLoading: isLoadingRepos,
-  } = useRepositories(user?.access_token, debouncedQuery);
+  } = useRepositories(user?.access_token, orgId, debouncedQuery);
 
   const {
     data: settings,
@@ -978,13 +979,13 @@ function ReviewsTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
 
 // ==================== BILLING TAB COMPONENT ====================
 
-function BillingTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
+function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null }) {
   const { refreshSubscription } = useAuth();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { data: billing, isLoading } = useBilling(user?.access_token);
+  const { data: billing, isLoading } = useBilling(user?.access_token, orgId);
   const cancelSubscription = useCancelSubscription(user?.access_token);
   const resubscribe = useResubscribe(user?.access_token);
   const getInvoice = useGetInvoice(user?.access_token);
@@ -1284,47 +1285,40 @@ type TabType = "general" | "reviews" | "billing";
 
 export function SettingsPage() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>("general");
+  const { currentOrgId } = useOrganization();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const validTabs: TabType[] = ["general", "reviews", "billing"];
+  const tabParam = searchParams.get("tab") as TabType | null;
+  const activeTab: TabType = tabParam && validTabs.includes(tabParam) ? tabParam : "general";
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab }, { replace: true });
+  };
 
   const tier = user?.subscriptionTier || "FREE";
-
-  const tabs: { id: TabType; label: string }[] = [
-    { id: "general", label: "General" },
-    { id: "reviews", label: "Reviews" },
-    { id: "billing", label: "Billing" },
-  ];
 
   return (
     <div className="p-8">
       <h1 className="text-2xl mb-6">Settings</h1>
 
-      <div className="max-w-2xl">
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-border mb-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "px-4 py-2 text-sm transition-colors relative",
-                activeTab === tab.id
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
-          ))}
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-2xl">
+        <TabsList>
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+        </TabsList>
 
-        {/* Tab Content */}
-        {activeTab === "general" && <GeneralTab user={user} tier={tier} logout={logout} />}
-        {activeTab === "reviews" && <ReviewsTab user={user} />}
-        {activeTab === "billing" && <BillingTab user={user} />}
-      </div>
+        <TabsContent value="general">
+          <GeneralTab user={user} tier={tier} logout={logout} orgId={currentOrgId} />
+        </TabsContent>
+        <TabsContent value="reviews">
+          <ReviewsTab user={user} orgId={currentOrgId} />
+        </TabsContent>
+        <TabsContent value="billing">
+          <BillingTab user={user} orgId={currentOrgId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

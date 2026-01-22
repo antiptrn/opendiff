@@ -3,6 +3,8 @@ import { cors } from "hono/cors";
 import { PrismaClient, SubscriptionTier, SubscriptionStatus } from "@prisma/client";
 import { polar, getTierFromProductId, TIER_HIERARCHY, getReviewQuota } from "./lib/polar";
 import { logAudit } from "./lib/audit";
+import { organizationRoutes } from "./lib/routes/organizations";
+import { getUserOrganizations } from "./lib/middleware/organization";
 
 const prisma = new PrismaClient();
 const app = new Hono();
@@ -122,6 +124,9 @@ app.get("/auth/github/callback", async (c) => {
       },
     });
 
+    // Get user's organizations
+    const organizations = await getUserOrganizations(user.id);
+
     const authData = {
       id: userData.id,
       visitorId: user.id,
@@ -132,6 +137,8 @@ app.get("/auth/github/callback", async (c) => {
       access_token: tokenData.access_token,
       subscriptionTier: user.subscriptionTier,
       subscriptionStatus: user.subscriptionStatus,
+      organizations,
+      hasOrganizations: organizations.length > 0,
     };
 
     await logAudit({
@@ -199,7 +206,7 @@ app.get("/api/repos", async (c) => {
     );
 
     if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, reposResponse.status);
+      return c.json({ error: "Failed to fetch repos" }, 500);
     }
 
     const repos = await reposResponse.json();
@@ -249,7 +256,7 @@ app.get("/api/settings", async (c) => {
     );
 
     if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, reposResponse.status);
+      return c.json({ error: "Failed to fetch repos" }, 500);
     }
 
     const repos = await reposResponse.json();
@@ -308,7 +315,7 @@ app.get("/api/settings/:owner/:repo", async (c) => {
 
   const settings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { user: true },
+    include: { organization: true },
   });
 
   // Return default settings (disabled) if no record exists
@@ -324,9 +331,9 @@ app.get("/api/settings/:owner/:repo", async (c) => {
     });
   }
 
-  // Calculate effective state based on user's subscription
-  const tier = settings.user?.subscriptionTier || "FREE";
-  // Allow access if user has a paid tier (tier itself is the source of truth)
+  // Calculate effective state based on organization's subscription
+  const tier = settings.organization?.subscriptionTier || "FREE";
+  // Allow access if org has a paid tier (tier itself is the source of truth)
   const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
   const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
@@ -335,7 +342,7 @@ app.get("/api/settings/:owner/:repo", async (c) => {
     repo: settings.repo,
     enabled: settings.enabled,
     triageEnabled: settings.triageEnabled,
-    // Effective state = stored setting AND user has permission
+    // Effective state = stored setting AND org has permission
     effectiveEnabled: settings.enabled && canEnableReviews,
     effectiveTriageEnabled: settings.triageEnabled && canEnableTriage,
   });
@@ -447,7 +454,7 @@ app.get("/api/stats", async (c) => {
     );
 
     if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, reposResponse.status);
+      return c.json({ error: "Failed to fetch repos" }, 500);
     }
 
     const repos = await reposResponse.json();
@@ -507,29 +514,29 @@ app.post("/api/reviews", async (c) => {
   }
 
   try {
-    // Get repo settings to find the user who enabled this repo
+    // Get repo settings to find the organization that enabled this repo
     const repoSettings = await prisma.repositorySettings.findUnique({
       where: { owner_repo: { owner, repo } },
-      include: { user: true },
+      include: { organization: true },
     });
 
-    const user = repoSettings?.user;
+    const org = repoSettings?.organization;
 
-    // Check quota if user exists and has a subscription
-    if (user) {
-      const quota = getReviewQuota(user.subscriptionTier, user.polarProductId);
+    // Check quota if organization exists and has a subscription
+    if (org) {
+      const quota = getReviewQuota(org.subscriptionTier, org.polarProductId);
       // quota of -1 means unlimited (BYOK plan)
-      if (quota !== -1 && user.reviewsUsedThisCycle >= quota) {
+      if (quota !== -1 && org.reviewsUsedThisCycle >= quota) {
         return c.json({
           error: "Review quota exceeded",
           quota,
-          used: user.reviewsUsedThisCycle,
+          used: org.reviewsUsedThisCycle,
         }, 403);
       }
 
       // Increment usage counter (even for BYOK to track usage)
-      await prisma.user.update({
-        where: { id: user.id },
+      await prisma.organization.update({
+        where: { id: org.id },
         data: { reviewsUsedThisCycle: { increment: 1 } },
       });
     }
@@ -584,14 +591,14 @@ app.get("/api/subscription/status", async (c) => {
   }
 
   return c.json({
-    subscriptionTier: user.subscriptionTier,
-    subscriptionStatus: user.subscriptionStatus,
+    subscriptionTier: user.subscriptionTier ?? "FREE",
+    subscriptionStatus: user.subscriptionStatus ?? "INACTIVE",
     polarSubscriptionId: user.polarSubscriptionId,
     polarProductId: user.polarProductId,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
     cancelAtPeriodEnd: user.cancelAtPeriodEnd,
-    reviewsUsed: user.reviewsUsedThisCycle,
-    reviewsQuota: getReviewQuota(user.subscriptionTier, user.polarProductId),
+    reviewsUsed: user.reviewsUsedThisCycle ?? 0,
+    reviewsQuota: getReviewQuota(user.subscriptionTier ?? "FREE", user.polarProductId),
   });
 });
 
@@ -618,9 +625,26 @@ app.post("/api/subscription/sync", async (c) => {
   }
 
   try {
-    // Find subscriptions for this customer by email
+    // Find customer by email first
+    const customers = await polar.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+
+    if (!customers.result.items.length) {
+      return c.json({
+        synced: true,
+        subscriptionTier: "FREE",
+        subscriptionStatus: "INACTIVE",
+        message: "No Polar customer found",
+      });
+    }
+
+    const customer = customers.result.items[0];
+
+    // Find subscriptions for this customer
     const subscriptions = await polar.subscriptions.list({
-      customerEmail: user.email,
+      customerId: customer.id,
       active: true,
     });
 
@@ -748,7 +772,7 @@ app.post("/api/subscription/create", async (c) => {
     }
 
     const newTier = getTierFromProductId(productId);
-    const currentTierLevel = TIER_HIERARCHY[user.subscriptionTier];
+    const currentTierLevel = TIER_HIERARCHY[user.subscriptionTier ?? "FREE"];
     const newTierLevel = TIER_HIERARCHY[newTier];
 
     try {
@@ -1304,17 +1328,17 @@ app.get("/api/internal/review-rules/:owner/:repo", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Get repo settings to find the user
+  // Get repo settings to find the organization
   const repoSettings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { user: true },
+    include: { organization: true },
   });
 
-  if (!repoSettings?.user) {
+  if (!repoSettings?.organization) {
     return c.json({ rules: null });
   }
 
-  return c.json({ rules: repoSettings.user.customReviewRules || null });
+  return c.json({ rules: repoSettings.organization.customReviewRules || null });
 });
 
 // Get API key for review agent (internal use only)
@@ -1328,27 +1352,27 @@ app.get("/api/internal/api-key/:owner/:repo", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Get repo settings to find the user
+  // Get repo settings to find the organization
   const repoSettings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { user: true },
+    include: { organization: true },
   });
 
-  if (!repoSettings?.user) {
-    return c.json({ error: "No user associated with this repo" }, 404);
+  if (!repoSettings?.organization) {
+    return c.json({ error: "No organization associated with this repo" }, 404);
   }
 
-  const user = repoSettings.user;
+  const org = repoSettings.organization;
 
-  if (user.subscriptionTier !== "BYOK") {
-    return c.json({ error: "Not a BYOK user", useDefault: true });
+  if (org.subscriptionTier !== "BYOK") {
+    return c.json({ error: "Not a BYOK organization", useDefault: true });
   }
 
-  if (!user.anthropicApiKey) {
+  if (!org.anthropicApiKey) {
     return c.json({ error: "No API key configured", useDefault: false });
   }
 
-  return c.json({ apiKey: user.anthropicApiKey });
+  return c.json({ apiKey: org.anthropicApiKey });
 });
 
 // ==================== ACCOUNT MANAGEMENT ENDPOINTS ====================
@@ -1370,7 +1394,15 @@ app.get("/api/account/export", async (c) => {
   const user = await prisma.user.findUnique({
     where: { githubId: githubUser.id },
     include: {
-      repositorySettings: true,
+      memberships: {
+        include: {
+          organization: {
+            include: {
+              repositorySettings: true,
+            },
+          },
+        },
+      },
       auditLogs: {
         orderBy: { createdAt: "desc" },
         take: 1000,
@@ -1382,15 +1414,20 @@ app.get("/api/account/export", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
-  // Get reviews for user's repos
-  const repoIdentifiers = user.repositorySettings.map((r) => ({
+  // Get all repo settings from user's organizations
+  const allRepoSettings = user.memberships.flatMap(
+    (m) => m.organization.repositorySettings
+  );
+
+  // Get reviews for org's repos
+  const repoIdentifiers = allRepoSettings.map((r: { owner: string; repo: string }) => ({
     owner: r.owner,
     repo: r.repo,
   }));
 
   const reviews = repoIdentifiers.length > 0 ? await prisma.review.findMany({
     where: {
-      OR: repoIdentifiers.map((r) => ({
+      OR: repoIdentifiers.map((r: { owner: string; repo: string }) => ({
         owner: r.owner,
         repo: r.repo,
       })),
@@ -1408,12 +1445,17 @@ app.get("/api/account/export", async (c) => {
       name: user.name,
       email: user.email,
       avatarUrl: user.avatarUrl,
-      subscriptionTier: user.subscriptionTier,
-      subscriptionStatus: user.subscriptionStatus,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
-    repositorySettings: user.repositorySettings.map((r) => ({
+    organizations: user.memberships.map((m) => ({
+      name: m.organization.name,
+      slug: m.organization.slug,
+      role: m.role,
+      subscriptionTier: m.organization.subscriptionTier,
+      subscriptionStatus: m.organization.subscriptionStatus,
+    })),
+    repositorySettings: allRepoSettings.map((r: { owner: string; repo: string; enabled: boolean; triageEnabled: boolean; createdAt: Date; updatedAt: Date }) => ({
       owner: r.owner,
       repo: r.repo,
       enabled: r.enabled,
@@ -1499,6 +1541,9 @@ app.delete("/api/account", async (c) => {
 
   return c.json({ success: true, message: "Account deleted successfully" });
 });
+
+// ==================== ORGANIZATION ROUTES ====================
+app.route("/api/organizations", organizationRoutes);
 
 // Polar webhook handler
 app.post("/api/webhooks/polar", async (c) => {

@@ -20,7 +20,13 @@ export function AuthCallbackPage() {
       try {
         const userData = JSON.parse(decodeURIComponent(userParam));
         setUser(userData);
-        navigate("/console");
+
+        // Redirect to create org if user has no organizations
+        if (!userData.hasOrganizations) {
+          navigate("/create-organization");
+        } else {
+          navigate("/console");
+        }
       } catch {
         navigate("/login?error=invalid_user_data");
       }

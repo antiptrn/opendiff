@@ -7,7 +7,6 @@ import {
 import { useCreateSubscription } from "@/hooks/use-api";
 import type { SubscriptionTier } from "@/hooks/use-auth";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";

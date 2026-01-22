@@ -1,6 +1,8 @@
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganization } from "@/hooks/use-organization";
 import Logo from "@/components/logo";
+import { OrganizationSwitcher } from "./organization-switcher";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -9,19 +11,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Home, Settings, LogOut, Loader2, ChevronsUpDown } from "lucide-react";
+import { Home, Settings, LogOut, Loader2, ChevronsUpDown, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sidebarItems = [
   { label: "Dashboard", href: "/console", icon: Home },
+  { label: "Organization", href: "/console/organization", icon: Users },
   { label: "Settings", href: "/console/settings", icon: Settings },
 ];
 
 export function ConsoleLayout() {
   const { user, isLoading, logout } = useAuth();
+  const { hasOrganizations, isLoadingOrgs } = useOrganization();
   const location = useLocation();
 
-  if (isLoading) {
+  if (isLoading || isLoadingOrgs) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -33,13 +37,17 @@ export function ConsoleLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  // Redirect to create organization if user has no orgs
+  if (!hasOrganizations) {
+    return <Navigate to="/create-organization" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-background flex">
       <aside className="fixed left-0 top-0 w-64 h-screen bg-background flex flex-col">
-        <div className="py-4 px-6">
-          <Link to="/">
-            <Logo />
-          </Link>
+
+        <div className="px-4 pr-5 pt-4 pb-2">
+          <OrganizationSwitcher />
         </div>
 
         <nav className="flex-1 p-4 pr-5 pt-0">
@@ -96,7 +104,7 @@ export function ConsoleLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto top-1 m-2 ml-0 w-[calc(100%-268px)] left-64 bg-card/50 h-[calc(100%-24px)] fixed">
+      <main className="flex-1 overflow-auto top-1 m-2 ml-0 w-[calc(100%-268px)] left-64 bg-card h-[calc(100%-24px)] fixed rounded-xl border">
         <Outlet />
       </main>
     </div>

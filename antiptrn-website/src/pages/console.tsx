@@ -1,11 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { useStats } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganization } from "@/hooks/use-organization";
 import { FolderGit2, GitPullRequest, Loader2 } from "lucide-react";
 
 export function ConsolePage() {
   const { user } = useAuth();
-  const { data: stats, isLoading, error } = useStats(user?.access_token);
+  const { currentOrgId } = useOrganization();
+  const { data: stats, isLoading, error } = useStats(user?.access_token, currentOrgId);
 
   return (
     <div className="p-8">
