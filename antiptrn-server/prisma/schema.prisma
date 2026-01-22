@@ -68,8 +68,8 @@ model Review {
   repo          String   // Repository name
   pullNumber    Int      // PR number
   reviewType    String   // 'initial', 'comment_reply'
-  reviewId      Int?     // GitHub review ID
-  commentId     Int?     // GitHub comment ID for replies
+  reviewId      BigInt?  // GitHub review ID (can exceed 32-bit int)
+  commentId     BigInt?  // GitHub comment ID for replies (can exceed 32-bit int)
   createdAt     DateTime @default(now())
 
   @@index([owner, repo])
