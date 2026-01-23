@@ -21,16 +21,16 @@ export function OrganizationSwitcher() {
   }
 
   // If only one organization, just show the name without dropdown
-  /*if (organizations.length <= 1) {
+  if (organizations.length <= 1) {
     return (
-      <div className="flex items-center gap-2 h-9 px-2.5">
+      <div className="flex items-center gap-2 h-9 px-1.5">
         <Avatar className="size-6 !rounded-md overflow-hidden">
           <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
           <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
         </Avatar>
       </div>
     );
-  }*/
+  }
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
