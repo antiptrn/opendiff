@@ -16,9 +16,11 @@ export function DesktopNav() {
     >
       {NAV_LINKS.map((link) => (
         <Button
+          key={link.href}
           onClick={() => navigate(link.href)}
           variant="ghost"
-          className="text-sm text-muted-foreground hover:text-foreground !bg-transparent"
+          size="lg"
+          className="text-muted-foreground rounded-full"
         >
           {link.label}
           {link.badge && <Badge variant="secondary">{link.badge}</Badge>}

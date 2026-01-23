@@ -3,38 +3,32 @@ import { Link } from "react-router-dom";
 
 export function HeroSection() {
   return (
-    <section className="lg:pt-60 md:pt-40 pt-30 pb-20 px-4 sm:px-6 lg:px-8 container mx-auto flex w-full items-start justify-center">
-      <div className="w-full text-start flex flex-col items-start justify-center">
+    <section className="lg:pt-40 md:pt-40 pt-30 pb-20 px-4 sm:px-6 lg:px-8 container mx-auto flex w-full items-start justify-center">
+      <div className="w-full text-start flex flex-col items-center justify-center">
 
-        <div className="2xl:px-24 w-full flex lg:flex-row md:flex-row flex-col justify-between items-end gap-7">
-          <div className="lg:text-left md:text-left text-center flex flex-col lg:items-start md:items-start items-center">
-            <h1
-              className="font-interphases lg:text-4xl md:text-4xl text-3xl tracking-tight mb-3"
-            >
-              Run your business finances without<br />manual work.
-            </h1>
+        <div className="flex flex-col text-center items-center justify-center">
+          <h1 className="text-7xl mb-7">Ship more, faster</h1>
+          <p className="text-lg text-muted-foreground">Our services page content goes here.</p>
+          <div className="flex items-center justify-center gap-4 mt-11">
 
-            <p className="text-muted-foreground max-w-2xl">
-              Modern workflows for modern teams.
-            </p>
-          </div>
-
-          <div className="flex flex-col lg:items-end md:items-end items-center gap-3 justify-center">
-            <Button className="w-fit" size="lg" asChild>
+            <Button className="w-fit rounded-full" size="lg" asChild>
               <Link to="/pricing">
                 Get started
               </Link>
             </Button>
-            <p className="text-muted-foreground text-xs">
-              Money-back guarantee.
-            </p>
+
+            <Button className="w-fit rounded-full" variant="secondary" size="lg" asChild>
+              <Link to="/services">
+                Why antiptrn
+              </Link>
+            </Button>
           </div>
         </div>
 
 
-        <div className="mt-16 lg:mb-4 3xl:mb-20 overflow-visible lg:w-full">
+        <div className="mt-24 overflow-visible w-full">
           <div className="relative overflow-hidden rounded-lg">
-            <img src="/halftone.webp" alt="Hero Section" className="w-full h-full object-cover" />
+            <div className="w-full h-128 bg-card" />
           </div>
         </div>
 

@@ -1,20 +1,34 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { PrismaClient, SubscriptionTier, SubscriptionStatus } from "@prisma/client";
-import { polar, getTierFromProductId, TIER_HIERARCHY, getReviewQuota } from "./lib/polar";
+import { Polar } from "@polar-sh/sdk";
+import { PrismaClient, SubscriptionTier } from "@prisma/client";
+import { paymentProvider, getPaymentProviderName, getReviewQuotaPerSeat, getOrgReviewQuota } from "./lib/payments";
+
+// Direct Polar SDK client for customer-facing operations not covered by payment abstraction
+const polar = new Polar({ accessToken: process.env.POLAR_ACCESS_TOKEN });
+
+// Tier hierarchy for comparison
+const TIER_HIERARCHY: Record<string, number> = {
+  FREE: 0,
+  BYOK: 1,
+  CODE_REVIEW: 2,
+  TRIAGE: 3,
+};
 import { logAudit } from "./lib/audit";
 import { organizationRoutes } from "./lib/routes/organizations";
-import { getUserOrganizations } from "./lib/middleware/organization";
+import { getUserOrganizations, getOrgQuotaPool } from "./lib/middleware/organization";
 
 const prisma = new PrismaClient();
 const app = new Hono();
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
-// Helper to get user from GitHub token
-async function getUserFromToken(token: string) {
+// Helper to get GitHub user from token (for GitHub-specific API calls)
+async function getGitHubUserFromToken(token: string) {
   const userResponse = await fetch("https://api.github.com/user", {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -27,6 +41,77 @@ async function getUserFromToken(token: string) {
   }
 
   return userResponse.json();
+}
+
+// Helper to get Google user from token
+async function getGoogleUserFromToken(token: string) {
+  const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!userResponse.ok) {
+    return null;
+  }
+
+  return userResponse.json();
+}
+
+// Unified helper to get OAuth user from token (tries GitHub first, then Google)
+// Returns user data with provider info for database lookup
+async function getUserFromToken(token: string): Promise<{
+  id: number | string;
+  login?: string;
+  name?: string;
+  email?: string;
+  avatar_url?: string;
+  _provider: "github" | "google";
+  _githubId?: number;
+  _googleId?: string;
+} | null> {
+  // Try GitHub first
+  const githubUser = await getGitHubUserFromToken(token);
+  if (githubUser) {
+    return {
+      ...githubUser,
+      _provider: "github" as const,
+      _githubId: githubUser.id,
+    };
+  }
+
+  // Try Google
+  const googleUser = await getGoogleUserFromToken(token);
+  if (googleUser) {
+    return {
+      id: googleUser.id,
+      login: googleUser.email?.split("@")[0],
+      name: googleUser.name,
+      email: googleUser.email,
+      avatar_url: googleUser.picture,
+      _provider: "google" as const,
+      _googleId: googleUser.id,
+    };
+  }
+
+  return null;
+}
+
+// Helper to get the where clause for database lookup
+function getDbUserWhere(providerUser: NonNullable<Awaited<ReturnType<typeof getUserFromToken>>>) {
+  if (providerUser._provider === "github" && providerUser._githubId) {
+    return { githubId: providerUser._githubId };
+  } else if (providerUser._provider === "google" && providerUser._googleId) {
+    return { googleId: providerUser._googleId };
+  }
+  return null;
+}
+
+// Helper to look up database user from OAuth provider user
+async function findDbUser(providerUser: NonNullable<Awaited<ReturnType<typeof getUserFromToken>>>) {
+  const where = getDbUserWhere(providerUser);
+  if (!where) return null;
+  return prisma.user.findUnique({ where });
 }
 
 // Helper to get organization ID from X-Organization-Id header
@@ -49,20 +134,45 @@ app.get("/", (c) => {
 app.get("/auth/github", (c) => {
   const redirectUri = `${c.req.url.split("/auth/github")[0]}/auth/github/callback`;
   const scope = "read:user user:email repo";
+  const clientRedirectUrl = c.req.query("redirectUrl");
 
   const githubAuthUrl = new URL("https://github.com/login/oauth/authorize");
   githubAuthUrl.searchParams.set("client_id", GITHUB_CLIENT_ID);
   githubAuthUrl.searchParams.set("redirect_uri", redirectUri);
   githubAuthUrl.searchParams.set("scope", scope);
 
+  // Encode redirectUrl in state if provided
+  if (clientRedirectUrl) {
+    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString("base64");
+    githubAuthUrl.searchParams.set("state", state);
+  }
+
   return c.redirect(githubAuthUrl.toString());
 });
 
 app.get("/auth/github/callback", async (c) => {
   const code = c.req.query("code");
+  const state = c.req.query("state");
 
   if (!code) {
     return c.redirect(`${FRONTEND_URL}/login?error=no_code`);
+  }
+
+  // Parse state for link operation or redirectUrl
+  let linkOperation: { type: "link"; userId: string } | null = null;
+  let clientRedirectUrl: string | null = null;
+  if (state) {
+    try {
+      const decoded = JSON.parse(Buffer.from(state, "base64").toString());
+      if (decoded.type === "link" && decoded.userId) {
+        linkOperation = decoded;
+      }
+      if (decoded.redirectUrl) {
+        clientRedirectUrl = decoded.redirectUrl;
+      }
+    } catch {
+      // Invalid state, ignore
+    }
   }
 
   try {
@@ -85,9 +195,10 @@ app.get("/auth/github/callback", async (c) => {
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
-      return c.redirect(
-        `${FRONTEND_URL}/login?error=${tokenData.error_description || tokenData.error}`
-      );
+      const errorRedirect = linkOperation
+        ? `${FRONTEND_URL}/console/settings?error=github_link_failed`
+        : `${FRONTEND_URL}/login?error=${tokenData.error_description || tokenData.error}`;
+      return c.redirect(errorRedirect);
     }
 
     const userResponse = await fetch("https://api.github.com/user", {
@@ -99,6 +210,38 @@ app.get("/auth/github/callback", async (c) => {
 
     const userData = await userResponse.json();
 
+    // Handle GitHub account linking for Google-auth users
+    if (linkOperation) {
+      // Check if this GitHub account is already linked to another user
+      const existingGithubUser = await prisma.user.findUnique({
+        where: { githubId: userData.id },
+      });
+
+      if (existingGithubUser && existingGithubUser.id !== linkOperation.userId) {
+        return c.redirect(`${FRONTEND_URL}/console/settings?error=github_already_linked`);
+      }
+
+      // Link GitHub to the user's account
+      await prisma.user.update({
+        where: { id: linkOperation.userId },
+        data: {
+          githubId: userData.id,
+          githubAccessToken: tokenData.access_token,
+          login: userData.login,
+        },
+      });
+
+      await logAudit({
+        userId: linkOperation.userId,
+        action: "user.login",
+        metadata: { provider: "github", action: "linked" },
+        c,
+      });
+
+      return c.redirect(`${FRONTEND_URL}/console/settings?github_linked=true`);
+    }
+
+    // Normal GitHub sign-in flow
     const emailResponse = await fetch("https://api.github.com/user/emails", {
       headers: {
         Authorization: `Bearer ${tokenData.access_token}`,
@@ -142,6 +285,9 @@ app.get("/auth/github/callback", async (c) => {
       access_token: tokenData.access_token,
       subscriptionTier: user.subscriptionTier,
       subscriptionStatus: user.subscriptionStatus,
+      accountType: user.accountType,
+      onboardingCompletedAt: user.onboardingCompletedAt,
+      personalOrgId: user.personalOrgId,
       organizations,
       hasOrganizations: organizations.length > 0,
     };
@@ -154,11 +300,212 @@ app.get("/auth/github/callback", async (c) => {
     });
 
     const encodedUser = encodeURIComponent(JSON.stringify(authData));
-    return c.redirect(`${FRONTEND_URL}/auth/callback?user=${encodedUser}`);
+    const callbackUrl = new URL(`${FRONTEND_URL}/auth/callback`);
+    callbackUrl.searchParams.set("user", encodedUser);
+    if (clientRedirectUrl) {
+      callbackUrl.searchParams.set("redirectUrl", clientRedirectUrl);
+    }
+    return c.redirect(callbackUrl.toString());
   } catch (error) {
     console.error("GitHub OAuth error:", error);
+    const errorRedirect = linkOperation
+      ? `${FRONTEND_URL}/console/settings?error=github_link_failed`
+      : `${FRONTEND_URL}/login?error=auth_failed`;
+    return c.redirect(errorRedirect);
+  }
+});
+
+// Google OAuth
+app.get("/auth/google", (c) => {
+  const redirectUri = `${c.req.url.split("/auth/google")[0]}/auth/google/callback`;
+  const scope = "openid email profile";
+  const clientRedirectUrl = c.req.query("redirectUrl");
+
+  const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  googleAuthUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  googleAuthUrl.searchParams.set("redirect_uri", redirectUri);
+  googleAuthUrl.searchParams.set("response_type", "code");
+  googleAuthUrl.searchParams.set("scope", scope);
+  googleAuthUrl.searchParams.set("access_type", "offline");
+
+  // Encode redirectUrl in state if provided
+  if (clientRedirectUrl) {
+    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString("base64");
+    googleAuthUrl.searchParams.set("state", state);
+  }
+
+  return c.redirect(googleAuthUrl.toString());
+});
+
+app.get("/auth/google/callback", async (c) => {
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const redirectUri = `${c.req.url.split("/auth/google/callback")[0]}/auth/google/callback`;
+
+  if (!code) {
+    return c.redirect(`${FRONTEND_URL}/login?error=no_code`);
+  }
+
+  // Parse redirectUrl from state
+  let clientRedirectUrl: string | null = null;
+  if (state) {
+    try {
+      const decoded = JSON.parse(Buffer.from(state, "base64").toString());
+      if (decoded.redirectUrl) {
+        clientRedirectUrl = decoded.redirectUrl;
+      }
+    } catch {
+      // Invalid state, ignore
+    }
+  }
+
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      console.error("Google token error:", tokenData);
+      return c.redirect(`${FRONTEND_URL}/login?error=${tokenData.error_description || tokenData.error}`);
+    }
+
+    // Get user info from Google
+    const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    const googleUser = await userResponse.json();
+
+    if (!googleUser.email) {
+      return c.redirect(`${FRONTEND_URL}/login?error=no_email`);
+    }
+
+    // Generate a username from email (before @)
+    const login = googleUser.email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Try to find existing user by Google ID or email
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { googleId: googleUser.id },
+          { email: googleUser.email },
+        ],
+      },
+    });
+
+    if (user) {
+      // Update existing user with Google info
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: googleUser.id,
+          name: googleUser.name || user.name,
+          avatarUrl: googleUser.picture || user.avatarUrl,
+          // Don't overwrite login if user signed up with GitHub first
+          login: user.login || login,
+        },
+      });
+    } else {
+      // Create new user
+      user = await prisma.user.create({
+        data: {
+          googleId: googleUser.id,
+          login,
+          name: googleUser.name,
+          email: googleUser.email,
+          avatarUrl: googleUser.picture,
+        },
+      });
+    }
+
+    // Get user's organizations
+    const organizations = await getUserOrganizations(user.id);
+
+    const authData = {
+      id: googleUser.id,
+      visitorId: user.id,
+      login: user.login,
+      name: user.name,
+      avatar_url: user.avatarUrl,
+      email: user.email,
+      access_token: tokenData.access_token,
+      auth_provider: "google",
+      hasGithubLinked: !!user.githubId,
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
+      accountType: user.accountType,
+      onboardingCompletedAt: user.onboardingCompletedAt,
+      personalOrgId: user.personalOrgId,
+      organizations,
+      hasOrganizations: organizations.length > 0,
+    };
+
+    await logAudit({
+      userId: user.id,
+      action: "user.login",
+      metadata: { login: user.login, provider: "google" },
+      c,
+    });
+
+    const encodedUser = encodeURIComponent(JSON.stringify(authData));
+    const callbackUrl = new URL(`${FRONTEND_URL}/auth/callback`);
+    callbackUrl.searchParams.set("user", encodedUser);
+    if (clientRedirectUrl) {
+      callbackUrl.searchParams.set("redirectUrl", clientRedirectUrl);
+    }
+    return c.redirect(callbackUrl.toString());
+  } catch (error) {
+    console.error("Google OAuth error:", error);
     return c.redirect(`${FRONTEND_URL}/login?error=auth_failed`);
   }
+});
+
+// GitHub linking for users who signed in with Google
+app.get("/auth/github/link", async (c) => {
+  // Get the user's token to verify they're logged in
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const providerUser = await getUserFromToken(token);
+  if (!providerUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await findDbUser(providerUser);
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Use the same callback as normal auth, but with state indicating link operation
+  const redirectUri = `${c.req.url.split("/auth/github/link")[0]}/auth/github/callback`;
+  const scope = "read:user user:email repo";
+  const state = Buffer.from(JSON.stringify({ type: "link", userId: user.id })).toString("base64");
+
+  const githubAuthUrl = new URL("https://github.com/login/oauth/authorize");
+  githubAuthUrl.searchParams.set("client_id", GITHUB_CLIENT_ID);
+  githubAuthUrl.searchParams.set("redirect_uri", redirectUri);
+  githubAuthUrl.searchParams.set("scope", scope);
+  githubAuthUrl.searchParams.set("state", state);
+
+  return c.json({ url: githubAuthUrl.toString() });
 });
 
 app.get("/auth/user", async (c) => {
@@ -199,12 +546,26 @@ app.get("/api/repos", async (c) => {
   const query = c.req.query("q") || "";
 
   try {
+    // Determine the GitHub token to use
+    let githubToken = token;
+
+    // Check if this is a Google user by trying to get user info
+    const providerUser = await getUserFromToken(token);
+    if (providerUser?._provider === "google") {
+      // For Google users, we need their stored GitHub token
+      const user = await findDbUser(providerUser);
+      if (!user?.githubAccessToken) {
+        return c.json({ error: "GitHub not linked", code: "GITHUB_NOT_LINKED" }, 400);
+      }
+      githubToken = user.githubAccessToken;
+    }
+
     // Fetch user's repos (includes repos they have access to)
     const reposResponse = await fetch(
       `https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${githubToken}`,
           Accept: "application/vnd.github+json",
         },
       }
@@ -247,6 +608,7 @@ app.get("/api/settings", async (c) => {
   }
 
   const token = authHeader.slice(7);
+  const orgId = c.req.header("X-Organization-Id");
 
   try {
     // Get repos the user has access to
@@ -270,16 +632,32 @@ app.get("/api/settings", async (c) => {
       repo: r.name,
     }));
 
-    // Get the current user's subscription info
+    // Get the current user's seat in the organization
     const githubUser = await getUserFromToken(token);
-    const user = githubUser ? await prisma.user.findUnique({
-      where: { githubId: githubUser.id },
-    }) : null;
+    let canEnableReviews = false;
+    let canEnableTriage = false;
 
-    const tier = user?.subscriptionTier || "FREE";
-    // Allow access if user has a paid tier (tier itself is the source of truth)
-    const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
-    const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
+    if (githubUser && orgId) {
+      const user = await findDbUser(githubUser);
+
+      if (user) {
+        const membership = await prisma.organizationMember.findUnique({
+          where: {
+            organizationId_userId: {
+              organizationId: orgId,
+              userId: user.id,
+            },
+          },
+          include: { organization: true },
+        });
+
+        if (membership && membership.hasSeat && membership.organization.subscriptionStatus === "ACTIVE") {
+          const tier = membership.organization.subscriptionTier;
+          canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+          canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
+        }
+      }
+    }
 
     // Get settings for user's repos that are enabled
     const settings = await prisma.repositorySettings.findMany({
@@ -320,7 +698,9 @@ app.get("/api/settings/:owner/:repo", async (c) => {
 
   const settings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { organization: true },
+    include: {
+      organization: true,
+    },
   });
 
   // Return default settings (disabled) if no record exists
@@ -331,23 +711,29 @@ app.get("/api/settings/:owner/:repo", async (c) => {
       repo,
       enabled: false,
       triageEnabled: false,
+      customReviewRules: "",
       effectiveEnabled: false,
       effectiveTriageEnabled: false,
     });
   }
 
   // Calculate effective state based on organization's subscription
-  const tier = settings.organization?.subscriptionTier || "FREE";
-  // Allow access if org has a paid tier (tier itself is the source of truth)
-  const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
-  const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
+  const org = settings.organization;
+  const hasActiveSubscription = org && org.subscriptionStatus === "ACTIVE" && org.subscriptionTier;
+  const tier = org?.subscriptionTier;
+
+  // Can enable reviews if org has active subscription with review capability
+  const canEnableReviews = hasActiveSubscription && (tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK");
+  // Can enable triage if org has active subscription with triage capability
+  const canEnableTriage = hasActiveSubscription && (tier === "TRIAGE" || tier === "BYOK");
 
   return c.json({
     owner: settings.owner,
     repo: settings.repo,
     enabled: settings.enabled,
     triageEnabled: settings.triageEnabled,
-    // Effective state = stored setting AND org has permission
+    customReviewRules: settings.customReviewRules || "",
+    // Effective state = stored setting AND org has subscription with permission
     effectiveEnabled: settings.enabled && canEnableReviews,
     effectiveTriageEnabled: settings.triageEnabled && canEnableTriage,
   });
@@ -357,28 +743,53 @@ app.put("/api/settings/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
   const authHeader = c.req.header("Authorization");
   const body = await c.req.json();
+  const orgId = getOrgIdFromHeader(c);
 
-  let { enabled, triageEnabled } = body;
+  // Extract settings and repo metadata from body
+  const { enabled, triageEnabled, customReviewRules, repoMetadata } = body as {
+    enabled?: boolean;
+    triageEnabled?: boolean;
+    customReviewRules?: string;
+    repoMetadata?: {
+      fullName?: string;
+      description?: string;
+      isPrivate?: boolean;
+      avatarUrl?: string;
+      defaultBranch?: string;
+      htmlUrl?: string;
+    };
+  };
   let userId: string | undefined;
   let canEnableReviews = false;
   let canEnableTriage = false;
 
-  // Validate subscription tier if user is authenticated
-  if (authHeader?.startsWith("Bearer ")) {
+  // Validate seat membership if user is authenticated and orgId is provided
+  if (authHeader?.startsWith("Bearer ") && orgId) {
     const token = authHeader.slice(7);
     const githubUser = await getUserFromToken(token);
 
     if (githubUser) {
-      const user = await prisma.user.findUnique({
-        where: { githubId: githubUser.id },
-      });
+      const user = await findDbUser(githubUser);
 
       if (user) {
         userId = user.id;
-        const tier = user.subscriptionTier;
-        // Allow access if user has a paid tier (tier itself is the source of truth)
-        canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
-        canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
+
+        // Check if user is a member of the organization with a seat
+        const membership = await prisma.organizationMember.findUnique({
+          where: {
+            organizationId_userId: {
+              organizationId: orgId,
+              userId: user.id,
+            },
+          },
+          include: { organization: true },
+        });
+
+        if (membership && membership.hasSeat && membership.organization.subscriptionStatus === "ACTIVE") {
+          const tier = membership.organization.subscriptionTier;
+          canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
+          canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
+        }
 
         // Enforce subscription limits
         if (enabled && !canEnableReviews) {
@@ -394,6 +805,11 @@ app.put("/api/settings/:owner/:repo", async (c) => {
         }
       }
     }
+  } else if (enabled || triageEnabled) {
+    // If trying to enable features but not authenticated or no orgId, reject
+    return c.json({
+      error: "Authentication and organization context required to enable reviews"
+    }, 401);
   }
 
   const settings = await prisma.repositorySettings.upsert({
@@ -401,19 +817,41 @@ app.put("/api/settings/:owner/:repo", async (c) => {
     update: {
       enabled: enabled ?? false,
       triageEnabled: triageEnabled ?? false,
+      customReviewRules: customReviewRules !== undefined ? (customReviewRules || null) : undefined,
       userId: userId,
+      organizationId: orgId || undefined,
+      enabledById: userId,
+      // Update repo metadata if provided
+      ...(repoMetadata && {
+        fullName: repoMetadata.fullName ?? `${owner}/${repo}`,
+        description: repoMetadata.description ?? null,
+        isPrivate: repoMetadata.isPrivate ?? false,
+        avatarUrl: repoMetadata.avatarUrl ?? null,
+        defaultBranch: repoMetadata.defaultBranch ?? null,
+        htmlUrl: repoMetadata.htmlUrl ?? null,
+      }),
     },
     create: {
       owner,
       repo,
       enabled: enabled ?? false,
       triageEnabled: triageEnabled ?? false,
+      customReviewRules: customReviewRules || null,
       userId: userId,
+      organizationId: orgId || undefined,
+      enabledById: userId,
+      // Save repo metadata
+      fullName: repoMetadata?.fullName ?? `${owner}/${repo}`,
+      description: repoMetadata?.description ?? null,
+      isPrivate: repoMetadata?.isPrivate ?? false,
+      avatarUrl: repoMetadata?.avatarUrl ?? null,
+      defaultBranch: repoMetadata?.defaultBranch ?? null,
+      htmlUrl: repoMetadata?.htmlUrl ?? null,
     },
   });
 
   await logAudit({
-    organizationId: getOrgIdFromHeader(c),
+    organizationId: orgId,
     userId,
     action: "repo.settings.updated",
     target: `${owner}/${repo}`,
@@ -426,9 +864,155 @@ app.put("/api/settings/:owner/:repo", async (c) => {
     repo: settings.repo,
     enabled: settings.enabled,
     triageEnabled: settings.triageEnabled,
+    customReviewRules: settings.customReviewRules || "",
     effectiveEnabled: settings.enabled && canEnableReviews,
     effectiveTriageEnabled: settings.triageEnabled && canEnableTriage,
   });
+});
+
+// Get all enabled repos for an organization (from database, not GitHub)
+// This allows org members without GitHub access to see the repos
+app.get("/api/org/repos", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const orgId = c.req.header("X-Organization-Id");
+
+  if (!orgId) {
+    return c.json({ error: "Organization ID required" }, 400);
+  }
+
+  try {
+    const providerUser = await getUserFromToken(token);
+    if (!providerUser) {
+      return c.json({ error: "Invalid token" }, 401);
+    }
+
+    const user = await findDbUser(providerUser);
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    // Verify user is a member of the organization
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId: user.id,
+        },
+      },
+      include: { organization: true },
+    });
+
+    if (!membership) {
+      return c.json({ error: "Not a member of this organization" }, 403);
+    }
+
+    // Get all enabled repos for this organization
+    const repos = await prisma.repositorySettings.findMany({
+      where: {
+        organizationId: orgId,
+        OR: [
+          { enabled: true },
+          { triageEnabled: true },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    // Calculate effective state based on subscription
+    const org = membership.organization;
+    const hasActiveSubscription = org.subscriptionStatus === "ACTIVE" && org.subscriptionTier;
+    const tier = org.subscriptionTier;
+    const canEnableReviews = hasActiveSubscription && (tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK");
+    const canEnableTriage = hasActiveSubscription && (tier === "TRIAGE" || tier === "BYOK");
+
+    return c.json(repos.map((r) => ({
+      owner: r.owner,
+      repo: r.repo,
+      fullName: r.fullName || `${r.owner}/${r.repo}`,
+      description: r.description,
+      isPrivate: r.isPrivate,
+      avatarUrl: r.avatarUrl,
+      defaultBranch: r.defaultBranch,
+      htmlUrl: r.htmlUrl || `https://github.com/${r.owner}/${r.repo}`,
+      enabled: r.enabled,
+      triageEnabled: r.triageEnabled,
+      customReviewRules: r.customReviewRules || "",
+      effectiveEnabled: r.enabled && canEnableReviews,
+      effectiveTriageEnabled: r.triageEnabled && canEnableTriage,
+    })));
+  } catch (error) {
+    console.error("Error fetching org repos:", error);
+    return c.json({ error: "Failed to fetch repos" }, 500);
+  }
+});
+
+// Delete repository settings
+app.delete("/api/settings/:owner/:repo", async (c) => {
+  const { owner, repo } = c.req.param();
+  const authHeader = c.req.header("Authorization");
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await findDbUser(githubUser);
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Get orgId from query param
+  const orgId = c.req.query("orgId");
+
+  // Check if settings exist
+  const settings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+  });
+
+  if (!settings) {
+    return c.json({ error: "Repository settings not found" }, 404);
+  }
+
+  // Verify user has permission (member of the org that owns this repo settings)
+  if (settings.organizationId) {
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: { organizationId: settings.organizationId, userId: user.id },
+      },
+    });
+
+    if (!membership) {
+      return c.json({ error: "Not authorized to delete this repository" }, 403);
+    }
+  }
+
+  // Delete the settings
+  await prisma.repositorySettings.delete({
+    where: { owner_repo: { owner, repo } },
+  });
+
+  await logAudit({
+    organizationId: orgId || settings.organizationId || undefined,
+    userId: user.id,
+    action: "repo.settings.updated",
+    target: `${owner}/${repo}`,
+    metadata: { deleted: true },
+    c,
+  });
+
+  return c.json({ success: true });
 });
 
 // ==================== STATS ENDPOINTS ====================
@@ -441,19 +1025,85 @@ app.get("/api/stats", async (c) => {
   }
 
   const token = authHeader.slice(7);
-  const githubUser = await getUserFromToken(token);
+  const orgId = c.req.header("X-Organization-Id");
+  const providerUser = await getUserFromToken(token);
 
-  if (!githubUser) {
+  if (!providerUser) {
     return c.json({ error: "Invalid token" }, 401);
   }
 
   try {
-    // Get repos the user has access to
+    const user = await findDbUser(providerUser);
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    // Check if user has GitHub access (either GitHub auth or linked GitHub)
+    let hasGithubAccess = providerUser._provider === "github";
+    let githubToken = token;
+
+    if (providerUser._provider === "google" && user.githubAccessToken) {
+      hasGithubAccess = true;
+      githubToken = user.githubAccessToken;
+    }
+
+    // If user has org context and no GitHub access, use org repos from database
+    if (orgId && !hasGithubAccess) {
+      // Verify user is a member of the organization
+      const membership = await prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: user.id,
+          },
+        },
+      });
+
+      if (!membership) {
+        return c.json({ error: "Not a member of this organization" }, 403);
+      }
+
+      // Get org repos from database
+      const orgRepos = await prisma.repositorySettings.findMany({
+        where: {
+          organizationId: orgId,
+          OR: [
+            { enabled: true },
+            { triageEnabled: true },
+          ],
+        },
+      });
+
+      const repoNames = orgRepos.map((r) => ({
+        owner: r.owner,
+        repo: r.repo,
+      }));
+
+      // Count reviews for org's repos
+      const reviewCount = repoNames.length > 0
+        ? await prisma.review.count({
+            where: {
+              OR: repoNames.map((r) => ({
+                owner: r.owner,
+                repo: r.repo,
+              })),
+            },
+          })
+        : 0;
+
+      return c.json({
+        reviewCount,
+        connectedRepos: orgRepos.length,
+        totalRepos: orgRepos.length, // For users without GitHub access, total = connected
+      });
+    }
+
+    // User has GitHub access - use GitHub API
     const reposResponse = await fetch(
       `https://api.github.com/user/repos?per_page=100&affiliation=owner,collaborator,organization_member`,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${githubToken}`,
           Accept: "application/vnd.github+json",
         },
       }
@@ -470,28 +1120,32 @@ app.get("/api/stats", async (c) => {
     }));
 
     // Count connected repos (repos with enabled=true OR triageEnabled=true)
-    const connectedRepos = await prisma.repositorySettings.count({
-      where: {
-        OR: repoNames.map((r: { owner: string; repo: string }) => ({
-          owner: r.owner,
-          repo: r.repo,
-          OR: [
-            { enabled: true },
-            { triageEnabled: true },
-          ],
-        })),
-      },
-    });
+    const connectedRepos = repoNames.length > 0
+      ? await prisma.repositorySettings.count({
+          where: {
+            OR: repoNames.map((r: { owner: string; repo: string }) => ({
+              owner: r.owner,
+              repo: r.repo,
+              OR: [
+                { enabled: true },
+                { triageEnabled: true },
+              ],
+            })),
+          },
+        })
+      : 0;
 
     // Count reviews for user's repos
-    const reviewCount = await prisma.review.count({
-      where: {
-        OR: repoNames.map((r: { owner: string; repo: string }) => ({
-          owner: r.owner,
-          repo: r.repo,
-        })),
-      },
-    });
+    const reviewCount = repoNames.length > 0
+      ? await prisma.review.count({
+          where: {
+            OR: repoNames.map((r: { owner: string; repo: string }) => ({
+              owner: r.owner,
+              repo: r.repo,
+            })),
+          },
+        })
+      : 0;
 
     return c.json({
       reviewCount,
@@ -528,19 +1182,21 @@ app.post("/api/reviews", async (c) => {
 
     const org = repoSettings?.organization;
 
-    // Check quota if organization exists and has a subscription
+    // Check quota if organization exists
     if (org) {
-      const quota = getReviewQuota(org.subscriptionTier, org.polarProductId);
-      // quota of -1 means unlimited (BYOK plan)
-      if (quota !== -1 && org.reviewsUsedThisCycle >= quota) {
+      // Calculate quota pool from all seats in the organization
+      const quotaPool = await getOrgQuotaPool(org.id);
+
+      // quota of -1 means unlimited (has BYOK seat)
+      if (quotaPool.total !== -1 && org.reviewsUsedThisCycle >= quotaPool.total) {
         return c.json({
           error: "Review quota exceeded",
-          quota,
+          quota: quotaPool.total,
           used: org.reviewsUsedThisCycle,
         }, 403);
       }
 
-      // Increment usage counter (even for BYOK to track usage)
+      // Increment usage counter (even for unlimited to track usage)
       await prisma.organization.update({
         where: { id: org.id },
         data: { reviewsUsedThisCycle: { increment: 1 } },
@@ -581,9 +1237,7 @@ app.get("/api/subscription/status", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({
@@ -604,7 +1258,7 @@ app.get("/api/subscription/status", async (c) => {
     subscriptionExpiresAt: user.subscriptionExpiresAt,
     cancelAtPeriodEnd: user.cancelAtPeriodEnd,
     reviewsUsed: user.reviewsUsedThisCycle ?? 0,
-    reviewsQuota: getReviewQuota(user.subscriptionTier ?? "FREE", user.polarProductId),
+    reviewsQuota: getReviewQuotaPerSeat(user.subscriptionTier ?? "FREE", user.polarProductId),
   });
 });
 
@@ -622,9 +1276,7 @@ app.post("/api/subscription/sync", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user || !user.email) {
     return c.json({ error: "User not found or no email" }, 404);
@@ -657,7 +1309,7 @@ app.post("/api/subscription/sync", async (c) => {
     const activeSubscription = subscriptions.result.items[0];
 
     if (activeSubscription) {
-      const tier = getTierFromProductId(activeSubscription.productId);
+      const tier = paymentProvider.getTierFromProductId(activeSubscription.productId);
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -706,9 +1358,7 @@ app.get("/api/subscription/debug", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -764,9 +1414,7 @@ app.post("/api/subscription/create", async (c) => {
     githubUser = await getUserFromToken(token);
 
     if (githubUser) {
-      user = await prisma.user.findUnique({
-        where: { githubId: githubUser.id },
-      });
+      user = await findDbUser(githubUser);
     }
   }
 
@@ -777,7 +1425,7 @@ app.post("/api/subscription/create", async (c) => {
       return c.json({ error: "Already on this plan" }, 400);
     }
 
-    const newTier = getTierFromProductId(productId);
+    const newTier = paymentProvider.getTierFromProductId(productId);
     const currentTierLevel = TIER_HIERARCHY[user.subscriptionTier ?? "FREE"];
     const newTierLevel = TIER_HIERARCHY[newTier];
 
@@ -883,9 +1531,7 @@ app.get("/api/billing", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   // Default response for users without subscription
   const defaultResponse = {
@@ -910,39 +1556,79 @@ app.get("/api/billing", async (c) => {
     cancelAtPeriodEnd: user.cancelAtPeriodEnd,
   };
 
-  // If no email, can't fetch orders from Polar
+  // If no email, can't fetch orders
   if (!user.email) {
     return c.json({ subscription, orders: [] });
   }
 
   try {
-    // Get user's Polar customer ID by looking up by email
-    const customers = await polar.customers.list({
-      email: user.email,
-      limit: 1,
-    });
+    const providerName = getPaymentProviderName();
+    let formattedOrders: Array<{
+      id: string;
+      createdAt: string;
+      amount: number;
+      currency: string;
+      status: string;
+      productName: string;
+    }> = [];
 
-    if (!customers.result.items.length) {
-      return c.json({ subscription, orders: [] });
+    if (providerName === "stripe") {
+      // Fetch invoices from Stripe
+      const { getStripe } = await import("./lib/payments/stripe");
+      const stripe = getStripe();
+      
+      // Find customer by email
+      const customers = await stripe.customers.list({
+        email: user.email,
+        limit: 1,
+      });
+
+      if (customers.data.length > 0) {
+        const customer = customers.data[0];
+        
+        // Fetch invoices for this customer
+        const invoices = await stripe.invoices.list({
+          customer: customer.id,
+          limit: 50,
+        });
+
+        formattedOrders = invoices.data.map((invoice) => ({
+          id: invoice.id,
+          createdAt: new Date(invoice.created * 1000).toISOString(),
+          amount: invoice.amount_paid || 0,
+          currency: invoice.currency || "usd",
+          status: invoice.status || "paid",
+          productName: invoice.lines.data[0]?.description || "Subscription",
+        }));
+      }
+    } else {
+      // Use Polar (default)
+      // Get user's Polar customer ID by looking up by email
+      const customers = await polar.customers.list({
+        email: user.email,
+        limit: 1,
+      });
+
+      if (customers.result.items.length > 0) {
+        const customer = customers.result.items[0];
+
+        // Fetch orders for this customer
+        const orders = await polar.orders.list({
+          customerId: customer.id,
+          limit: 50,
+        });
+
+        // Map orders to a simpler format
+        formattedOrders = orders.result.items.map((order) => ({
+          id: order.id,
+          createdAt: order.createdAt,
+          amount: order.totalAmount,
+          currency: order.currency,
+          status: order.billingReason,
+          productName: order.product.name,
+        }));
+      }
     }
-
-    const customer = customers.result.items[0];
-
-    // Fetch orders for this customer
-    const orders = await polar.orders.list({
-      customerId: customer.id,
-      limit: 50,
-    });
-
-    // Map orders to a simpler format
-    const formattedOrders = orders.result.items.map((order) => ({
-      id: order.id,
-      createdAt: order.createdAt,
-      amount: order.totalAmount,
-      currency: order.currency,
-      status: order.billingReason,
-      productName: order.product.name,
-    }));
 
     return c.json({ subscription, orders: formattedOrders });
   } catch (error) {
@@ -966,9 +1652,7 @@ app.get("/api/billing/invoice/:orderId", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user?.email) {
     return c.json({ error: "User not found" }, 404);
@@ -977,17 +1661,41 @@ app.get("/api/billing/invoice/:orderId", async (c) => {
   const orderId = c.req.param("orderId");
 
   try {
-    // Verify this order belongs to the user by checking customer email
-    const order = await polar.orders.get({ id: orderId });
+    const providerName = getPaymentProviderName();
+    let invoiceUrl: string | null = null;
 
-    if (order.customer.email !== user.email) {
-      return c.json({ error: "Unauthorized" }, 401);
+    if (providerName === "stripe") {
+      // Fetch invoice from Stripe
+      const { getStripe } = await import("./lib/payments/stripe");
+      const stripe = getStripe();
+      
+      const invoice = await stripe.invoices.retrieve(orderId);
+      
+      // Verify this invoice belongs to the user by checking customer email
+      if (invoice.customer_email !== user.email) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      invoiceUrl = invoice.hosted_invoice_url || invoice.invoice_pdf || null;
+    } else {
+      // Use Polar (default)
+      // Verify this order belongs to the user by checking customer email
+      const order = await polar.orders.get({ id: orderId });
+
+      if (order.customer.email !== user.email) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      // Get the invoice URL
+      const invoice = await polar.orders.invoice({ id: orderId });
+      invoiceUrl = invoice.url;
     }
 
-    // Get the invoice URL
-    const invoice = await polar.orders.invoice({ id: orderId });
+    if (!invoiceUrl) {
+      return c.json({ error: "Invoice URL not available" }, 404);
+    }
 
-    return c.json({ invoiceUrl: invoice.url });
+    return c.json({ invoiceUrl });
   } catch (error) {
     console.error("Error fetching invoice:", error);
     return c.json({ error: "Failed to fetch invoice" }, 500);
@@ -1008,9 +1716,7 @@ app.post("/api/subscription/cancel", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user?.polarSubscriptionId) {
     return c.json({ error: "No active subscription" }, 400);
@@ -1070,9 +1776,7 @@ app.post("/api/subscription/resubscribe", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user?.polarSubscriptionId) {
     return c.json({ error: "No subscription to reactivate" }, 400);
@@ -1130,9 +1834,7 @@ app.get("/api/settings/api-key", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -1165,9 +1867,7 @@ app.put("/api/settings/api-key", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -1221,9 +1921,7 @@ app.delete("/api/settings/api-key", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -1260,9 +1958,7 @@ app.get("/api/settings/review-rules", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -1287,9 +1983,7 @@ app.put("/api/settings/review-rules", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
-  });
+  const user = await findDbUser(githubUser);
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
@@ -1329,6 +2023,79 @@ app.put("/api/settings/review-rules", async (c) => {
   return c.json({ success: true, rules });
 });
 
+// Check if a GitHub user has an active seat in the organization that owns a repository (internal use only)
+app.get("/api/internal/check-seat/:owner/:repo", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  
+  // Validate internal API key
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || apiKey !== expectedApiKey) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { owner, repo } = c.req.param();
+  const githubLogin = c.req.query("githubLogin");
+
+  if (!githubLogin) {
+    return c.json({ error: "githubLogin query parameter is required" }, 400);
+  }
+
+  try {
+    // Get repository settings to find the organization
+    const repoSettings = await prisma.repositorySettings.findUnique({
+      where: { owner_repo: { owner, repo } },
+      include: { organization: true },
+    });
+
+    if (!repoSettings || !repoSettings.organization) {
+      return c.json({ hasSeat: false, reason: "Repository not found or not associated with an organization" });
+    }
+
+    const org = repoSettings.organization;
+
+    // Check if organization has active subscription
+    if (org.subscriptionStatus !== "ACTIVE" || !org.subscriptionTier) {
+      return c.json({ hasSeat: false, reason: "Organization has no active subscription" });
+    }
+
+    // Find user by GitHub login
+    const user = await prisma.user.findFirst({
+      where: { login: githubLogin },
+    });
+
+    if (!user) {
+      return c.json({ hasSeat: false, reason: "User not found in database" });
+    }
+
+    // Check if user is a member of the organization with a seat
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: org.id,
+          userId: user.id,
+        },
+      },
+      include: { organization: true },
+    });
+
+    if (!membership) {
+      return c.json({ hasSeat: false, reason: "User is not a member of the organization" });
+    }
+
+    const hasSeat = membership.hasSeat && 
+                    membership.organization.subscriptionStatus === "ACTIVE" &&
+                    membership.organization.subscriptionTier !== null;
+
+    return c.json({ 
+      hasSeat,
+      reason: hasSeat ? "User has an active seat" : "User does not have a seat assigned"
+    });
+  } catch (error) {
+    console.error("Error checking seat:", error);
+    return c.json({ error: "Failed to check seat" }, 500);
+  }
+});
+
 // Get custom review rules for review agent (internal use only)
 app.get("/api/internal/review-rules/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
@@ -1340,17 +2107,16 @@ app.get("/api/internal/review-rules/:owner/:repo", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Get repo settings to find the organization
+  // Get repo settings to find custom review rules
   const repoSettings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { organization: true },
   });
 
-  if (!repoSettings?.organization) {
+  if (!repoSettings) {
     return c.json({ rules: null });
   }
 
-  return c.json({ rules: repoSettings.organization.customReviewRules || null });
+  return c.json({ rules: repoSettings.customReviewRules || null });
 });
 
 // Get API key for review agent (internal use only)
@@ -1367,7 +2133,9 @@ app.get("/api/internal/api-key/:owner/:repo", async (c) => {
   // Get repo settings to find the organization
   const repoSettings = await prisma.repositorySettings.findUnique({
     where: { owner_repo: { owner, repo } },
-    include: { organization: true },
+    include: {
+      organization: true,
+    },
   });
 
   if (!repoSettings?.organization) {
@@ -1376,8 +2144,11 @@ app.get("/api/internal/api-key/:owner/:repo", async (c) => {
 
   const org = repoSettings.organization;
 
-  if (org.subscriptionTier !== "BYOK") {
-    return c.json({ error: "Not a BYOK organization", useDefault: true });
+  // Check if org has BYOK tier with active subscription
+  const hasByokTier = org.subscriptionTier === "BYOK" && org.subscriptionStatus === "ACTIVE";
+
+  if (!hasByokTier) {
+    return c.json({ error: "Organization not on BYOK tier", useDefault: true });
   }
 
   if (!org.anthropicApiKey) {
@@ -1403,8 +2174,13 @@ app.get("/api/account/export", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
+  const userWhere = getDbUserWhere(githubUser);
+  if (!userWhere) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
   const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
+    where: userWhere,
     include: {
       memberships: {
         include: {
@@ -1464,8 +2240,14 @@ app.get("/api/account/export", async (c) => {
       name: m.organization.name,
       slug: m.organization.slug,
       role: m.role,
-      subscriptionTier: m.organization.subscriptionTier,
-      subscriptionStatus: m.organization.subscriptionStatus,
+      hasSeat: m.hasSeat,
+      subscription: m.organization.subscriptionTier ? {
+        tier: m.organization.subscriptionTier,
+        status: m.organization.subscriptionStatus,
+        seatCount: m.organization.seatCount,
+        expiresAt: m.organization.subscriptionExpiresAt,
+        cancelAtPeriodEnd: m.organization.cancelAtPeriodEnd,
+      } : null,
     })),
     repositorySettings: allRepoSettings.map((r: { owner: string; repo: string; enabled: boolean; triageEnabled: boolean; createdAt: Date; updatedAt: Date }) => ({
       owner: r.owner,
@@ -1514,30 +2296,60 @@ app.delete("/api/account", async (c) => {
     return c.json({ error: "Invalid token" }, 401);
   }
 
+  const userWhere = getDbUserWhere(githubUser);
+  if (!userWhere) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
   const user = await prisma.user.findUnique({
-    where: { githubId: githubUser.id },
+    where: userWhere,
+    include: {
+      memberships: {
+        where: { role: "OWNER" },
+        include: { organization: true },
+      },
+    },
   });
 
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
 
-  // Cancel subscription if active
-  if (user.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
-    try {
-      await polar.subscriptions.update({
-        id: user.polarSubscriptionId,
-        subscriptionUpdate: {
-          cancelAtPeriodEnd: true,
-        },
-      });
-    } catch (error) {
-      console.error("Failed to cancel subscription during account deletion:", error);
-      // Continue with deletion even if subscription cancellation fails
+  // Cancel subscriptions and delete all organizations the user owns
+  const ownedOrgIds: string[] = [];
+  for (const membership of user.memberships) {
+    const org = membership.organization;
+    ownedOrgIds.push(org.id);
+
+    if (org.polarSubscriptionId && org.subscriptionStatus === "ACTIVE") {
+      try {
+        await paymentProvider.cancelSubscription(org.polarSubscriptionId);
+        console.log(`Cancelled subscription for org ${org.slug} during account deletion`);
+      } catch (error) {
+        console.error(`Failed to cancel subscription for org ${org.slug}:`, error);
+        // Continue with deletion even if subscription cancellation fails
+      }
     }
   }
 
-  // Delete in order: audit logs, repository settings, then user
+  // Legacy: Cancel user-level subscription if active (for older accounts)
+  if (user.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
+    try {
+      await paymentProvider.cancelSubscription(user.polarSubscriptionId);
+    } catch (error) {
+      console.error("Failed to cancel legacy user subscription:", error);
+    }
+  }
+
+  // Delete all organizations the user owns (cascades to members, invites, repo settings, audit logs)
+  if (ownedOrgIds.length > 0) {
+    await prisma.organization.deleteMany({
+      where: { id: { in: ownedOrgIds } },
+    });
+    console.log(`Deleted ${ownedOrgIds.length} owned organizations during account deletion`);
+  }
+
+  // Delete remaining user-specific data
   await prisma.auditLog.deleteMany({
     where: { userId: user.id },
   });
@@ -1555,218 +2367,177 @@ app.delete("/api/account", async (c) => {
   return c.json({ success: true, message: "Account deleted successfully" });
 });
 
+// ==================== ONBOARDING ENDPOINTS ====================
+
+// Complete onboarding
+app.post("/api/onboarding/complete", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { accountType, personalOrgId } = body;
+
+  if (!accountType || (accountType !== "SOLO" && accountType !== "TEAM")) {
+    return c.json({ error: "accountType must be SOLO or TEAM" }, 400);
+  }
+
+  // Find the user first
+  const existingUser = await findDbUser(githubUser);
+  if (!existingUser) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // For SOLO users, we store the personal org ID so we can filter it out later
+  const updateData: {
+    accountType: "SOLO" | "TEAM";
+    onboardingCompletedAt: Date;
+    personalOrgId?: string;
+  } = {
+    accountType: accountType,
+    onboardingCompletedAt: new Date(),
+  };
+
+  if (accountType === "SOLO" && personalOrgId) {
+    updateData.personalOrgId = personalOrgId;
+  }
+
+  const user = await prisma.user.update({
+    where: { id: existingUser.id },
+    data: updateData,
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: "user.onboarding_completed",
+    metadata: { accountType, personalOrgId },
+    c,
+  });
+
+  return c.json({
+    success: true,
+    accountType: user.accountType,
+    onboardingCompletedAt: user.onboardingCompletedAt,
+    personalOrgId: user.personalOrgId,
+  });
+});
+
+// Update account type
+app.put("/api/account/type", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const githubUser = await getUserFromToken(token);
+
+  if (!githubUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { accountType } = body;
+
+  if (!accountType || (accountType !== "SOLO" && accountType !== "TEAM")) {
+    return c.json({ error: "accountType must be SOLO or TEAM" }, 400);
+  }
+
+  // Find the user first
+  const existingUser = await findDbUser(githubUser);
+  if (!existingUser) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const user = await prisma.user.update({
+    where: { id: existingUser.id },
+    data: {
+      accountType: accountType,
+    },
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: "user.account_type_changed",
+    metadata: { accountType },
+    c,
+  });
+
+  return c.json({
+    success: true,
+    accountType: user.accountType,
+  });
+});
+
 // ==================== ORGANIZATION ROUTES ====================
 app.route("/api/organizations", organizationRoutes);
 
-// Polar webhook handler
-app.post("/api/webhooks/polar", async (c) => {
-  const body = await c.req.text();
-  const signature = c.req.header("webhook-signature") || "";
+// Unified webhook handler - works with both Polar and Stripe
+app.post("/api/webhooks/:provider", async (c) => {
+  const provider = c.req.param("provider");
 
-  // TODO: Verify webhook signature in production
-  // const webhookSecret = process.env.POLAR_WEBHOOK_SECRET;
-
-  let payload;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    return c.json({ error: "Invalid JSON" }, 400);
+  // Validate provider
+  if (provider !== "polar" && provider !== "stripe") {
+    return c.json({ error: "Invalid provider" }, 400);
   }
 
-  const eventType = payload.type;
-  console.log(`Received Polar webhook: ${eventType}`);
+  const body = await c.req.text();
+  const headers: Record<string, string> = {};
+
+  // Collect relevant headers for each provider
+  if (provider === "polar") {
+    headers["webhook-signature"] = c.req.header("webhook-signature") || "";
+  } else if (provider === "stripe") {
+    headers["stripe-signature"] = c.req.header("stripe-signature") || "";
+  }
+
+  console.log(`Received ${provider} webhook`);
 
   try {
-    switch (eventType) {
-      case "checkout.created":
-        // Checkout started - no action needed
-        break;
+    // Use the unified webhook processor
+    // It will parse the payload based on provider and handle the event
+    const { polarProvider } = await import("./lib/payments/polar");
+    const { stripeProvider } = await import("./lib/payments/stripe");
+    const { handleWebhookEvent } = await import("./lib/payments/webhook-handler");
 
-      case "checkout.updated":
-        // Checkout updated - handle completion
-        if (payload.data.status === "succeeded") {
-          const checkout = payload.data;
-          const email = checkout.customer_email;
-          const productId = checkout.product_id;
-          const subscriptionId = checkout.subscription_id;
-
-          if (email && subscriptionId) {
-            const user = await prisma.user.findFirst({
-              where: { email },
-            });
-
-            if (user) {
-              const tier = getTierFromProductId(productId);
-              await prisma.user.update({
-                where: { id: user.id },
-                data: {
-                  subscriptionTier: tier as SubscriptionTier,
-                  subscriptionStatus: "ACTIVE",
-                  polarSubscriptionId: subscriptionId,
-                  polarProductId: productId,
-                  cancelAtPeriodEnd: false,
-                  reviewsUsedThisCycle: 0, // Reset quota on new subscription
-                },
-              });
-              console.log(`Activated subscription for user ${user.login}: ${tier}`);
-            }
-          }
-        }
-        break;
-
-      case "subscription.created":
-      case "subscription.updated": {
-        const subscription = payload.data;
-        const subscriptionId = subscription.id;
-        const productId = subscription.product_id;
-        const status = subscription.status;
-        const email = subscription.customer?.email;
-
-        // Find user by subscription ID or email
-        let user = await prisma.user.findFirst({
-          where: { polarSubscriptionId: subscriptionId },
-        });
-
-        if (!user && email) {
-          user = await prisma.user.findFirst({
-            where: { email },
-          });
-        }
-
-        if (user) {
-          const tier = getTierFromProductId(productId);
-          const mappedStatus = status === "active" ? "ACTIVE" :
-                              status === "canceled" ? "CANCELLED" :
-                              status === "past_due" ? "PAST_DUE" : "INACTIVE";
-
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              subscriptionTier: mappedStatus === "ACTIVE" ? tier as SubscriptionTier : user.subscriptionTier,
-              subscriptionStatus: mappedStatus as SubscriptionStatus,
-              polarSubscriptionId: subscriptionId,
-              polarProductId: productId,
-              cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
-              subscriptionExpiresAt: subscription.current_period_end ? new Date(subscription.current_period_end) : null,
-            },
-          });
-          console.log(`Updated subscription for user ${user.login}: ${tier}, productId: ${productId}, status: ${mappedStatus}`);
-        }
-        break;
-      }
-
-      case "subscription.canceled": {
-        // Fired when cancelAtPeriodEnd is set - subscription is still ACTIVE until period ends
-        const subscription = payload.data;
-        const subscriptionId = subscription.id;
-
-        const user = await prisma.user.findFirst({
-          where: { polarSubscriptionId: subscriptionId },
-        });
-
-        if (user) {
-          // Subscription is still active, just scheduled to cancel
-          // Keep status as ACTIVE, just mark cancelAtPeriodEnd
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              subscriptionStatus: subscription.status === "active" ? "ACTIVE" : "CANCELLED",
-              cancelAtPeriodEnd: true,
-              subscriptionExpiresAt: subscription.current_period_end
-                ? new Date(subscription.current_period_end)
-                : null,
-            },
-          });
-          console.log(`Subscription scheduled for cancellation for user ${user.login}`);
-        }
-        break;
-      }
-
-      case "subscription.revoked": {
-        // Fired when subscription is immediately canceled or period ends
-        const subscription = payload.data;
-        const subscriptionId = subscription.id;
-
-        const user = await prisma.user.findFirst({
-          where: { polarSubscriptionId: subscriptionId },
-        });
-
-        if (user) {
-          // Subscription has fully ended - downgrade to FREE
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              subscriptionTier: "FREE",
-              subscriptionStatus: "CANCELLED",
-              polarSubscriptionId: null,
-              cancelAtPeriodEnd: false,
-            },
-          });
-          console.log(`Subscription revoked for user ${user.login}, downgraded to FREE`);
-        }
-        break;
-      }
-
-      case "subscription.uncanceled": {
-        // Fired when cancelAtPeriodEnd is set back to false
-        const subscription = payload.data;
-        const subscriptionId = subscription.id;
-
-        const user = await prisma.user.findFirst({
-          where: { polarSubscriptionId: subscriptionId },
-        });
-
-        if (user) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              subscriptionStatus: "ACTIVE",
-              cancelAtPeriodEnd: false,
-            },
-          });
-          console.log(`Subscription uncanceled for user ${user.login}`);
-        }
-        break;
-      }
-
-      case "order.paid": {
-        // Primary event for successful payments - also resets review quota
-        const order = payload.data;
-        const email = order.customer?.email;
-        const productId = order.product_id;
-        const subscriptionId = order.subscription_id;
-
-        if (email && subscriptionId) {
-          const user = await prisma.user.findFirst({
-            where: { email },
-          });
-
-          if (user) {
-            const tier = getTierFromProductId(productId);
-            await prisma.user.update({
-              where: { id: user.id },
-              data: {
-                subscriptionTier: tier as SubscriptionTier,
-                subscriptionStatus: "ACTIVE",
-                polarSubscriptionId: subscriptionId,
-                polarProductId: productId,
-                cancelAtPeriodEnd: false,
-                reviewsUsedThisCycle: 0, // Reset quota on payment
-              },
-            });
-            console.log(`Order paid - activated subscription for user ${user.login}: ${tier}, productId: ${productId}, quota reset`);
-          }
-        }
-        break;
-      }
-
-      default:
-        console.log(`Unhandled webhook event: ${eventType}`);
-    }
+    const providerImpl = provider === "stripe" ? stripeProvider : polarProvider;
+    const event = await providerImpl.parseWebhook(body, headers);
+    await handleWebhookEvent(event);
 
     return c.json({ received: true });
   } catch (error) {
-    console.error("Webhook handler error:", error);
+    console.error(`${provider} webhook handler error:`, error);
+    return c.json({ error: "Webhook handler failed" }, 500);
+  }
+});
+
+// Legacy Polar webhook handler support (redirects to unified handler)
+// Keep for backwards compatibility during migration
+app.post("/api/polar/webhook", async (c) => {
+  // Forward to unified handler
+  const body = await c.req.text();
+  const headers: Record<string, string> = {
+    "webhook-signature": c.req.header("webhook-signature") || "",
+  };
+
+  try {
+    const { polarProvider } = await import("./lib/payments/polar");
+    const { handleWebhookEvent } = await import("./lib/payments/webhook-handler");
+
+    const event = await polarProvider.parseWebhook(body, headers);
+    await handleWebhookEvent(event);
+
+    return c.json({ received: true });
+  } catch (error) {
+    console.error("Polar webhook handler error:", error);
     return c.json({ error: "Webhook handler failed" }, 500);
   }
 });

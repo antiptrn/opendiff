@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import imageCompression from "browser-image-compression";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import {
   Select,
@@ -34,20 +35,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Combobox,
-  ComboboxInput,
-  ComboboxContent,
-  ComboboxList,
-  ComboboxItem,
-} from "@/components/ui/combobox";
-import {
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Lock, Globe, LogIn, ExternalLink, Download, UserPlus, Copy, Check, Trash2, MoreHorizontal, Mail, Link as LinkIcon } from "lucide-react";
+import { Loader2, ExternalLink, Download, UserPlus, Copy, Check, Trash2, MoreHorizontal, Mail, Link as LinkIcon, Minus, Plus, Upload, Building2, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth, type OrganizationRole } from "@/hooks/use-auth";
 import {
@@ -67,43 +59,38 @@ import {
   useOrganizationInvites,
   useUpdateMemberRole,
   useRemoveMember,
+  useLeaveOrganization,
+  useManageSubscription,
+  useCancelSubscription as useCancelOrgSubscription,
+  useReactivateSubscription as useReactivateOrgSubscription,
+  useAssignSeat,
+  useUnassignSeat,
+  useReassignSeat,
+  useUpdateSeatCount,
+  usePreviewSeatChange,
+  type OrgSubscription,
 } from "@/hooks/use-organization";
 import {
-  useRepositories,
-  useRepositorySettings,
-  useUpdateSettings,
-  useActivatedRepos,
   useApiKeyStatus,
   useUpdateApiKey,
   useDeleteApiKey,
   useReviewRules,
   useUpdateReviewRules,
   useBilling,
-  useCancelSubscription,
-  useResubscribe,
   useGetInvoice,
   useExportData,
   useDeleteAccount,
-  type Repository,
-  type RepositorySettings,
+  useLinkGitHub,
+  useApi,
 } from "@/hooks/use-api";
+import { SiGithub } from "@icons-pack/react-simple-icons";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // ==================== UTILITY FUNCTIONS ====================
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
 
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "";
@@ -122,6 +109,10 @@ function getTierName(tier?: string | null): string {
     default:
       return "Free";
   }
+}
+
+function formatRoleName(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
 }
 
 function formatCurrency(amount: number, currency: string): string {
@@ -316,7 +307,7 @@ function CustomReviewRulesCard({ token, orgId }: { token?: string; orgId?: strin
         )}
 
         {successMessage && (
-          <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
+          <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:bg-green-400/10 dark:text-green-400">
             {successMessage}
           </div>
         )}
@@ -334,6 +325,7 @@ function CustomReviewRulesCard({ token, orgId }: { token?: string; orgId?: strin
             {localRules.length}/5000 characters
           </p>
           <Button
+            size="sm"
             onClick={handleSave}
             disabled={!hasChanges || updateRules.isPending}
           >
@@ -397,13 +389,14 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
 
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <p className="text-sm font-medium">Export my data</p>
+            <p className="text-sm">Export my data</p>
             <p className="text-sm text-muted-foreground">
               Download all your data as a JSON file.
             </p>
           </div>
           <Button
-            variant="secondary"
+            size="sm"
+            variant="outline"
             onClick={handleExportData}
             disabled={exportData.isPending}
           >
@@ -416,12 +409,13 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
 
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <p className="text-sm font-medium text-destructive">Delete my account</p>
+            <p className="text-sm text-destructive">Delete my account</p>
             <p className="text-sm text-muted-foreground">
               Permanently delete your account and all associated data.
             </p>
           </div>
           <Button
+            size="sm"
             variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
             disabled={deleteAccount.isPending}
@@ -441,10 +435,11 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
             <AlertDialogAction
+              size="sm"
               onClick={handleDeleteAccount}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               Delete Account
             </AlertDialogAction>
@@ -455,9 +450,183 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
   );
 }
 
-function GeneralTab({ user, tier, logout, orgId }: { user: ReturnType<typeof useAuth>["user"]; tier: string; logout: () => void; orgId?: string | null }) {
+function LeaveOrganizationCard({ orgId, orgName }: { orgId: string | null; orgName: string }) {
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const leaveOrganization = useLeaveOrganization(orgId);
+
+  const handleLeave = async () => {
+    try {
+      await leaveOrganization.mutateAsync();
+      setShowLeaveDialog(false);
+      // The organization queries will be invalidated and the user will be redirected
+      // to create-organization if they have no orgs left
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Leave Organization</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {leaveOrganization.error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {leaveOrganization.error?.message}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <p className="text-sm">Leave {orgName}</p>
+            <p className="text-sm text-muted-foreground">
+              You will lose access to this organization and its repositories.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setShowLeaveDialog(true)}
+            disabled={leaveOrganization.isPending}
+          >
+            {leaveOrganization.isPending && <Loader2 className="size-4 animate-spin" />}
+            Leave
+          </Button>
+        </div>
+      </CardContent>
+
+      <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave Organization</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to leave {orgName}? You will lose access to this organization and all its repositories. You'll need to be re-invited to rejoin.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              size="sm"
+              onClick={handleLeave}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {leaveOrganization.isPending && <Loader2 className="size-4 animate-spin" />}
+              Leave Organization
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
+function LinkGitHubCard({ token, onLinked }: { token?: string; onLinked?: () => void }) {
+  const linkGitHub = useLinkGitHub(token);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const githubLinked = searchParams.get("github_linked") === "true";
+  const error = searchParams.get("error");
+
+  // Clear URL params and notify parent when GitHub was just linked
+  useEffect(() => {
+    if (githubLinked) {
+      onLinked?.();
+      // Clear the URL param after a delay so user sees the success message
+      const timer = setTimeout(() => {
+        setSearchParams((params) => {
+          params.delete("github_linked");
+          return params;
+        });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [githubLinked, onLinked, setSearchParams]);
+
+  const handleLinkGitHub = async () => {
+    try {
+      const { url } = await linkGitHub.mutateAsync();
+      window.location.href = url;
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <SiGithub className="size-5" />
+          Link GitHub Account
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {githubLinked && (
+          <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:bg-green-400/10 dark:text-green-400">
+            GitHub account linked successfully! You can now access your repositories.
+          </div>
+        )}
+
+        {error === "github_link_failed" && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            Failed to link GitHub account. Please try again.
+          </div>
+        )}
+
+        {error === "github_already_linked" && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            This GitHub account is already linked to another user.
+          </div>
+        )}
+
+        {linkGitHub.error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {linkGitHub.error?.message}
+          </div>
+        )}
+
+        <p className="text-sm text-muted-foreground">
+          Link your GitHub account to access your repositories and enable code reviews.
+        </p>
+
+        <Button
+          size="sm"
+          onClick={handleLinkGitHub}
+          disabled={linkGitHub.isPending}
+        >
+          {linkGitHub.isPending && <Loader2 className="size-4 animate-spin" />}
+          <SiGithub className="size-4" />
+          Link GitHub Account
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GeneralTab({ user, logout, orgId, setUser }: { user: ReturnType<typeof useAuth>["user"]; logout: () => void; orgId?: string | null; setUser: ReturnType<typeof useAuth>["setUser"] }) {
+  const { currentSeat, hasSeat, currentOrg } = useOrganization();
+  const tier = hasSeat ? currentSeat?.tier : null;
+
+  // Solo users don't see leave organization option
+  const isSoloUser = user?.accountType === "SOLO";
+  // Owners cannot leave - they must transfer ownership first
+  const isOwner = currentOrg?.role === "OWNER";
+  // Show leave option for non-solo, non-owner users
+  const canLeaveOrg = !isSoloUser && !isOwner && currentOrg;
+
+  // Show GitHub link card for Google users who haven't linked GitHub
+  const needsGithubLink = user?.auth_provider === "google" && !user?.hasGithubLinked;
+
+  const handleGithubLinked = () => {
+    if (user) {
+      setUser({ ...user, hasGithubLinked: true });
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Link GitHub - for Google users without GitHub linked */}
+      {needsGithubLink && <LinkGitHubCard token={user?.access_token} onLinked={handleGithubLinked} />}
+
       {/* Install GitHub App */}
       <Card>
         <CardHeader>
@@ -467,7 +636,7 @@ function GeneralTab({ user, tier, logout, orgId }: { user: ReturnType<typeof use
           <p className="text-sm text-muted-foreground mb-4">
             Install the GitHub App on your repositories to enable code reviews. You can install it on your personal account or any organization you have access to.
           </p>
-          <Button asChild>
+          <Button size="sm" asChild>
             <a
               href="https://github.com/apps/antiptrn-review-agent/installations/new"
               target="_blank"
@@ -484,7 +653,10 @@ function GeneralTab({ user, tier, logout, orgId }: { user: ReturnType<typeof use
       {tier === "BYOK" && <ApiKeyCard token={user?.access_token} orgId={orgId} />}
 
       {/* Custom Review Rules - available for all paid plans */}
-      {tier !== "FREE" && <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />}
+      {tier && <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />}
+
+      {/* Leave Organization - for non-solo, non-owner team members */}
+      {canLeaveOrg && <LeaveOrganizationCard orgId={orgId ?? null} orgName={currentOrg.name} />}
 
       {/* Account Management */}
       <AccountManagementCard token={user?.access_token} orgId={orgId} logout={logout} />
@@ -492,581 +664,21 @@ function GeneralTab({ user, tier, logout, orgId }: { user: ReturnType<typeof use
   );
 }
 
-// ==================== REVIEWS TAB COMPONENTS ====================
-
-function RepoSettingsForm({
-  settings,
-  canEnableReviews,
-  canEnableTriage,
-  onSave,
-  isSaving,
-  error,
-  successMessage,
-}: {
-  settings: RepositorySettings;
-  canEnableReviews: boolean;
-  canEnableTriage: boolean;
-  onSave: (enabled: boolean, triageEnabled: boolean) => void;
-  isSaving: boolean;
-  error?: string | null;
-  successMessage?: string | null;
-}) {
-  const [localEnabled, setLocalEnabled] = useState(settings.enabled);
-  const [localTriageEnabled, setLocalTriageEnabled] = useState(settings.triageEnabled);
-
-  useEffect(() => {
-    setLocalEnabled(settings.enabled);
-    setLocalTriageEnabled(settings.triageEnabled);
-  }, [settings]);
-
-  return (
-    <div className="space-y-6">
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
-          {successMessage}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between px-4 mb-4">
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <Label htmlFor={`enabled-${settings.owner}-${settings.repo}`}>Enable Reviews</Label>
-            {!canEnableReviews && (
-              <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                Requires Code Review plan
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Automatically review pull requests.
-          </p>
-          {!canEnableReviews && (
-            <Link
-              to="/pricing"
-              className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2"
-            >
-              Upgrade to enable
-            </Link>
-          )}
-        </div>
-        <Switch
-          id={`enabled-${settings.owner}-${settings.repo}`}
-          checked={localEnabled && canEnableReviews}
-          onCheckedChange={setLocalEnabled}
-          disabled={!canEnableReviews}
-        />
-      </div>
-
-      <Separator />
-
-      <div className="flex items-center justify-between px-4">
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <Label htmlFor={`triage-${settings.owner}-${settings.repo}`}>Enable Triage Mode</Label>
-            {!canEnableTriage && (
-              <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                Requires Triage plan
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Respond to comments and engage in discussions.
-          </p>
-          {!canEnableTriage && (
-            <Link
-              to="/pricing"
-              className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2"
-            >
-              Upgrade to enable
-            </Link>
-          )}
-        </div>
-        <Switch
-          id={`triage-${settings.owner}-${settings.repo}`}
-          checked={localTriageEnabled && canEnableTriage}
-          onCheckedChange={setLocalTriageEnabled}
-          disabled={!canEnableTriage}
-        />
-      </div>
-
-      <Button
-        className="ml-4"
-        onClick={() => onSave(localEnabled, localTriageEnabled)}
-        disabled={isSaving}
-        size="sm"
-      >
-        {isSaving && <Loader2 className="size-4 animate-spin" />}
-        Save Settings
-      </Button>
-    </div>
-  );
-}
-
-function ActiveRepoAccordion({
-  settings,
-  canEnableReviews,
-  canEnableTriage,
-  token,
-  orgId,
-}: {
-  settings: RepositorySettings;
-  canEnableReviews: boolean;
-  canEnableTriage: boolean;
-  token?: string;
-  orgId?: string | null;
-}) {
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const updateSettings = useUpdateSettings(token, orgId);
-
-  const handleSave = async (enabled: boolean, triageEnabled: boolean) => {
-    setSuccessMessage(null);
-    try {
-      await updateSettings.mutateAsync({
-        owner: settings.owner,
-        repo: settings.repo,
-        enabled,
-        triageEnabled,
-      });
-      setSuccessMessage("Settings saved");
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  return (
-    <AccordionItem>
-      <AccordionTrigger className="cursor-pointer">
-        <div className="flex items-center gap-3">
-          <span>{settings.owner}/{settings.repo}</span>
-          <div className="flex items-center gap-2">
-            {settings.enabled && settings.effectiveEnabled && (
-              <span className="inline-flex items-center gap-1 text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full">
-                Reviews
-              </span>
-            )}
-            {settings.enabled && !settings.effectiveEnabled && (
-              <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                Reviews Paused
-              </span>
-            )}
-            {settings.triageEnabled && settings.effectiveTriageEnabled && (
-              <span className="inline-flex items-center gap-1 text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">
-                Triage
-              </span>
-            )}
-            {settings.triageEnabled && !settings.effectiveTriageEnabled && (
-              <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                Triage Paused
-              </span>
-            )}
-          </div>
-        </div>
-      </AccordionTrigger>
-      <AccordionContent className="px-0">
-        <RepoSettingsForm
-          settings={settings}
-          canEnableReviews={canEnableReviews}
-          canEnableTriage={canEnableTriage}
-          onSave={handleSave}
-          isSaving={updateSettings.isPending}
-          error={updateSettings.error?.message}
-          successMessage={successMessage}
-        />
-      </AccordionContent>
-    </AccordionItem>
-  );
-}
-
-function ReviewsTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null }) {
-  const { logout } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
-  const [localSettings, setLocalSettings] = useState<{
-    enabled: boolean;
-    triageEnabled: boolean;
-  } | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const debouncedQuery = useDebounce(searchQuery, 300);
-
-  const {
-    data: activatedRepos = [],
-    isLoading: isLoadingActivated,
-  } = useActivatedRepos(user?.access_token, orgId);
-
-  const {
-    data: repositories = [],
-    isLoading: isLoadingRepos,
-  } = useRepositories(user?.access_token, orgId, debouncedQuery);
-
-  const {
-    data: settings,
-    isLoading: isLoadingSettings,
-    error: settingsError,
-  } = useRepositorySettings(
-    selectedRepo?.owner || "",
-    selectedRepo?.name || ""
-  );
-
-  const updateSettings = useUpdateSettings(user?.access_token, orgId);
-
-  useEffect(() => {
-    if (settings) {
-      setLocalSettings({
-        enabled: settings.enabled,
-        triageEnabled: settings.triageEnabled,
-      });
-    }
-  }, [settings]);
-
-  const handleRepoSelect = (value: string | null) => {
-    if (!value) return;
-    const repo = repositories.find((r) => r.full_name === value);
-    if (repo) {
-      setSelectedRepo(repo);
-      setLocalSettings(null);
-      setSuccessMessage(null);
-    }
-  };
-
-  const saveSettings = async () => {
-    if (!selectedRepo || !localSettings) return;
-
-    setSuccessMessage(null);
-
-    try {
-      await updateSettings.mutateAsync({
-        owner: selectedRepo.owner,
-        repo: selectedRepo.name,
-        enabled: localSettings.enabled,
-        triageEnabled: localSettings.triageEnabled,
-      });
-      setSuccessMessage("Settings saved successfully");
-      setSelectedRepo(null);
-      setLocalSettings(null);
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  const tier = user?.subscriptionTier || "FREE";
-  const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
-  const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
-
-  const isRepoAlreadyActive = selectedRepo && activatedRepos.some(
-    (r) => r.owner === selectedRepo.owner && r.repo === selectedRepo.name
-  );
-
-  return (
-    <div className="space-y-6">
-      {/* Add Repository Dropdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Repository</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!user?.access_token ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Please log out and log back in to grant repository access permissions.
-              </p>
-              <Button variant="outline" onClick={logout}>
-                <LogIn className="size-4 mr-2" />
-                Log out to re-authenticate
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Combobox
-                value={selectedRepo?.full_name ?? ""}
-                onValueChange={handleRepoSelect}
-                onInputValueChange={setSearchQuery}
-              >
-                <ComboboxInput
-                  placeholder="Search repositories..."
-                  className="w-full"
-                />
-                <ComboboxContent className="p-1">
-                  <ComboboxList>
-                    {isLoadingRepos && (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                    {!isLoadingRepos && repositories.length === 0 && (
-                      <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
-                        No repositories found
-                      </div>
-                    )}
-                    {!isLoadingRepos && repositories.map((repo) => (
-                      <ComboboxItem key={repo.full_name} value={repo.full_name}>
-                        {repo.private ? (
-                          <Lock className="size-3.5 text-muted-foreground" />
-                        ) : (
-                          <Globe className="size-3.5 text-muted-foreground" />
-                        )}
-                        <span>{repo.full_name}</span>
-                      </ComboboxItem>
-                    ))}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Settings for newly selected repo */}
-      {(settingsError || updateSettings.error) && !isRepoAlreadyActive && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
-          {settingsError?.message || updateSettings.error?.message}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 text-green-600 dark:text-green-400">
-          {successMessage}
-        </div>
-      )}
-
-      {isLoadingSettings && selectedRepo && !isRepoAlreadyActive && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-6">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
-      )}
-
-      {localSettings && !isLoadingSettings && selectedRepo && !isRepoAlreadyActive && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Configure {selectedRepo.owner}/{selectedRepo.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="enabled">Enable Reviews</Label>
-                    {!canEnableReviews && (
-                      <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                        Requires Code Review plan
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    When enabled, the review agent will automatically review pull requests.
-                  </p>
-                  {!canEnableReviews && (
-                    <Link
-                      to="/pricing"
-                      className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2"
-                    >
-                      Upgrade to enable
-                    </Link>
-                  )}
-                </div>
-                <Switch
-                  id="enabled"
-                  checked={localSettings.enabled && canEnableReviews}
-                  onCheckedChange={(checked) =>
-                    setLocalSettings({ ...localSettings, enabled: checked })
-                  }
-                  disabled={!canEnableReviews}
-                />
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="triage">Enable Triage Mode</Label>
-                    {!canEnableTriage && (
-                      <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                        Requires Triage plan
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    When enabled, the agent will respond to comments and engage in discussions.
-                  </p>
-                  {!canEnableTriage && (
-                    <Link
-                      to="/pricing"
-                      className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2"
-                    >
-                      Upgrade to enable
-                    </Link>
-                  )}
-                </div>
-                <Switch
-                  id="triage"
-                  checked={localSettings.triageEnabled && canEnableTriage}
-                  onCheckedChange={(checked) =>
-                    setLocalSettings({ ...localSettings, triageEnabled: checked })
-                  }
-                  disabled={!canEnableTriage}
-                />
-              </div>
-            </div>
-
-            <Button
-              className="mt-6"
-              onClick={saveSettings}
-              disabled={updateSettings.isPending}
-            >
-              {updateSettings.isPending && (
-                <Loader2 className="size-4 animate-spin mr-2" />
-              )}
-              Save Settings
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Active Repositories */}
-      {user?.access_token && (
-        <div>
-          <h2 className="text-lg mb-2">Active Repositories</h2>
-
-          {isLoadingActivated && (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="border border-border rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!isLoadingActivated && activatedRepos.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No repositories configured yet. Add one above to get started.
-            </p>
-          )}
-
-          {!isLoadingActivated && activatedRepos.length > 0 && (() => {
-            const reviewsPausedCount = activatedRepos.filter(
-              (repo) => repo.enabled && !repo.effectiveEnabled
-            ).length;
-            const triagePausedCount = activatedRepos.filter(
-              (repo) => repo.triageEnabled && !repo.effectiveTriageEnabled
-            ).length;
-
-            return (
-              <div className="space-y-4">
-                {reviewsPausedCount > 0 && (
-                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-                    <p className="text-amber-600 dark:text-amber-400">
-                      {reviewsPausedCount === 1
-                        ? "1 repository has reviews paused due to an inactive subscription."
-                        : `${reviewsPausedCount} repositories have reviews paused due to an inactive subscription.`}
-                    </p>
-                    <Link
-                      to="/pricing"
-                      className="inline-flex items-center gap-1 mt-2 text-amber-700 dark:text-amber-300 hover:underline font-medium"
-                    >
-                      Reactivate subscription here
-                    </Link>
-                  </div>
-                )}
-
-                {triagePausedCount > 0 && (
-                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-                    <p className="text-amber-600 dark:text-amber-400">
-                      {triagePausedCount === 1
-                        ? "1 repository has triage paused due to an inactive or insufficient subscription."
-                        : `${triagePausedCount} repositories have triage paused due to an inactive or insufficient subscription.`}
-                    </p>
-                    <Link
-                      to="/pricing"
-                      className="inline-flex items-center gap-1 mt-2 text-amber-700 dark:text-amber-300 hover:underline font-medium"
-                    >
-                      Upgrade subscription here
-                    </Link>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  {activatedRepos.map((repo) => (
-                    <ActiveRepoAccordion
-                      key={`${repo.owner}/${repo.repo}`}
-                      settings={repo}
-                      canEnableReviews={canEnableReviews}
-                      canEnableTriage={canEnableTriage}
-                      token={user.access_token}
-                      orgId={orgId}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ==================== BILLING TAB COMPONENT ====================
 
-function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null }) {
-  const { refreshSubscription } = useAuth();
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+// ==================== BILLING HISTORY COMPONENT ====================
 
+function BillingHistoryCard({ user, orgId, isSoloUser }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null; isSoloUser?: boolean }) {
   const { data: billing, isLoading } = useBilling(user?.access_token, orgId);
-  const cancelSubscription = useCancelSubscription(user?.access_token, orgId);
-  const resubscribe = useResubscribe(user?.access_token, orgId);
   const getInvoice = useGetInvoice(user?.access_token);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const subscription = billing?.subscription;
   const orders = billing?.orders || [];
-
-  const hasSubscription = subscription?.tier && subscription.tier !== "FREE";
-  const cancelAtPeriodEnd = subscription?.cancelAtPeriodEnd;
-
-  const handleCancelSubscription = async () => {
-    setShowCancelDialog(false);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    try {
-      await cancelSubscription.mutateAsync();
-      await refreshSubscription();
-      setSuccessMessage("Subscription cancelled. You will have access until the end of your billing period.");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to cancel subscription");
-    }
-  };
-
-  const handleResubscribe = async () => {
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    try {
-      await resubscribe.mutateAsync();
-      await refreshSubscription();
-      setSuccessMessage("Subscription reactivated!");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to reactivate subscription");
-    }
-  };
 
   const handleDownloadInvoice = async (orderId: string) => {
     setDownloadingInvoice(orderId);
+    setErrorMessage(null);
     try {
       const result = await getInvoice.mutateAsync(orderId);
       if (result.invoiceUrl) {
@@ -1080,19 +692,98 @@ function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"];
   };
 
   return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Billing History</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {errorMessage && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive mb-4">
+            {errorMessage}
+          </div>
+        )}
+        {isLoading ? (
+          <div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex justify-between items-center py-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-8 w-8" />
+              </div>
+            ))}
+          </div>
+        ) : orders.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No billing history yet
+          </p>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-2 font-medium text-muted-foreground">Date</th>
+                  <th className="pb-2 font-medium text-muted-foreground">Plan</th>
+                  <th className="pb-2 font-medium text-muted-foreground text-right">Amount</th>
+                  <th className="pb-2 w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id} className="border-b last:border-0">
+                    <td className="py-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        {formatDate(order.createdAt)}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      {isSoloUser
+                        ? order.productName
+                          .replace(/^1\s*[×x]\s*/i, "")
+                          .replace(/\(at\s+/i, "at ")
+                          .replace(/\s*\/\s*(month|year)\)/, " / $1")
+                        : order.productName}
+                    </td>
+                    <td className="py-3 text-right">
+                      {formatCurrency(order.amount, order.currency)}
+                    </td>
+                    <td className="py-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDownloadInvoice(order.id)}
+                        disabled={downloadingInvoice === order.id}
+                      >
+                        {downloadingInvoice === order.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Download className="size-4" />
+                        )}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ==================== BILLING TAB COMPONENT ====================
+
+function BillingTab({ user, orgId, isSoloUser }: { user: ReturnType<typeof useAuth>["user"]; orgId?: string | null; isSoloUser?: boolean }) {
+  const { currentSeat, hasSeat } = useOrganization();
+
+  const { isLoading } = useBilling(user?.access_token, orgId);
+
+  const hasSubscription = hasSeat && currentSeat?.tier;
+  const cancelAtPeriodEnd = currentSeat?.cancelAtPeriodEnd;
+
+  return (
     <div className="space-y-6">
-      {successMessage && (
-        <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 text-green-600 dark:text-green-400">
-          {successMessage}
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
-          {errorMessage}
-        </div>
-      )}
-
       {/* Current Plan */}
       <Card>
         <CardHeader>
@@ -1107,73 +798,35 @@ function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"];
           ) : (
             <div className="space-y-4">
               <div>
-                <p className="text-lg font-medium">{getTierName(subscription?.tier)}</p>
+                <p className="text-lg">{getTierName(currentSeat?.tier)}</p>
                 {hasSubscription ? (
                   cancelAtPeriodEnd ? (
                     <p className="text-sm text-orange-600 dark:text-orange-400">
-                      Cancels {formatDate(subscription?.expiresAt)}
+                      Cancels {formatDate(currentSeat?.expiresAt)}
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Renews {formatDate(subscription?.expiresAt)}
+                      Renews {formatDate(currentSeat?.expiresAt)}
                     </p>
                   )
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Upgrade to enable code reviews
+                    You're on the free plan
                   </p>
                 )}
               </div>
 
-              <div className="flex gap-2">
-                {hasSubscription ? (
-                  cancelAtPeriodEnd ? (
-                    <Button
-                      onClick={handleResubscribe}
-                      disabled={resubscribe.isPending}
-                    >
-                      {resubscribe.isPending ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" />
-                          Reactivating...
-                        </>
-                      ) : (
-                        "Resubscribe"
-                      )}
-                    </Button>
-                  ) : (
-                    <>
-                      <Link to="/pricing">
-                        <Button variant="secondary">Change Plan</Button>
-                      </Link>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowCancelDialog(true)}
-                        disabled={cancelSubscription.isPending}
-                      >
-                        {cancelSubscription.isPending ? (
-                          <>
-                            <Loader2 className="size-4 animate-spin mr-2" />
-                            Cancelling...
-                          </>
-                        ) : (
-                          "Downgrade to Free"
-                        )}
-                      </Button>
-                    </>
-                  )
-                ) : (
-                  <Link to="/pricing">
-                    <Button>Upgrade</Button>
-                  </Link>
-                )}
-              </div>
+              {!hasSubscription && (
+                <Button size="sm" asChild>
+                  <Link to="/pricing">Upgrade</Link>
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Subscription Details */}
+      {/* Subscription Details - only show when user has a subscription */}
       {(hasSubscription || isLoading) && (
         <Card>
           <CardHeader>
@@ -1195,32 +848,32 @@ function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"];
                   <Skeleton className="h-4 w-20" />
                 </div>
               </dl>
-            ) : subscription && hasSubscription ? (
+            ) : currentSeat && hasSubscription ? (
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Status</dt>
                   <dd>
-                    {subscription?.status === "ACTIVE" ? (
+                    {currentSeat.status === "ACTIVE" ? (
                       <span className="inline-flex items-center gap-1.5">
-                        Active
+                        {cancelAtPeriodEnd ? <Badge variant="secondary" className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400">Cancelling</Badge> : <Badge variant="secondary" className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">Active</Badge>}
                       </span>
                     ) : (
                       <span className="text-orange-600 dark:text-orange-400">
-                        {subscription?.status}
+                        {currentSeat.status}
                       </span>
                     )}
                   </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Plan</dt>
-                  <dd>{getTierName(subscription?.tier)}</dd>
+                  <dd>{getTierName(currentSeat.tier)}</dd>
                 </div>
-                {subscription?.expiresAt && (
+                {currentSeat.expiresAt && (
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">
                       {cancelAtPeriodEnd ? "Access Until" : "Next Billing Date"}
                     </dt>
-                    <dd>{formatDate(subscription?.expiresAt)}</dd>
+                    <dd>{formatDate(currentSeat.expiresAt)}</dd>
                   </div>
                 )}
               </dl>
@@ -1230,107 +883,531 @@ function BillingTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"];
       )}
 
       {/* Billing History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Billing History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div>
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex justify-between items-center py-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-8 w-8" />
-                </div>
-              ))}
-            </div>
-          ) : orders.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              No billing history yet
-            </p>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="pb-2 font-medium text-muted-foreground">Date</th>
-                    <th className="pb-2 font-medium text-muted-foreground">Plan</th>
-                    <th className="pb-2 font-medium text-muted-foreground text-right">Amount</th>
-                    <th className="pb-2 w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr key={order.id} className="border-b last:border-0">
-                      <td className="py-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          {formatDate(order.createdAt)}
-                        </span>
-                      </td>
-                      <td className="py-3">{order.productName}</td>
-                      <td className="py-3 text-right">
-                        {formatCurrency(order.amount, order.currency)}
-                      </td>
-                      <td className="py-3">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownloadInvoice(order.id)}
-                          disabled={downloadingInvoice === order.id}
-                        >
-                          {downloadingInvoice === order.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Download className="size-4" />
-                          )}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Cancel Dialog */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel your subscription? You will have access until the end of your current billing period.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-primary text-background hover:bg-primary/90">Keep Subscription</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleCancelSubscription}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Downgrade to Free
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BillingHistoryCard user={user} orgId={orgId} isSoloUser={isSoloUser} />
     </div>
   );
 }
 
 // ==================== ORGANIZATION TAB ====================
 
+// ==================== SEAT MANAGEMENT COMPONENT ====================
+
+function SeatManagementCard({
+  orgId,
+  subscription,
+  seats,
+}: {
+  orgId: string | null;
+  subscription: OrgSubscription | null;
+  seats: { total: number; assigned: number; available: number } | null;
+}) {
+  const [pendingSeatCount, setPendingSeatCount] = useState<number | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  const currentSeatCount = subscription?.seatCount ?? 0;
+  const assignedSeats = seats?.assigned ?? 0;
+  const isCancelling = subscription?.cancelAtPeriodEnd ?? false;
+
+  // Use pendingSeatCount for preview, but only if it differs from current
+  const previewCount = pendingSeatCount !== null && pendingSeatCount !== currentSeatCount
+    ? pendingSeatCount
+    : null;
+
+  const { data: preview, isLoading: isLoadingPreview } = usePreviewSeatChange(orgId, previewCount);
+  const updateSeatCountMutation = useUpdateSeatCount(orgId);
+  const reactivateSubscriptionMutation = useReactivateOrgSubscription(orgId);
+
+  // Reset pending count when subscription changes
+  useEffect(() => {
+    setPendingSeatCount(null);
+  }, [currentSeatCount]);
+
+  const displaySeatCount = pendingSeatCount ?? currentSeatCount;
+  const hasChanges = pendingSeatCount !== null && pendingSeatCount !== currentSeatCount;
+  const isAddingSeats = hasChanges && pendingSeatCount !== null && pendingSeatCount > currentSeatCount;
+  const willReactivate = isCancelling && isAddingSeats;
+
+  const handleIncrement = () => {
+    const newCount = Math.min(100, displaySeatCount + 1);
+    setPendingSeatCount(newCount);
+  };
+
+  const handleDecrement = () => {
+    // Can't go below assigned seats or 1
+    const minSeats = Math.max(1, assignedSeats);
+    const newCount = Math.max(minSeats, displaySeatCount - 1);
+    setPendingSeatCount(newCount);
+  };
+
+  const handleConfirmUpdate = async () => {
+    if (pendingSeatCount === null) return;
+
+    try {
+      // If adding seats to a cancelling subscription, reactivate it first
+      if (willReactivate) {
+        await reactivateSubscriptionMutation.mutateAsync();
+      }
+      await updateSeatCountMutation.mutateAsync(pendingSeatCount);
+      setShowConfirmDialog(false);
+      // Don't reset pendingSeatCount here - let the useEffect do it when
+      // currentSeatCount updates from the refetch to avoid flashing old value
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const isPending = updateSeatCountMutation.isPending || reactivateSubscriptionMutation.isPending;
+
+  const formatCents = (cents: number) => {
+    const dollars = Math.abs(cents) / 100;
+    const formatted = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(dollars);
+    return cents < 0 ? `-${formatted}` : formatted;
+  };
+
+  if (!subscription || subscription.status !== "ACTIVE") {
+    return null;
+  }
+
+  // Get price per seat based on tier
+  const tierPrices: Record<string, number> = {
+    BYOK: 9,
+    CODE_REVIEW: 19,
+    TRIAGE: 49,
+  };
+  const pricePerSeat = tierPrices[subscription.tier] ?? 19;
+  const monthlyTotal = displaySeatCount * pricePerSeat;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Manage Seats</CardTitle>
+        <CardDescription>
+          Add or remove seats from your subscription
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Current: {currentSeatCount} {currentSeatCount === 1 ? "seat" : "seats"} (${currentSeatCount * pricePerSeat}/month)
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Assigned: {assignedSeats}/{currentSeatCount}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleDecrement}
+            disabled={displaySeatCount <= Math.max(1, assignedSeats)}
+          >
+            <span className="text-lg font-semibold">-</span>
+          </Button>
+
+          <div className="flex flex-col items-center min-w-[60px]">
+            <span className="text-2xl">{displaySeatCount}</span>
+            <span className="text-xs text-muted-foreground">seats</span>
+          </div>
+
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleIncrement}
+            disabled={displaySeatCount >= 100}
+          >
+            <span className="text-lg font-semibold">+</span>
+          </Button>
+
+          {hasChanges && (
+            <Button
+              size="sm"
+              onClick={() => setShowConfirmDialog(true)}
+              disabled={isPending}
+            >
+              {isPending && (
+                <Loader2 className="size-3 animate-spin" />
+              )}
+              {willReactivate ? "Update & Reactivate" : "Update Seats"}
+            </Button>
+          )}
+        </div>
+
+        {hasChanges && (
+          <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+            {willReactivate && (
+              <p className="text-sm text-green-600 font-medium">
+                This will reactivate your subscription
+              </p>
+            )}
+            {isLoadingPreview ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Calculating proration...</span>
+              </div>
+            ) : preview ? (
+              <>
+                <div className="space-y-1">
+                  <p className="text-sm">Charge today:</p>
+                  {preview.proratedCharge !== 0 ? (
+                    <p className="text-base">
+                      {preview.proratedCharge > 0 ? (
+                        <span className="">{formatCents(preview.proratedCharge)}</span>
+                      ) : (
+                        <span className="text-green-600">{formatCents(preview.proratedCharge)}</span>
+                      )}
+                      <span className="text-sm text-muted-foreground ml-1">
+                        {preview.proratedCharge > 0 ? "(prorated)" : "(credit applied to next invoice)"}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-base font-semibold text-muted-foreground">$0.00</p>
+                  )}
+                </div>
+                <div className="pt-2 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Next billing amount: <span className="font-medium">{formatCents(preview.nextBillingAmount)}</span>/month
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                New total: ${monthlyTotal}/month
+              </p>
+            )}
+          </div>
+        )}
+
+        {(updateSeatCountMutation.error || reactivateSubscriptionMutation.error) && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {updateSeatCountMutation.error?.message || reactivateSubscriptionMutation.error?.message}
+          </div>
+        )}
+
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {willReactivate ? "Confirm Seat Change & Reactivation" : "Confirm Seat Change"}
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2">
+                  <p>
+                    You are changing from {currentSeatCount} to {pendingSeatCount} {pendingSeatCount === 1 ? "seat" : "seats"}.
+                  </p>
+                  {willReactivate && (
+                    <p className="text-green-600">
+                      This will also reactivate your subscription.
+                    </p>
+                  )}
+                  {preview && preview.proratedCharge !== 0 && (
+                    <p>
+                      {preview.proratedCharge > 0 ? (
+                        <>You will be charged <span className="font-medium">{formatCents(preview.proratedCharge)}</span> today (prorated).</>
+                      ) : (
+                        <>You will receive a credit of <span className="font-medium text-green-600">{formatCents(Math.abs(preview.proratedCharge))}</span> on your next invoice.</>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+              <AlertDialogAction size="sm" onClick={handleConfirmUpdate}>
+                {isPending && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
+                {willReactivate ? "Confirm & Reactivate" : "Confirm"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </CardContent>
+    </Card>
+  );
+}
+
 const roleBadgeVariant: Record<OrganizationRole, "default" | "secondary" | "outline"> = {
-  OWNER: "default",
+  OWNER: "secondary",
   ADMIN: "secondary",
-  MEMBER: "outline",
+  MEMBER: "secondary",
 };
 
+const tierLabels: Record<string, string> = {
+  BYOK: "BYOK",
+  CODE_REVIEW: "Review",
+  TRIAGE: "Triage",
+};
+
+function SeatBadge({ hasSeat }: { hasSeat: boolean }) {
+  if (!hasSeat) {
+    return <span className="text-sm text-muted-foreground">No seat</span>;
+  }
+
+  return <Badge variant="secondary" className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">Seat assigned</Badge>;
+}
+
+function SubscriptionBadge({ subscription }: { subscription: OrgSubscription | null }) {
+  if (!subscription || !subscription.tier) {
+    return <span className="text-sm text-muted-foreground">No subscription</span>;
+  }
+
+  const tierLabel = tierLabels[subscription.tier] || subscription.tier;
+
+  if (subscription.cancelAtPeriodEnd) {
+    return (
+      <Badge variant="secondary" className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400">
+        Cancelling
+      </Badge>
+    );
+  }
+
+  if (subscription.status !== "ACTIVE") {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        {tierLabel} - {subscription.status}
+      </Badge>
+    );
+  }
+
+  return <Badge variant="secondary">{tierLabel} ({subscription.seatCount} seats)</Badge>;
+}
+
+function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: {
+  orgId: string | null;
+  avatarUrl: string | null;
+  orgName: string;
+  onUpdated: () => void;
+}) {
+  const api = useApi();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState(orgName);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Reset name input when orgName changes
+  useEffect(() => {
+    setNameInput(orgName);
+  }, [orgName]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !orgId) return;
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Invalid file type. Allowed: JPEG, PNG, WebP, GIF");
+      return;
+    }
+
+    setIsUploading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      // Compress the image
+      const compressedFile = await imageCompression(file, {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 256,
+        useWebWorker: true,
+      });
+
+      const formData = new FormData();
+      formData.append("file", compressedFile);
+      const response = await api.upload(`/api/organizations/${orgId}/avatar`, formData);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to upload avatar");
+      }
+
+      onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload avatar");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    if (!orgId) return;
+
+    setIsDeleting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await api.delete(`/api/organizations/${orgId}/avatar`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete avatar");
+      }
+
+      onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete avatar");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!orgId || !nameInput.trim() || nameInput.trim() === orgName) return;
+
+    if (nameInput.trim().length < 2) {
+      setError("Organization name must be at least 2 characters");
+      return;
+    }
+
+    setIsSavingName(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await api.put(`/api/organizations/${orgId}`, { name: nameInput.trim() });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update organization name");
+      }
+
+      setSuccessMessage("Organization name updated");
+      onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update organization name");
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const hasNameChanges = nameInput.trim() !== orgName;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Organization</CardTitle>
+        <CardDescription>Manage your organization's profile</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-600 dark:bg-green-400/10 dark:text-green-400">
+            {successMessage}
+          </div>
+        )}
+
+        {/* Avatar */}
+        <div className="space-y-2">
+          <Label>Avatar</Label>
+          <div className="flex flex-col items-start gap-4">
+            <div className="relative">
+              <Avatar className="size-16 rounded-xl overflow-hidden">
+                <AvatarImage src={avatarUrl ?? undefined} alt={orgName} />
+                <AvatarFallback className="text-3xl">{orgName.charAt(0)}</AvatarFallback>
+              </Avatar>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading || isDeleting || isSavingName}
+              >
+                {isUploading ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Upload className="size-3.5" />
+                )}
+                {avatarUrl ? "Change" : "Upload"}
+              </Button>
+              {avatarUrl && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDeleteAvatar}
+                  disabled={isUploading || isDeleting || isSavingName}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Recommended: Square image, at least 128x128 pixels.
+          </p>
+        </div>
+
+        {/* Name */}
+        <div className="space-y-2">
+          <Label htmlFor="org-name">Name</Label>
+          <div className="flex flex-col gap-4">
+            <Input
+              id="org-name"
+              size="sm"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              disabled={isUploading || isDeleting || isSavingName}
+              placeholder="Organization name"
+            />
+            <Button
+              className="w-fit"
+              size="sm"
+              onClick={handleSaveName}
+              disabled={!hasNameChanges || isSavingName || isUploading || isDeleting}
+            >
+              {isSavingName ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["user"]; orgId: string | null }) {
-  const { orgDetails, canManageMembers } = useOrganization();
-  const { data: members, isLoading: isLoadingMembers } = useOrganizationMembers(orgId);
+  const { orgDetails, canManageMembers, canManageBilling, canUpdateOrg, subscription, seats, currentOrg } = useOrganization();
+  const queryClient = useQueryClient();
+  const { data: membersData, isLoading: isLoadingMembers } = useOrganizationMembers(orgId);
+  const members = membersData?.members || [];
+  const quotaPool = membersData?.quotaPool || orgDetails?.quotaPool;
+  const seatsInfo = membersData?.seats || seats;
+
   const {
     invites,
     isLoading: isLoadingInvites,
@@ -1340,12 +1417,20 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
   } = useOrganizationInvites(orgId);
   const updateRoleMutation = useUpdateMemberRole(orgId);
   const removeMemberMutation = useRemoveMember(orgId);
+  const manageSubscriptionMutation = useManageSubscription(orgId);
+  const cancelSubscriptionMutation = useCancelOrgSubscription(orgId);
+  const reactivateSubscriptionMutation = useReactivateOrgSubscription(orgId);
+  const assignSeatMutation = useAssignSeat(orgId);
+  const unassignSeatMutation = useUnassignSeat(orgId);
+  const reassignSeatMutation = useReassignSeat(orgId);
 
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<OrganizationRole>("MEMBER");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [initialSeatCount, setInitialSeatCount] = useState(1);
 
   const handleCreateInvite = async (withEmail: boolean) => {
     try {
@@ -1398,8 +1483,203 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
     }
   };
 
+  const handleManageSubscription = async (tier: "BYOK" | "CODE_REVIEW" | "TRIAGE", billing: "monthly" | "yearly", seatCount: number) => {
+    setSubscriptionError(null);
+    try {
+      const result = await manageSubscriptionMutation.mutateAsync({ tier, billing, seatCount });
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+      }
+    } catch (error) {
+      setSubscriptionError(error instanceof Error ? error.message : "Failed to manage subscription");
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!confirm("Are you sure you want to cancel this subscription? All members will lose access at the end of the billing period.")) return;
+    try {
+      await cancelSubscriptionMutation.mutateAsync();
+    } catch (error) {
+      console.error("Failed to cancel subscription:", error);
+    }
+  };
+
+  const handleReactivateSubscription = async () => {
+    try {
+      await reactivateSubscriptionMutation.mutateAsync();
+    } catch (error) {
+      console.error("Failed to reactivate subscription:", error);
+    }
+  };
+
+  const handleAssignSeat = async (userId: string) => {
+    try {
+      await assignSeatMutation.mutateAsync(userId);
+    } catch (error) {
+      console.error("Failed to assign seat:", error);
+    }
+  };
+
+  const handleUnassignSeat = async (userId: string) => {
+    if (!confirm("Are you sure you want to unassign this seat? The user will lose access immediately.")) return;
+    try {
+      await unassignSeatMutation.mutateAsync(userId);
+    } catch (error) {
+      console.error("Failed to unassign seat:", error);
+    }
+  };
+
+  const handleReassignSeat = async (sourceUserId: string, targetUserId: string) => {
+    try {
+      await reassignSeatMutation.mutateAsync({ sourceUserId, targetUserId });
+    } catch (error) {
+      console.error("Failed to reassign seat:", error);
+    }
+  };
+
+  const assignedSeats = members.filter((m) => m.hasSeat).length;
+  const membersWithoutSeat = members.filter((m) => !m.hasSeat);
+  const availableSeats = (seatsInfo?.available ?? 0);
+
+  const handleAvatarUpdated = () => {
+    queryClient.invalidateQueries({ queryKey: ["organization"] });
+    queryClient.invalidateQueries({ queryKey: ["organizations"] });
+  };
+
   return (
     <div className="space-y-6">
+      {/* Organization settings - for owners and admins */}
+      {canUpdateOrg && (
+        <OrganizationCard
+          orgId={orgId}
+          avatarUrl={orgDetails?.avatarUrl ?? null}
+          orgName={currentOrg?.name ?? "Organization"}
+          onUpdated={handleAvatarUpdated}
+        />
+      )}
+
+      {/* Subscription & Quota Info */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Organization Subscription</CardTitle>
+            <CardDescription>Manage your team's subscription and seats</CardDescription>
+          </div>
+          {canManageBilling && (
+            <SubscriptionBadge subscription={subscription} />
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {subscription?.status === "ACTIVE" ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">
+                    {tierLabels[subscription.tier]} Plan
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {assignedSeats} of {subscription.seatCount} seats assigned
+                    {availableSeats > 0 && ` (${availableSeats} available)`}
+                  </p>
+                </div>
+                {canManageBilling && (
+                  <div className="flex gap-2">
+                    {subscription.cancelAtPeriodEnd ? (
+                      <Button size="sm" onClick={handleReactivateSubscription}>
+                        Reactivate
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="destructive" onClick={handleCancelSubscription}>
+                        Cancel subscription
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {quotaPool && (
+                <div className="pt-4 border-t">
+                  {quotaPool.hasUnlimited || quotaPool.total === -1 ? (
+                    <p className="text-sm">Unlimited reviews (BYOK)</p>
+                  ) : (
+                    <>
+                      <p className="text-sm">
+                        {quotaPool.used} / {quotaPool.total} reviews used this cycle
+                      </p>
+                      <div className="w-full bg-muted rounded-full h-2 mt-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%` }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-muted-foreground mb-4">No active subscription</p>
+              {canManageBilling && (
+                <div className="flex flex-col gap-4 items-center">
+                  <p className="text-sm">Choose a plan to get started:</p>
+
+                  {/* Seat count selector */}
+                  <div className="flex items-center gap-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setInitialSeatCount(Math.max(1, initialSeatCount - 1))}
+                      disabled={initialSeatCount <= 1}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <div className="flex flex-col items-center min-w-[60px]">
+                      <span className="text-2xl font-semibold">{initialSeatCount}</span>
+                      <span className="text-xs text-muted-foreground">{initialSeatCount === 1 ? "seat" : "seats"}</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setInitialSeatCount(Math.min(100, initialSeatCount + 1))}
+                      disabled={initialSeatCount >= 100}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => handleManageSubscription("BYOK", "monthly", initialSeatCount)}>
+                      BYOK (${9 * initialSeatCount}/mo)
+                    </Button>
+                    <Button variant="outline" onClick={() => handleManageSubscription("CODE_REVIEW", "monthly", initialSeatCount)}>
+                      Review (${19 * initialSeatCount}/mo)
+                    </Button>
+                    <Button onClick={() => handleManageSubscription("TRIAGE", "monthly", initialSeatCount)}>
+                      Triage (${49 * initialSeatCount}/mo)
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {subscriptionError && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          {subscriptionError}
+        </div>
+      )}
+
+      {/* Seat Management - show when subscription is active */}
+      {canManageBilling && subscription?.status === "ACTIVE" && (
+        <SeatManagementCard
+          orgId={orgId}
+          subscription={subscription}
+          seats={seatsInfo}
+        />
+      )}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -1408,7 +1688,7 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
               {isLoadingMembers ? (
                 <Skeleton className="h-4 w-32" />
               ) : (
-                <>{members?.length || 0} of {orgDetails?.seatCount || 0} seats used</>
+                <>{assignedSeats} seats assigned, {members.length} members</>
               )}
             </CardDescription>
           </div>
@@ -1421,8 +1701,7 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
               }
             }}>
               <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
+                <Button size="sm">
                   Invite member
                 </Button>
               </DialogTrigger>
@@ -1486,21 +1765,23 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
                     </div>
                     <DialogFooter className="flex-col sm:flex-row gap-2">
                       <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => handleCreateInvite(false)}
                         disabled={isCreatingInvite}
                       >
-                        <LinkIcon className="mr-2 h-4 w-4" />
+                        <LinkIcon className="size-3" />
                         Create link
                       </Button>
                       <Button
+                        size="sm"
                         onClick={() => handleCreateInvite(true)}
                         disabled={isCreatingInvite || !inviteEmail}
                       >
                         {isCreatingInvite ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="size-3 animate-spin" />
                         ) : (
-                          <Mail className="mr-2 h-4 w-4" />
+                          <Mail className="size-3" />
                         )}
                         Send invite
                       </Button>
@@ -1532,37 +1813,47 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
                 <TableRow>
                   <TableHead>Member</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Seat</TableHead>
                   <TableHead>Joined</TableHead>
-                  {canManageMembers && <TableHead className="w-[50px]" />}
+                  {(canManageMembers || canManageBilling) && <TableHead className="w-[50px]" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members?.map((member) => (
-                  <TableRow key={member.userId}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={member.avatarUrl || undefined}
-                          alt={member.login}
-                          className="w-8 h-8 rounded-full"
-                        />
-                        <div>
-                          <p className="font-medium">{member.name || member.login}</p>
-                          <p className="text-sm text-muted-foreground">@{member.login}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={roleBadgeVariant[member.role]}>
-                        {member.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(member.joinedAt).toLocaleDateString()}
-                    </TableCell>
-                    {canManageMembers && (
+                {members.map((member) => {
+                  const isSelf = member.userId === user?.visitorId;
+                  const hasSeat = member.hasSeat;
+
+                  return (
+                    <TableRow key={member.userId}>
                       <TableCell>
-                        {member.userId !== user?.visitorId && member.role !== "OWNER" && (
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={member.avatarUrl || undefined}
+                            alt={member.login}
+                            className="w-8 h-8 rounded-full"
+                          />
+                          <div>
+                            <p className="font-medium">
+                              {member.name || member.login}
+                              {isSelf && <span className="text-muted-foreground ml-1">(you)</span>}
+                            </p>
+                            <p className="text-sm text-muted-foreground">@{member.login}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={roleBadgeVariant[member.role]}>
+                          {formatRoleName(member.role)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <SeatBadge hasSeat={hasSeat} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {new Date(member.joinedAt).toLocaleDateString()}
+                      </TableCell>
+                      {(canManageMembers || canManageBilling) && (
+                        <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon">
@@ -1570,26 +1861,68 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleRoleChange(member.userId, member.role === "ADMIN" ? "MEMBER" : "ADMIN")}
-                              >
-                                Make {member.role === "ADMIN" ? "Member" : "Admin"}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => handleRemoveMember(member.userId)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Remove
-                              </DropdownMenuItem>
+                              {/* Seat assignment - owners only */}
+                              {canManageBilling && !hasSeat && availableSeats > 0 && (
+                                <>
+                                  <DropdownMenuItem onClick={() => handleAssignSeat(member.userId)}>
+                                    Assign seat
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              {(canManageBilling || canManageMembers) && hasSeat && (
+                                <>
+                                  {membersWithoutSeat.length > 0 && (
+                                    <DropdownMenuSub>
+                                      <DropdownMenuSubTrigger>
+                                        Reassign seat to...
+                                      </DropdownMenuSubTrigger>
+                                      <DropdownMenuSubContent>
+                                        {membersWithoutSeat.map((targetMember) => (
+                                          <DropdownMenuItem
+                                            key={targetMember.userId}
+                                            onClick={() => handleReassignSeat(member.userId, targetMember.userId)}
+                                          >
+                                            {targetMember.name || targetMember.login}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                  )}
+                                  <DropdownMenuItem
+                                    className="text-orange-600"
+                                    onClick={() => handleUnassignSeat(member.userId)}
+                                  >
+                                    Unassign seat
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              {/* Role management */}
+                              {canManageMembers && !isSelf && member.role !== "OWNER" && (
+                                <DropdownMenuItem
+                                  onClick={() => handleRoleChange(member.userId, member.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                                >
+                                  Make {member.role === "ADMIN" ? "Member" : "Admin"}
+                                </DropdownMenuItem>
+                              )}
+                              {/* Remove member */}
+                              {canManageMembers && !isSelf && member.role !== "OWNER" && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleRemoveMember(member.userId)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Remove
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -1641,7 +1974,7 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
                       </TableCell>
                       <TableCell>
                         <Badge variant={roleBadgeVariant[invite.role]}>
-                          {invite.role}
+                          {formatRoleName(invite.role)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -1667,6 +2000,11 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
           </CardContent>
         </Card>
       )}
+
+      {/* Billing History - shown for owners and admins */}
+      {(canManageBilling || canManageMembers) && (
+        <BillingHistoryCard user={user} orgId={orgId} />
+      )}
     </div>
   );
 }
@@ -1676,19 +2014,32 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
 type TabType = "general" | "organization" | "reviews" | "billing";
 
 export function SettingsPage() {
-  const { user, logout } = useAuth();
-  const { currentOrgId } = useOrganization();
+  const { user, logout, setUser } = useAuth();
+  const { currentOrgId, canManageMembers, canManageBilling } = useOrganization();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const validTabs: TabType[] = ["general", "organization", "reviews", "billing"];
+  // Check if user is a solo user (hide organization tab, show billing instead)
+  const isSoloUser = user?.accountType === "SOLO";
+
+  // Determine which tabs to show based on role
+  const isMember = !canManageMembers && !canManageBilling;
+  const isAdminOrOwner = canManageMembers || canManageBilling;
+
+  // Solo users see billing instead of organization, even if they're an owner
+  const showOrganizationTab = isAdminOrOwner && !isSoloUser;
+  const showBillingTab = isMember || isSoloUser;
+
+  // Build valid tabs based on role (reviews tab removed - now in sidebar)
+  const validTabs: TabType[] = showOrganizationTab
+    ? ["general", "organization"]
+    : ["general", "billing"];
+
   const tabParam = searchParams.get("tab") as TabType | null;
-  const activeTab: TabType = tabParam && validTabs.includes(tabParam) ? tabParam : "general";
+  const activeTab: TabType = tabParam && validTabs.includes(tabParam) ? tabParam : validTabs[0];
 
   const setActiveTab = (tab: string) => {
     setSearchParams({ tab }, { replace: true });
   };
-
-  const tier = user?.subscriptionTier || "FREE";
 
   return (
     <div className="p-8">
@@ -1697,23 +2048,23 @@ export function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="organization">Organization</TabsTrigger>
-          <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          <TabsTrigger value="billing">Billing</TabsTrigger>
+          {showOrganizationTab && <TabsTrigger value="organization">Organization</TabsTrigger>}
+          {showBillingTab && <TabsTrigger value="billing">Billing</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="general" className="max-w-2xl">
-          <GeneralTab user={user} tier={tier} logout={logout} orgId={currentOrgId} />
+        <TabsContent value="general">
+          <GeneralTab user={user} logout={logout} orgId={currentOrgId} setUser={setUser} />
         </TabsContent>
-        <TabsContent value="organization">
-          <OrganizationTab user={user} orgId={currentOrgId} />
-        </TabsContent>
-        <TabsContent value="reviews" className="max-w-2xl">
-          <ReviewsTab user={user} orgId={currentOrgId} />
-        </TabsContent>
-        <TabsContent value="billing" className="max-w-2xl">
-          <BillingTab user={user} orgId={currentOrgId} />
-        </TabsContent>
+        {showOrganizationTab && (
+          <TabsContent value="organization">
+            <OrganizationTab user={user} orgId={currentOrgId} />
+          </TabsContent>
+        )}
+        {showBillingTab && (
+          <TabsContent value="billing">
+            <BillingTab user={user} orgId={currentOrgId} isSoloUser={isSoloUser} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

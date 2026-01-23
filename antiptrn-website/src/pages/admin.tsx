@@ -149,14 +149,8 @@ export function AdminPage() {
   const pagination = data?.pagination;
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          View activity logs for your organization
-        </p>
-      </div>
-
+    <div className="p-8">
+      <h1 className="text-2xl mb-6">Admin</h1>
       <Card>
         <CardHeader>
           <CardTitle>Audit Logs</CardTitle>

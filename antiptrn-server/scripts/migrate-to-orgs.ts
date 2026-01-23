@@ -46,37 +46,43 @@ async function migrateToOrganizations() {
       counter++;
     }
 
-    // Create organization with user's subscription data
+    // Determine if user has an active subscription
+    const hasActiveSub = !!(user.subscriptionTier &&
+      user.subscriptionTier !== "FREE" &&
+      user.subscriptionStatus === "ACTIVE");
+
+    // Create organization with subscription data (org-level subscriptions)
     const org = await prisma.organization.create({
       data: {
         name: `${user.name || user.login}'s Organization`,
         slug,
-        subscriptionTier: user.subscriptionTier || "FREE",
-        subscriptionStatus: user.subscriptionStatus || "INACTIVE",
-        polarSubscriptionId: user.polarSubscriptionId,
-        polarProductId: user.polarProductId,
-        polarCustomerId: user.polarCustomerId,
-        subscriptionExpiresAt: user.subscriptionExpiresAt,
-        cancelAtPeriodEnd: user.cancelAtPeriodEnd || false,
         reviewsUsedThisCycle: user.reviewsUsedThisCycle || 0,
         anthropicApiKey: user.anthropicApiKey,
         customReviewRules: user.customReviewRules,
-        seatCount: 1,
+        // Transfer subscription data to organization
+        subscriptionTier: user.subscriptionTier && user.subscriptionTier !== "FREE" ? user.subscriptionTier : null,
+        subscriptionStatus: user.subscriptionStatus && user.subscriptionStatus !== "INACTIVE" ? user.subscriptionStatus : null,
+        polarSubscriptionId: user.polarSubscriptionId,
+        polarProductId: user.polarProductId,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        cancelAtPeriodEnd: user.cancelAtPeriodEnd ?? false,
+        seatCount: hasActiveSub ? 1 : 0,
       },
     });
 
     console.log(`  Created organization: ${org.name} (${org.slug})`);
 
-    // Make user the owner
+    // Make user the owner with a seat if they have an active subscription
     await prisma.organizationMember.create({
       data: {
         organizationId: org.id,
         userId: user.id,
         role: "OWNER",
+        hasSeat: hasActiveSub,
       },
     });
 
-    console.log(`  Made ${user.login} the OWNER`);
+    console.log(`  Made ${user.login} the OWNER${hasActiveSub ? " with seat" : ""}`);
 
     // Transfer repository settings to organization
     const repoSettings = await prisma.repositorySettings.findMany({

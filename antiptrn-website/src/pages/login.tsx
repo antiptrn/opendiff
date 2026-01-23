@@ -1,11 +1,14 @@
-import { useSearchParams, Navigate } from "react-router-dom";
+import { useSearchParams, Navigate, Link } from "react-router-dom";
 import { LoginForm } from "@/components/auth/login-form";
 import { useAuth } from "@/contexts/auth-context";
 import { Loader2 } from "lucide-react";
+import Logo from "@/components/logo";
 
 export default function LoginPage() {
     const [searchParams] = useSearchParams();
     const error = searchParams.get("error");
+    const addAccount = searchParams.get("addAccount") === "true";
+    const redirectUrl = searchParams.get("redirectUrl");
     const { user, isLoading } = useAuth();
 
     if (isLoading) {
@@ -16,21 +19,22 @@ export default function LoginPage() {
         );
     }
 
-    if (user) {
+    // Only redirect if logged in AND not adding an account
+    if (user && !addAccount) {
         return <Navigate to="/console" replace />;
     }
 
     return (
-        <section className="pt-40 pb-32 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto">
-            <div className="flex flex-col items-center justify-center mb-10">
-                <h1 className="text-8xl">Login</h1>
-                {error && (
-                    <p className="text-red-500 mb-4">
-                        Authentication error: {error.replace(/_/g, " ")}
-                    </p>
-                )}
-            </div>
-            <LoginForm />
+        <section className="p-8 flex flex-col items-center justify-center h-screen w-screen">
+            <Link to="/" className="mb-4">
+                <Logo />
+            </Link>
+            {error && (
+                <p className="text-red-500 mb-4">
+                    Authentication error: {error.replace(/_/g, " ")}
+                </p>
+            )}
+            <LoginForm addAccount={addAccount} redirectUrl={redirectUrl} />
         </section>
     );
 }

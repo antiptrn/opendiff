@@ -4,14 +4,15 @@ import {
   TooltipRoot,
   TooltipTrigger
 } from "@/components/ui/tooltip";
-import { useCreateSubscription } from "@/hooks/use-api";
 import type { SubscriptionTier } from "@/hooks/use-auth";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganization, useManageSubscription } from "@/hooks/use-organization";
 import NumberFlow from "@number-flow/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Info, Loader2, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const TIER_HIERARCHY: Record<SubscriptionTier, number> = {
@@ -26,10 +27,8 @@ interface Plan {
   tier: SubscriptionTier;
   monthlyPrice: number;
   yearlyPrice: number;
-  monthlyPriceId: string;
-  yearlyPriceId: string;
   description: string;
-  monthlyReviewQuota: number; // 0 means no reviews
+  monthlyReviewQuota: number;
   features: { name: string; included: boolean; tooltip?: string }[];
   popular?: boolean;
 }
@@ -40,16 +39,14 @@ const plans: Plan[] = [
     tier: "BYOK",
     monthlyPrice: 9,
     yearlyPrice: 90,
-    monthlyPriceId: import.meta.env.VITE_POLAR_BYOK_MONTHLY_PRODUCT_ID || "",
-    yearlyPriceId: import.meta.env.VITE_POLAR_BYOK_YEARLY_PRODUCT_ID || "",
     description: "Bring your own Anthropic API key",
-    monthlyReviewQuota: -1, // Unlimited
+    monthlyReviewQuota: -1,
     features: [
       { name: "Unlimited repositories", included: true },
       { name: "Community support", included: true },
-      { name: "Triage mode", included: true, tooltip: "Enables back-and-forth conversations on review comments. The bot will respond to replies and engage in discussions about code changes." },
-      { name: "Requires your API key", included: true, tooltip: "You'll need to provide your own Anthropic API key in settings. You pay Anthropic directly for API usage." },
-      { name: "Custom review rules", included: true, tooltip: "Define custom rules and guidelines for the AI to follow when reviewing your code." },
+      { name: "Triage mode", included: true, tooltip: "Enables back-and-forth conversations on review comments." },
+      { name: "Requires your API key", included: true, tooltip: "You'll need to provide your own Anthropic API key. You pay Anthropic directly for API usage." },
+      { name: "Custom review rules", included: true },
     ],
   },
   {
@@ -57,16 +54,14 @@ const plans: Plan[] = [
     tier: "CODE_REVIEW",
     monthlyPrice: 19,
     yearlyPrice: 190,
-    monthlyPriceId: import.meta.env.VITE_POLAR_CODE_REVIEW_MONTHLY_PRODUCT_ID || "",
-    yearlyPriceId: import.meta.env.VITE_POLAR_CODE_REVIEW_YEARLY_PRODUCT_ID || "",
     description: "For professional developers",
     monthlyReviewQuota: 100,
     features: [
       { name: "10 repositories", included: true },
       { name: "Email support", included: true },
-      { name: "Triage mode", included: false, tooltip: "Enables back-and-forth conversations on review comments. The bot will respond to replies and engage in discussions about code changes." },
+      { name: "Triage mode", included: false, tooltip: "Enables back-and-forth conversations on review comments." },
       { name: "Priority reviews", included: true },
-      { name: "Custom review rules", included: true, tooltip: "Define custom rules and guidelines for the AI to follow when reviewing your code." },
+      { name: "Custom review rules", included: true },
     ],
   },
   {
@@ -74,16 +69,15 @@ const plans: Plan[] = [
     tier: "TRIAGE",
     monthlyPrice: 49,
     yearlyPrice: 490,
-    monthlyPriceId: import.meta.env.VITE_POLAR_TRIAGE_MONTHLY_PRODUCT_ID || "",
-    yearlyPriceId: import.meta.env.VITE_POLAR_TRIAGE_YEARLY_PRODUCT_ID || "",
-    description: "For teams and organizations",
+    description: "For power users",
     monthlyReviewQuota: 250,
+    popular: true,
     features: [
       { name: "Unlimited repositories", included: true },
       { name: "Priority support", included: true },
-      { name: "Triage mode", included: true, tooltip: "Enables back-and-forth conversations on review comments. The bot will respond to replies and engage in discussions about code changes." },
+      { name: "Triage mode", included: true, tooltip: "Enables back-and-forth conversations on review comments." },
       { name: "Priority reviews", included: true },
-      { name: "Custom review rules", included: true, tooltip: "Define custom rules and guidelines for the AI to follow when reviewing your code." },
+      { name: "Custom review rules", included: true },
     ],
   },
 ];
@@ -91,59 +85,61 @@ const plans: Plan[] = [
 function PlanCard({
   plan,
   isYearly,
-  currentTier,
-  currentProductId,
-  onSubscribe,
+  onGetStarted,
   isLoading,
+  // Solo user subscription info (only provided for solo users)
+  isSoloUser,
+  currentTier,
+  currentBillingYearly,
 }: {
   plan: Plan;
   isYearly: boolean;
-  currentTier: SubscriptionTier;
-  currentProductId: string | null | undefined;
-  onSubscribe: (productId: string) => void;
+  onGetStarted: (tier: SubscriptionTier) => void;
   isLoading: boolean;
+  isSoloUser?: boolean;
+  currentTier?: SubscriptionTier | null;
+  currentBillingYearly?: boolean;
 }) {
-  const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
-  const productId = isYearly ? plan.yearlyPriceId : plan.monthlyPriceId;
+  const price = isYearly ? plan.yearlyPrice / 12 : plan.monthlyPrice;
 
-  const currentLevel = TIER_HIERARCHY[currentTier];
-  const planLevel = TIER_HIERARCHY[plan.tier];
-
-  // Compare exact product IDs when available (so monthly vs yearly are different)
-  // Fall back to tier comparison if no productId (legacy or not synced)
-  const isCurrentPlan = currentProductId
-    ? productId === currentProductId
-    : currentTier === plan.tier;
-
-  // Only show "Switch Billing" when we have productId and it's same tier but different billing interval
-  const isSameTierDifferentBilling = currentProductId && planLevel === currentLevel && !isCurrentPlan;
-
-  const isUpgrade = planLevel > currentLevel;
-  const isDowngrade = planLevel < currentLevel;
-
+  // For solo users, determine button text based on current subscription
   const getButtonText = () => {
-    if (isCurrentPlan) return "Current Plan";
-    if (isSameTierDifferentBilling) return "Switch Billing Cycle";
-    if (isUpgrade) return "Upgrade";
-    if (isDowngrade) return "Downgrade";
-    return "Subscribe";
+    if (!isSoloUser || !currentTier) return "Get started";
+
+    const currentLevel = TIER_HIERARCHY[currentTier];
+    const planLevel = TIER_HIERARCHY[plan.tier];
+
+    // Check if same tier but different billing cycle
+    if (currentTier === plan.tier) {
+      if (currentBillingYearly === isYearly) return "Current Plan";
+      return "Switch Billing Cycle";
+    }
+
+    if (planLevel > currentLevel) return "Upgrade";
+    if (planLevel < currentLevel) return "Downgrade";
+    return "Get started";
   };
 
   const getButtonVariant = () => {
-    if (isCurrentPlan) return "secondary" as const;
-    if (isDowngrade) return "secondary";
-    if (plan.popular) return "default" as const;
+    if (!isSoloUser || !currentTier) {
+      return plan.popular ? "default" : "secondary";
+    }
 
-    // Check if the plan is a yearly plan and the current plan is a monthly plan
-    if (isSameTierDifferentBilling && !isYearly) return "secondary";
+    const currentLevel = TIER_HIERARCHY[currentTier];
+    const planLevel = TIER_HIERARCHY[plan.tier];
+    const isCurrentPlan = currentTier === plan.tier && currentBillingYearly === isYearly;
 
-    return "default" as const;
+    if (isCurrentPlan) return "secondary";
+    if (planLevel < currentLevel) return "secondary"; // Downgrade
+    if (currentTier === plan.tier && !isYearly) return "secondary"; // Switch to monthly
+    if (plan.popular) return "default";
+    return "default";
   };
 
+  const isCurrentPlan = isSoloUser && currentTier === plan.tier && currentBillingYearly === isYearly;
+
   return (
-    <div
-      className="rounded-xl bg-card p-6 flex flex-col"
-    >
+    <div className="rounded-xl bg-card p-6 flex flex-col">
       {plan.popular && (
         <div className="text-xs text-primary mb-2">Most Popular</div>
       )}
@@ -152,9 +148,9 @@ function PlanCard({
 
       <div className="mt-4">
         <NumberFlow
-          value={isYearly ? Math.round((plan.yearlyPrice / 12) * 2) / 2 : price}
+          value={isYearly ? Math.round(price * 2) / 2 : price}
           format={{ style: "currency", currency: "USD", maximumFractionDigits: isYearly ? 2 : 0 }}
-          suffix={price > 0 ? "/month" : undefined}
+          suffix="/month"
           className="text-2xl [&>span:last-child]:text-base [&>span:last-child]:font-normal [&>span:last-child]:text-muted-foreground"
         />
         <AnimatePresence initial={false}>
@@ -176,7 +172,6 @@ function PlanCard({
       </div>
 
       <ul className="mt-6 space-y-3 flex-1">
-        {/* First feature (repositories) */}
         <li className="flex items-center gap-1.5 text-sm">
           <div className="mr-1">
             <Check className="size-4 text-green-600 dark:text-green-400 shrink-0" />
@@ -184,7 +179,6 @@ function PlanCard({
           <span>{plan.features[0].name}</span>
         </li>
 
-        {/* Review quota - dynamic based on billing cycle */}
         <li className="flex items-center gap-1.5 text-sm">
           <div className="mr-1">
             {plan.monthlyReviewQuota !== 0 ? (
@@ -197,14 +191,7 @@ function PlanCard({
             {plan.monthlyReviewQuota === -1 ? (
               "Unlimited reviews"
             ) : plan.monthlyReviewQuota > 0 ? (
-              <>
-                <NumberFlow
-                  value={isYearly ? plan.monthlyReviewQuota * 12 : plan.monthlyReviewQuota}
-                  className="tabular-nums"
-                  suffix={isYearly ? " reviews/year" : " reviews/month"}
-                />
-
-              </>
+              <>{plan.monthlyReviewQuota} reviews/month</>
             ) : (
               "No reviews included"
             )}
@@ -217,13 +204,12 @@ function PlanCard({
               {plan.monthlyReviewQuota === -1
                 ? "No limits - you pay Anthropic directly for API usage"
                 : plan.monthlyReviewQuota > 0
-                  ? "Reviews reset at the start of each billing cycle"
-                  : "Upgrade to a paid plan to enable code reviews"}
+                  ? "Reviews reset monthly"
+                  : "Purchase a seat to enable code reviews"}
             </TooltipContent>
           </TooltipRoot>
         </li>
 
-        {/* Remaining features */}
         {plan.features.slice(1).map((feature) => (
           <li key={feature.name} className="flex items-center gap-1.5 text-sm">
             <div className="mr-1">
@@ -249,64 +235,205 @@ function PlanCard({
       </ul>
 
       <Button
-        className="mt-6 w-full"
+        className="mt-6 w-full rounded-full"
         size="lg"
         variant={getButtonVariant()}
-        disabled={isCurrentPlan || isLoading}
-        onClick={() => onSubscribe(productId)}
+        disabled={isLoading || isCurrentPlan}
+        onClick={() => onGetStarted(plan.tier)}
       >
-        {isLoading ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : null}
+        {isLoading && <Loader2 className="size-4 animate-spin" />}
         {getButtonText()}
       </Button>
     </div>
   );
 }
 
+function TeamCard({
+  isYearly,
+  onGetStarted,
+  isLoading,
+}: {
+  isYearly: boolean;
+  onGetStarted: (seatCount: number) => void;
+  isLoading: boolean;
+}) {
+  const [seatCount, setSeatCount] = useState(5);
+  const monthlyPricePerSeat = 49;
+  const yearlyPricePerSeat = 490;
+  const pricePerSeat = isYearly ? yearlyPricePerSeat / 12 : monthlyPricePerSeat;
+  const totalPrice = pricePerSeat * seatCount;
+  const monthlyReviewQuota = 250;
+  const yearlySavings = (monthlyPricePerSeat * 12 - yearlyPricePerSeat) * seatCount;
+
+  return (
+    <div className="rounded-xl bg-card p-8 mt-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="flex-1">
+          <h3 className="text-xl font-semibold">Team</h3>
+          <p className="text-muted-foreground mt-1">
+            For teams that need multiple seats. All the features of Triage, with volume pricing.
+          </p>
+          <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+            <li className="flex items-center gap-1.5 text-sm">
+              <Check className="size-4 text-green-600 dark:text-green-400" />
+              <span>Unlimited repositories</span>
+            </li>
+            <li className="flex items-center gap-1.5 text-sm">
+              <Check className="size-4 text-green-600 dark:text-green-400" />
+              <span>Priority support</span>
+            </li>
+            <li className="flex items-center gap-1.5 text-sm">
+              <Check className="size-4 text-green-600 dark:text-green-400" />
+              <span>Triage mode</span>
+            </li>
+            <li className="flex items-center gap-1.5 text-sm">
+              <Check className="size-4 text-green-600 dark:text-green-400" />
+              <span>Shared review pool</span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 md:items-end">
+          {/* Seat selector */}
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={2}
+              max={100}
+              value={seatCount}
+              onChange={(e) => {
+                const val = parseInt(e.target.value) || 2;
+                setSeatCount(Math.max(2, Math.min(100, val)));
+              }}
+              className="w-20 text-center text-lg font-semibold"
+            />
+            <span className="text-sm text-muted-foreground">seats</span>
+          </div>
+
+          {/* Pricing */}
+          <div className="text-center md:text-right">
+            <NumberFlow
+              value={isYearly ? Math.round(totalPrice * 2) / 2 : totalPrice}
+              format={{ style: "currency", currency: "USD", maximumFractionDigits: isYearly ? 2 : 0 }}
+              suffix="/month"
+              className="text-2xl font-semibold"
+            />
+            <p className="text-sm text-muted-foreground">
+              ${isYearly ? (yearlyPricePerSeat / 12).toFixed(2) : monthlyPricePerSeat}/seat × {seatCount} seats
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {monthlyReviewQuota * seatCount} reviews/month pooled
+            </p>
+            <AnimatePresence initial={false}>
+              {isYearly && (
+                <motion.p
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-sm text-green-600 dark:text-green-400 mt-1 overflow-hidden"
+                >
+                  Save <NumberFlow
+                    value={yearlySavings}
+                    format={{ style: "currency", currency: "USD", maximumFractionDigits: 0 }}
+                  />/year
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <Button
+            size="lg"
+            disabled={isLoading}
+            onClick={() => onGetStarted(seatCount)}
+          >
+            {isLoading && <Loader2 className="size-4 animate-spin" />}
+            Get started with {seatCount} seats
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PricingPage() {
-  const { user, login, refreshSubscription } = useAuth();
-  const queryClient = useQueryClient();
+  const { user, login } = useAuth();
+  const { currentOrgId, subscription, orgDetails } = useOrganization();
+  const navigate = useNavigate();
   const [isYearly, setIsYearly] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const currentTier: SubscriptionTier = user?.subscriptionTier || "FREE";
+  const isSoloUser = user?.accountType === "SOLO";
+  // Get org ID - prefer context, fallback to user's first org
+  const orgId = currentOrgId || user?.organizations?.[0]?.id || null;
+  const manageSubscription = useManageSubscription(orgId);
 
-  const createSubscription = useCreateSubscription(user?.access_token);
+  // Get current subscription info for solo users
+  const currentTier = isSoloUser ? (subscription?.tier || null) : null;
+  // Determine if current subscription is yearly based on expiration date
+  const currentBillingYearly = isSoloUser && orgDetails?.subscription?.expiresAt
+    ? (() => {
+      // Check if expiration is roughly a year away (more than 60 days)
+      const expiresAt = new Date(orgDetails.subscription.expiresAt);
+      const now = new Date();
+      const daysUntilExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return daysUntilExpiry > 60;
+    })()
+    : undefined;
 
-  const handleSubscribe = async (productId: string) => {
-    if (!productId) return;
-
-    try {
-      const data = await createSubscription.mutateAsync(productId);
-
-      if (data.subscriptionUpdated) {
-        // Subscription was updated in-place - refresh user data
-        await refreshSubscription();
-        await queryClient.invalidateQueries();
-        return;
-      }
-
-      if (data.requiresAuth) {
-        // User needs to log in first
-        login();
-        return;
-      }
-
-      if (data.checkoutUrl) {
-        // Redirect to Polar checkout
-        window.location.href = data.checkoutUrl;
-      }
-    } catch {
-      // Error handled by mutation
+  const handleGetStarted = async (tier: SubscriptionTier) => {
+    if (!user) {
+      // Store selected tier for after login
+      sessionStorage.setItem("pricing_tier", tier);
+      sessionStorage.setItem("pricing_billing", isYearly ? "yearly" : "monthly");
+      login();
+      return;
     }
+
+    // Solo users go directly to checkout
+    if (isSoloUser && orgId) {
+      setIsLoading(true);
+      try {
+        const result = await manageSubscription.mutateAsync({
+          tier: tier as "BYOK" | "CODE_REVIEW" | "TRIAGE",
+          billing: isYearly ? "yearly" : "monthly",
+          seatCount: 1,
+        });
+        if (result.checkoutUrl) {
+          window.location.href = result.checkoutUrl;
+        }
+      } catch (error) {
+        console.error("Failed to create checkout:", error);
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Team users go to organization settings
+    navigate("/console/settings?tab=organization");
+  };
+
+  const handleEnterpriseGetStarted = async (seatCount: number) => {
+    if (!user) {
+      sessionStorage.setItem("pricing_seat_count", String(seatCount));
+      sessionStorage.setItem("pricing_tier", "TRIAGE");
+      sessionStorage.setItem("pricing_billing", isYearly ? "yearly" : "monthly");
+      login();
+      return;
+    }
+
+    // Team card is always for teams, go to organization settings
+    navigate("/console/settings?tab=organization", { state: { seatCount, tier: "TRIAGE" } });
   };
 
   return (
     <section className="pt-40 pb-32 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto">
       <div className="flex flex-col text-center items-center justify-center">
         <h1 className="text-8xl mb-8">Built for developers</h1>
-        <p className="text-muted-foreground text-lg">Whether you're a solo developer or part of a team, we've got you covered.</p>
+        <p className="text-muted-foreground text-xl">Simple pricing for individuals. Volume discounts for teams.</p>
       </div>
+
+      {/* Billing cycle toggle */}
       <div className="flex items-center justify-center mb-8 mt-12">
         <Tabs
           value={isYearly ? "yearly" : "monthly"}
@@ -314,21 +441,10 @@ export function PricingPage() {
         >
           <TabsList>
             <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">
-              Yearly
-              <span className="text-xs text-green-600 dark:text-green-400">
-                (Save 20%)
-              </span>
-            </TabsTrigger>
+            <TabsTrigger value="yearly">Yearly</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
-
-      {createSubscription.error && (
-        <div className="max-w-md mx-auto mb-8 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive text-center">
-          {createSubscription.error?.message}
-        </div>
-      )}
 
       <div className="grid md:grid-cols-3 gap-6">
         {plans.map((plan) => (
@@ -336,13 +452,25 @@ export function PricingPage() {
             key={plan.tier}
             plan={plan}
             isYearly={isYearly}
+            onGetStarted={handleGetStarted}
+            isLoading={isLoading}
+            isSoloUser={isSoloUser}
             currentTier={currentTier}
-            currentProductId={user?.polarProductId}
-            onSubscribe={handleSubscribe}
-            isLoading={createSubscription.isPending}
+            currentBillingYearly={currentBillingYearly}
           />
         ))}
       </div>
+
+      {/* Team card */}
+      <TeamCard
+        isYearly={isYearly}
+        onGetStarted={handleEnterpriseGetStarted}
+        isLoading={isLoading}
+      />
+
+      <p className="mt-8 text-center text-sm text-muted-foreground">
+        Need more than 100 seats? <a href="mailto:enterprise@antiptrn.dev" className="underline hover:text-foreground">Contact us</a>
+      </p>
     </section>
   );
 }

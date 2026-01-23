@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
+import { type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,7 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  inputGroupVariants,
 } from "@/components/ui/input-group"
 import { ChevronDownIcon, XIcon, CheckIcon } from "lucide-react"
 
@@ -55,15 +57,16 @@ function ComboboxInput({
   disabled = false,
   showTrigger = true,
   showClear = false,
+  size,
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean
   showClear?: boolean
-}) {
+} & VariantProps<typeof inputGroupVariants>) {
   return (
-    <InputGroup className={cn("w-auto", className)}>
+    <InputGroup size={size} className={cn("w-auto", className)}>
       <ComboboxPrimitive.Input
-        render={<InputGroupInput disabled={disabled} />}
+        render={<InputGroupInput size={size} disabled={disabled} />}
         {...props}
       />
       <InputGroupAddon align="inline-end">

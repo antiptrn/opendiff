@@ -16,8 +16,36 @@ export interface RepositorySettings {
   repo: string;
   enabled: boolean;
   triageEnabled: boolean;
+  customReviewRules?: string;
   effectiveEnabled: boolean;
   effectiveTriageEnabled: boolean;
+}
+
+// Organization repo with metadata (from database, not GitHub)
+export interface OrgRepository {
+  owner: string;
+  repo: string;
+  fullName: string;
+  description: string | null;
+  isPrivate: boolean;
+  avatarUrl: string | null;
+  defaultBranch: string | null;
+  htmlUrl: string;
+  enabled: boolean;
+  triageEnabled: boolean;
+  customReviewRules?: string;
+  effectiveEnabled: boolean;
+  effectiveTriageEnabled: boolean;
+}
+
+// Repo metadata for when enabling repos
+export interface RepoMetadata {
+  fullName: string;
+  description?: string | null;
+  isPrivate: boolean;
+  avatarUrl?: string | null;
+  defaultBranch?: string | null;
+  htmlUrl?: string;
 }
 
 export interface Stats {
@@ -57,6 +85,7 @@ export interface BillingData {
 export const queryKeys = {
   stats: (orgId?: string | null) => ["stats", orgId] as const,
   repos: (orgId?: string | null, query?: string) => ["repos", orgId, query] as const,
+  orgRepos: (orgId?: string | null) => ["orgRepos", orgId] as const,
   activatedRepos: (orgId?: string | null) => ["activatedRepos", orgId] as const,
   settings: (owner: string, repo: string) => ["settings", owner, repo] as const,
   billing: (orgId?: string | null) => ["billing", orgId] as const,
@@ -127,6 +156,16 @@ export function useActivatedRepos(token?: string, orgId?: string | null) {
   });
 }
 
+// Organization repos from database (for users without GitHub access)
+export function useOrgRepos(token?: string, orgId?: string | null) {
+  return useQuery<OrgRepository[]>({
+    queryKey: queryKeys.orgRepos(orgId),
+    queryFn: () => fetchWithAuth(`${API_URL}/api/org/repos`, token, orgId),
+    enabled: !!token && !!orgId,
+    staleTime: 30 * 1000,
+  });
+}
+
 // Settings hooks
 export function useRepositorySettings(owner: string, repo: string) {
   return useQuery<RepositorySettings>({
@@ -145,11 +184,15 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       repo,
       enabled,
       triageEnabled,
+      customReviewRules,
+      repoMetadata,
     }: {
       owner: string;
       repo: string;
       enabled: boolean;
       triageEnabled: boolean;
+      customReviewRules?: string;
+      repoMetadata?: RepoMetadata;
     }) => {
       const response = await fetch(`${API_URL}/api/settings/${owner}/${repo}`, {
         method: "PUT",
@@ -158,7 +201,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(orgId ? { "X-Organization-Id": orgId } : {}),
         },
-        body: JSON.stringify({ enabled, triageEnabled }),
+        body: JSON.stringify({ enabled, triageEnabled, customReviewRules, repoMetadata }),
       });
 
       const data = await response.json();
@@ -172,7 +215,41 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
     onSuccess: (data) => {
       // Update cache
       queryClient.setQueryData(queryKeys.settings(data.owner, data.repo), data);
-      // Invalidate stats and activated repos since connected repos may have changed
+      // Invalidate stats, activated repos, and org repos since connected repos may have changed
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["activatedRepos"] });
+      queryClient.invalidateQueries({ queryKey: ["orgRepos"] });
+    },
+  });
+}
+
+export function useDeleteRepoSettings(token?: string, orgId?: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ owner, repo }: { owner: string; repo: string }) => {
+      const url = new URL(`${API_URL}/api/settings/${owner}/${repo}`);
+      if (orgId) url.searchParams.set("orgId", orgId);
+
+      const response = await fetch(url.toString(), {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete repository");
+      }
+
+      return { owner, repo };
+    },
+    onSuccess: ({ owner, repo }) => {
+      // Remove from cache
+      queryClient.removeQueries({ queryKey: queryKeys.settings(owner, repo) });
+      // Invalidate stats and activated repos
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       queryClient.invalidateQueries({ queryKey: ["activatedRepos"] });
     },
@@ -500,5 +577,123 @@ export function useAuditLogs(
     },
     enabled: !!token && !!orgId,
     staleTime: 30 * 1000,
+  });
+}
+
+// Helper to get token from storage (supports multi-account)
+function getTokenFromStorage(): string | undefined {
+  // Try new multi-account storage first
+  const accountsStored = localStorage.getItem("antiptrn_accounts");
+  if (accountsStored) {
+    try {
+      const { accounts, activeAccountId } = JSON.parse(accountsStored);
+      const activeUser = accounts.find((a: { visitorId?: string; id: string | number }) =>
+        (a.visitorId || a.id) === activeAccountId
+      );
+      if (activeUser?.access_token) return activeUser.access_token;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Fallback to old single-user storage
+  const stored = localStorage.getItem("antiptrn_user");
+  if (stored) {
+    try {
+      const user = JSON.parse(stored);
+      return user.access_token;
+    } catch {
+      // ignore
+    }
+  }
+
+  return undefined;
+}
+
+// Hook for updating account type
+export function useUpdateAccountType() {
+  const token = getTokenFromStorage();
+
+  return useMutation({
+    mutationFn: async (accountType: "SOLO" | "TEAM") => {
+      const response = await fetch(`${API_URL}/api/account/type`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ accountType }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update account type");
+      }
+
+      return data as { success: boolean; accountType: "SOLO" | "TEAM" };
+    },
+  });
+}
+
+// Simple API helper hook for direct fetch calls
+export function useApi() {
+  const token = getTokenFromStorage();
+
+  return {
+    get: (path: string) =>
+      fetch(`${API_URL}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+    post: (path: string, body?: unknown) =>
+      fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+    put: (path: string, body?: unknown) =>
+      fetch(`${API_URL}${path}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+    delete: (path: string) =>
+      fetch(`${API_URL}${path}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+    upload: (path: string, formData: FormData) =>
+      fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      }),
+  };
+}
+
+// GitHub linking hook for Google users
+export function useLinkGitHub(token?: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/auth/github/link`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get GitHub link URL");
+      }
+
+      return data as { url: string };
+    },
   });
 }

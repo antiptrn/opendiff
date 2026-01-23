@@ -117,6 +117,39 @@ async function getRepositorySettings(owner: string, repo: string): Promise<Repos
   }
 }
 
+// Check if a GitHub user has an active seat in the organization that owns a repository
+async function checkUserHasSeat(owner: string, repo: string, githubLogin: string): Promise<boolean> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    console.warn('SETTINGS_API_URL or REVIEW_AGENT_API_KEY not configured, skipping seat check');
+    return true; // Allow review if we can't check (fail open)
+  }
+
+  try {
+    const response = await fetch(
+      `${SETTINGS_API_URL}/api/internal/check-seat/${owner}/${repo}?githubLogin=${encodeURIComponent(githubLogin)}`,
+      {
+        headers: {
+          'X-API-Key': REVIEW_AGENT_API_KEY,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Failed to check seat for ${githubLogin} in ${owner}/${repo}: ${response.status}`);
+      return true; // Allow review if check fails (fail open)
+    }
+
+    const data = (await response.json()) as { hasSeat: boolean; reason?: string };
+    if (!data.hasSeat && data.reason) {
+      console.log(`Seat check failed: ${data.reason}`);
+    }
+    return data.hasSeat;
+  } catch (error) {
+    console.warn(`Error checking seat for ${githubLogin} in ${owner}/${repo}:`, error);
+    return true; // Allow review if check fails (fail open)
+  }
+}
+
 // Load private key from file or environment
 function getPrivateKey(): string | undefined {
   if (GITHUB_PRIVATE_KEY) {
@@ -209,6 +242,16 @@ app.post('/webhook', async (c) => {
         if (!settings.effectiveEnabled) {
           console.log(`Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`);
           return c.json({ status: 'skipped', reason: 'disabled' });
+        }
+
+        // Check if PR author has an active seat
+        const prAuthor = payload.pull_request?.user?.login;
+        if (prAuthor) {
+          const hasSeat = await checkUserHasSeat(owner, repo, prAuthor);
+          if (!hasSeat) {
+            console.log(`PR author ${prAuthor} does not have an active seat for ${owner}/${repo}`);
+            return c.json({ status: 'skipped', reason: 'author_no_seat' });
+          }
         }
 
         // Initialize services - pass installation ID for GitHub App auth

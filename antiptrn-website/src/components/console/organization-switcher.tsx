@@ -1,40 +1,53 @@
-import { Check, Building2, Plus, ChevronDown } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   DropdownMenuLabel,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { useOrganization } from "@/hooks/use-organization";
-import { useNavigate } from "react-router-dom";
+import { Building2, Check, ChevronDown } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { cn } from "@/lib/utils";
 
 export function OrganizationSwitcher() {
-  const navigate = useNavigate();
   const { organizations, currentOrg, switchOrg } = useOrganization();
+  const [isOpen, setIsOpen] = useState(false);
 
   if (!currentOrg) {
     return null;
   }
 
+  // If only one organization, just show the name without dropdown
+  /*if (organizations.length <= 1) {
+    return (
+      <div className="flex items-center gap-2 h-9 px-2.5">
+        <Avatar className="size-6 !rounded-md overflow-hidden">
+          <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
+          <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
+        </Avatar>
+      </div>
+    );
+  }*/
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="justify-between h-9 rounded-lg"
+          className="gap-2 justify-between h-9 rounded-lg px-1.5 !bg-transparent text-foreground/80 hover:text-foreground"
         >
-          <div className="flex items-center gap-2.5 truncate">
-            <Building2 className="size-3.5 shrink-0" />
-            <span className="truncate">{currentOrg.name}</span>
-          </div>
-          <ChevronDown className="size-3.5 shrink-0" />
+          <Avatar className="size-6 rounded-md overflow-hidden">
+            <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
+            <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
+          </Avatar>
+          <ChevronDown className={cn("size-3.5 shrink-0 transition-transform duration-200", isOpen && "rotate-180")} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[200px]">
-        <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+        <DropdownMenuLabel>Teams</DropdownMenuLabel>
         {organizations.map((org) => (
           <DropdownMenuItem
             key={org.id}
@@ -48,14 +61,6 @@ export function OrganizationSwitcher() {
             )}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => navigate("/create-organization")}
-          className="cursor-pointer"
-        >
-          <Plus className="size-3.5" />
-          Create organization
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

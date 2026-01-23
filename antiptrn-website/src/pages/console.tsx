@@ -49,12 +49,7 @@ export function ConsolePage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Connected Repositories</p>
-                    <p className="text-2xl">
-                      {stats.connectedRepos}
-                      <span className="text-base font-normal text-muted-foreground ml-1">
-                        / {stats.totalRepos}
-                      </span>
-                    </p>
+                    <p className="text-2xl">{stats.connectedRepos}</p>
                   </div>
                 </div>
               </CardContent>

@@ -15,7 +15,7 @@ export function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20">
           <Button variant="ghost" className="h-auto px-0 !bg-transparent" onClick={() => navigate("/")}>
             <Logo />
           </Button>
@@ -23,8 +23,8 @@ export function Header() {
           <DesktopNav />
 
           <div className="hidden md:flex items-center gap-3">
-            <Button onClick={() => navigate("/login")} variant="ghost" className="hover:text-muted-foreground !bg-transparent">
-              Sign in
+            <Button onClick={() => navigate("/login")} variant="ghost" className="rounded-full" size="lg">
+              Log In
             </Button>
           </div>
 

@@ -1,9 +1,18 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth, type UserOrganization, type OrganizationRole } from "./use-auth";
+import { useAuth, type UserOrganization, type OrganizationRole, type SubscriptionTier } from "./use-auth";
 import { useOrganizationContext } from "@/contexts/organization-context";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+// Org-level subscription info
+export interface OrgSubscription {
+  tier: SubscriptionTier;
+  status: "ACTIVE" | "CANCELLED" | "PAST_DUE" | "INACTIVE";
+  seatCount: number;
+  expiresAt: string | null;
+  cancelAtPeriodEnd: boolean;
+}
 
 export interface OrganizationMember {
   userId: string;
@@ -13,6 +22,25 @@ export interface OrganizationMember {
   avatarUrl: string | null;
   role: OrganizationRole;
   joinedAt: string;
+  hasSeat: boolean;  // Whether this member has a seat assigned
+}
+
+export interface QuotaPool {
+  total: number;
+  used: number;
+  hasUnlimited: boolean;
+}
+
+export interface SeatsInfo {
+  available: number;
+  assigned: number;
+  total: number;
+}
+
+export interface MembersResponse {
+  members: OrganizationMember[];
+  quotaPool: QuotaPool;
+  seats: SeatsInfo;
 }
 
 export interface OrganizationInvite {
@@ -30,12 +58,13 @@ export interface OrganizationDetails {
   name: string;
   slug: string;
   avatarUrl: string | null;
-  subscriptionTier: string;
-  subscriptionStatus: string;
-  seatCount: number;
   membersCount: number;
   role: OrganizationRole;
   createdAt: string;
+  hasSeat: boolean;  // Current user's seat assignment
+  subscription: OrgSubscription | null;  // Org subscription info
+  quotaPool: QuotaPool;
+  seats: SeatsInfo;
 }
 
 export function useOrganization() {
@@ -46,7 +75,7 @@ export function useOrganization() {
   const { selectedOrgId, setSelectedOrgId } = useOrganizationContext();
 
   // Fetch organizations from API
-  const { data: organizations = [], isLoading: isLoadingOrgs } = useQuery({
+  const { data: allOrganizations = [], isLoading: isLoadingOrgs, isFetched: hasFetchedOrgs } = useQuery({
     queryKey: ["organizations"],
     queryFn: async (): Promise<UserOrganization[]> => {
       if (!user?.access_token) return [];
@@ -64,10 +93,29 @@ export function useOrganization() {
     enabled: !!user?.access_token,
   });
 
-  // Find current org from list, or use first one if selected is invalid
-  const currentOrgId = selectedOrgId && organizations.find(o => o.id === selectedOrgId)
-    ? selectedOrgId
-    : organizations[0]?.id || null;
+  // Filter out personal orgs from the visible list (for org switcher)
+  // but keep allOrganizations for finding the current org
+  const visibleOrganizations = allOrganizations.filter(org => !org.isPersonal);
+
+  // Find current org - prefer visible orgs, but fall back to personal org for solo users with no team orgs
+  // If selected org is visible, use it. Otherwise, prefer first visible org, then fall back to any org.
+  const selectedOrgIsVisible = selectedOrgId && visibleOrganizations.find(o => o.id === selectedOrgId);
+  const selectedOrgExists = selectedOrgId && allOrganizations.find(o => o.id === selectedOrgId);
+
+  let currentOrgId: string | null;
+  if (selectedOrgIsVisible) {
+    // Selected org is visible - use it
+    currentOrgId = selectedOrgId;
+  } else if (visibleOrganizations.length > 0) {
+    // Selected org is hidden (personal) but user has visible orgs - switch to first visible
+    currentOrgId = visibleOrganizations[0].id;
+  } else if (selectedOrgExists) {
+    // No visible orgs but selected org exists (solo user with only personal org) - use it
+    currentOrgId = selectedOrgId;
+  } else {
+    // Fall back to first org available
+    currentOrgId = allOrganizations[0]?.id || null;
+  }
 
   // Sync state if currentOrgId differs (e.g., selected org was deleted)
   useEffect(() => {
@@ -76,7 +124,7 @@ export function useOrganization() {
     }
   }, [currentOrgId, selectedOrgId, setSelectedOrgId]);
 
-  const currentOrg = organizations.find(o => o.id === currentOrgId) || null;
+  const currentOrg = allOrganizations.find(o => o.id === currentOrgId) || null;
 
   // Fetch detailed organization info
   const { data: orgDetails, isLoading: isLoadingDetails } = useQuery({
@@ -104,14 +152,14 @@ export function useOrganization() {
 
   // Create organization mutation
   const createOrgMutation = useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async ({ name, isPersonal }: { name: string; isPersonal?: boolean }) => {
       const response = await fetch(`${API_URL}/api/organizations`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${user?.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, isPersonal }),
       });
 
       if (!response.ok) {
@@ -121,7 +169,7 @@ export function useOrganization() {
 
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       // Immediately add the new org to the cache so hasOrganizations is true
       queryClient.setQueryData<UserOrganization[]>(["organizations"], (old) => {
         const newOrg: UserOrganization = {
@@ -130,6 +178,7 @@ export function useOrganization() {
           slug: data.slug,
           avatarUrl: data.avatarUrl || null,
           role: "OWNER",
+          isPersonal: variables.isPersonal,
           subscriptionTier: data.subscriptionTier || "FREE",
           subscriptionStatus: data.subscriptionStatus || "INACTIVE",
         };
@@ -147,17 +196,38 @@ export function useOrganization() {
   const canUpdateOrg = currentOrg?.role === "OWNER" || currentOrg?.role === "ADMIN";
   const canDeleteOrg = currentOrg?.role === "OWNER";
 
+  // Get current user's seat status
+  const hasSeat = orgDetails?.hasSeat ?? false;
+  const subscription = orgDetails?.subscription ?? null;
+  
+  // Create currentSeat object for user's seat (if they have one)
+  const currentSeat = hasSeat && subscription ? {
+    tier: subscription.tier,
+    status: subscription.status,
+    expiresAt: subscription.expiresAt,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+  } : null;
+
   return {
-    organizations,
+    // visibleOrganizations is for the org switcher (excludes personal org)
+    organizations: visibleOrganizations,
     currentOrg,
     currentOrgId,
     orgDetails,
     isLoadingOrgs,
     isLoadingDetails,
+    hasFetchedOrgs,
     switchOrg,
     createOrg: createOrgMutation.mutateAsync,
     isCreating: createOrgMutation.isPending,
-    hasOrganizations: organizations.length > 0,
+    // hasOrganizations uses allOrganizations (includes personal org for redirect logic)
+    hasOrganizations: allOrganizations.length > 0,
+    // Subscription info (org-level)
+    subscription,
+    hasSeat,
+    currentSeat,
+    quotaPool: orgDetails?.quotaPool ?? null,
+    seats: orgDetails?.seats ?? null,
     // Permissions
     canManageMembers,
     canManageBilling,
@@ -172,8 +242,8 @@ export function useOrganizationMembers(orgId: string | null) {
 
   return useQuery({
     queryKey: ["organization", orgId, "members"],
-    queryFn: async (): Promise<OrganizationMember[]> => {
-      if (!orgId || !user?.access_token) return [];
+    queryFn: async (): Promise<MembersResponse> => {
+      if (!orgId || !user?.access_token) return { members: [], quotaPool: { total: 0, used: 0, hasUnlimited: false } };
 
       const response = await fetch(`${API_URL}/api/organizations/${orgId}/members`, {
         headers: { Authorization: `Bearer ${user.access_token}` },
@@ -308,6 +378,279 @@ export function useRemoveMember(orgId: string | null) {
       }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
+    },
+  });
+}
+
+// Hook for leaving an organization (current user removes themselves)
+export function useLeaveOrganization(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!user?.visitorId) throw new Error("Not authenticated");
+
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/members/${user.visitorId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to leave organization");
+      }
+    },
+    onSuccess: () => {
+      // Invalidate all organization-related queries
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// ==================== SUBSCRIPTION MANAGEMENT HOOKS ====================
+
+// Hook for managing org subscription (create/update)
+export function useManageSubscription(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      tier,
+      billing,
+      seatCount,
+    }: {
+      tier: "BYOK" | "CODE_REVIEW" | "TRIAGE";
+      billing: "monthly" | "yearly";
+      seatCount: number;
+    }) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/subscription`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user?.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tier, billing, seatCount }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to manage subscription");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// Hook for cancelling org subscription
+export function useCancelSubscription(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/subscription/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user?.access_token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to cancel subscription");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// Hook for reactivating a cancelled subscription
+export function useReactivateSubscription(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/subscription/reactivate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user?.access_token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to reactivate subscription");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// ==================== SEAT COUNT MANAGEMENT HOOKS ====================
+
+export interface SeatChangePreview {
+  currentSeats: number;
+  newSeats: number;
+  proratedCharge: number; // cents
+  nextBillingAmount: number; // cents
+  effectiveNow: boolean;
+}
+
+// Hook for updating seat count
+export function useUpdateSeatCount(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (count: number) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/subscription/seats`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user?.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ count }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update seat count");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// Hook for previewing seat change proration
+export function usePreviewSeatChange(orgId: string | null, newSeatCount: number | null) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["organization", orgId, "seats", "preview", newSeatCount],
+    queryFn: async (): Promise<SeatChangePreview | null> => {
+      if (!orgId || !user?.access_token || newSeatCount === null) return null;
+
+      const response = await fetch(
+        `${API_URL}/api/organizations/${orgId}/subscription/seats/preview?count=${newSeatCount}`,
+        {
+          headers: { Authorization: `Bearer ${user.access_token}` },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to preview seat change");
+      }
+
+      return response.json();
+    },
+    enabled: !!orgId && !!user?.access_token && newSeatCount !== null && newSeatCount > 0,
+    staleTime: 30000, // Cache preview for 30 seconds
+  });
+}
+
+// ==================== SEAT ASSIGNMENT HOOKS ====================
+
+// Hook for assigning a seat to a member
+export function useAssignSeat(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/seats/${userId}/assign`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user?.access_token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to assign seat");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
+    },
+  });
+}
+
+// Hook for unassigning a seat from a member
+export function useUnassignSeat(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/seats/${userId}/unassign`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user?.access_token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to unassign seat");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
+    },
+  });
+}
+
+// Hook for reassigning a seat from one member to another
+export function useReassignSeat(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sourceUserId, targetUserId }: { sourceUserId: string; targetUserId: string }) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/seats/${sourceUserId}/reassign`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user?.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ targetUserId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to reassign seat");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId] });
       queryClient.invalidateQueries({ queryKey: ["organization", orgId, "members"] });
     },
   });

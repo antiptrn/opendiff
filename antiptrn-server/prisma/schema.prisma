@@ -34,13 +34,27 @@ enum InviteStatus {
   REVOKED
 }
 
+enum AccountType {
+  SOLO
+  TEAM
+}
+
 model User {
   id        String  @id @default(cuid())
-  githubId  Int     @unique
+  githubId  Int?    @unique
+  googleId  String? @unique
   login     String
   name      String?
-  email     String?
+  email     String? @unique
   avatarUrl String?
+
+  // GitHub token for repo access (stored for Google-auth users who link GitHub)
+  githubAccessToken    String?
+
+  // Onboarding
+  accountType          AccountType?
+  onboardingCompletedAt DateTime?
+  personalOrgId        String?      // The org created for solo users during onboarding
 
   // Legacy subscription fields (kept for migration, will be removed later)
   subscriptionTier      SubscriptionTier?
@@ -68,16 +82,18 @@ model Organization {
   name      String
   slug      String  @unique
   avatarUrl String?
+  isPersonal Boolean @default(false)  // True for solo user's auto-created org
 
-  // Subscription fields
-  subscriptionTier      SubscriptionTier   @default(FREE)
-  subscriptionStatus    SubscriptionStatus @default(INACTIVE)
-  polarSubscriptionId   String?            @unique
+  // Subscription (quantity-based, covers all seats)
+  subscriptionTier      SubscriptionTier?
+  subscriptionStatus    SubscriptionStatus?
+  polarSubscriptionId   String?              @unique
   polarProductId        String?
-  polarCustomerId       String?
   subscriptionExpiresAt DateTime?
-  cancelAtPeriodEnd     Boolean            @default(false)
-  seatCount             Int                @default(1)
+  cancelAtPeriodEnd     Boolean              @default(false)
+  seatCount             Int                  @default(0)
+
+  // Shared org settings
   reviewsUsedThisCycle  Int                @default(0)
   anthropicApiKey       String?
   customReviewRules     String?
@@ -99,6 +115,9 @@ model OrganizationMember {
   userId         String
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           OrganizationRole @default(MEMBER)
+
+  // Seat assignment (subscription is org-level, this just tracks who has a seat)
+  hasSeat Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -130,16 +149,25 @@ model OrganizationInvite {
 }
 
 model RepositorySettings {
-  id             String        @id @default(cuid())
-  owner          String
-  repo           String
-  enabled        Boolean       @default(true)
-  triageEnabled  Boolean       @default(true)
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  enabledById    String?
+  id                String        @id @default(cuid())
+  owner             String
+  repo              String
+  enabled           Boolean        @default(true)
+  triageEnabled     Boolean        @default(true)
+  customReviewRules String?
+  organizationId    String?
+  organization      Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enabledById       String?
   // Keep userId temporarily for migration
-  userId         String?
+  userId            String?
+
+  // Repository metadata (cached from GitHub when enabled)
+  fullName          String?       // e.g. "owner/repo"
+  description       String?
+  isPrivate         Boolean       @default(false)
+  avatarUrl         String?       // Owner's avatar
+  defaultBranch     String?
+  htmlUrl           String?       // GitHub URL
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -54,13 +54,13 @@ export function Footer() {
           <div className="flex gap-8 mb-16 justify-between">
 
             <div>
-              <h3 className="mb-3 text-sm">Services</h3>
-              <ul className="space-y-1.5">
+              <h3 className="mb-3 text-sm text-muted-foreground">Services</h3>
+              <ul className="space-y-2">
                 {footerLinks.services.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-foreground hover:text-foreground/80 transition-colors"
                     >
                       {link.label}
                     </a>
@@ -70,13 +70,13 @@ export function Footer() {
             </div>
 
             <div>
-              <h3 className="mb-3 text-sm">Company</h3>
-              <ul className="space-y-1.5">
+              <h3 className="mb-3 text-sm text-muted-foreground">Company</h3>
+              <ul className="space-y-2">
                 {footerLinks.company.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-foreground hover:text-foreground/80 transition-colors"
                     >
                       {link.label}
                     </a>
@@ -86,13 +86,13 @@ export function Footer() {
             </div>
 
             <div>
-              <h3 className="mb-3 text-sm">Resources</h3>
-              <ul className="space-y-1.5">
+              <h3 className="mb-3 text-sm text-muted-foreground">Resources</h3>
+              <ul className="space-y-2">
                 {footerLinks.resources.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-foreground hover:text-foreground/80 transition-colors"
                     >
                       {link.label}
                     </a>
@@ -102,13 +102,13 @@ export function Footer() {
             </div>
 
             <div>
-              <h3 className="mb-3 text-sm">Resources</h3>
-              <ul className="space-y-1.5">
+              <h3 className="mb-3 text-sm text-muted-foreground">Resources</h3>
+              <ul className="space-y-2">
                 {footerLinks.resources.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-foreground hover:text-foreground/80 transition-colors"
                     >
                       {link.label}
                     </a>

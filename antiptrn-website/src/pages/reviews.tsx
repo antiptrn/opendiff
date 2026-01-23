@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -15,19 +16,35 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
-import { Loader2, Lock, Globe, LogIn } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Lock, Globe, LogIn, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganization } from "@/hooks/use-organization";
 import {
   useRepositories,
   useRepositorySettings,
   useUpdateSettings,
-  useActivatedRepos,
+  useDeleteRepoSettings,
+  useOrgRepos,
   type Repository,
   type RepositorySettings,
+  type OrgRepository,
 } from "@/hooks/use-api";
-import { Link } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+
+// ==================== UTILITY FUNCTIONS ====================
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -40,6 +57,8 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// ==================== REVIEWS TAB COMPONENTS ====================
+
 function RepoSettingsForm({
   settings,
   canEnableReviews,
@@ -49,20 +68,22 @@ function RepoSettingsForm({
   error,
   successMessage,
 }: {
-  settings: RepositorySettings;
+  settings: OrgRepository | RepositorySettings;
   canEnableReviews: boolean;
   canEnableTriage: boolean;
-  onSave: (enabled: boolean, triageEnabled: boolean) => void;
+  onSave: (enabled: boolean, triageEnabled: boolean, customReviewRules: string) => void;
   isSaving: boolean;
   error?: string | null;
   successMessage?: string | null;
 }) {
   const [localEnabled, setLocalEnabled] = useState(settings.enabled);
   const [localTriageEnabled, setLocalTriageEnabled] = useState(settings.triageEnabled);
+  const [localCustomReviewRules, setLocalCustomReviewRules] = useState(settings.customReviewRules || "");
 
   useEffect(() => {
     setLocalEnabled(settings.enabled);
     setLocalTriageEnabled(settings.triageEnabled);
+    setLocalCustomReviewRules(settings.customReviewRules || "");
   }, [settings]);
 
   return (
@@ -141,9 +162,27 @@ function RepoSettingsForm({
         />
       </div>
 
+      <Separator />
+
+      <div className="px-4 space-y-2">
+        <Label htmlFor={`custom-rules-${settings.owner}-${settings.repo}`}>
+          Custom Review Rules
+        </Label>
+        <p className="text-sm text-muted-foreground">
+          Define custom rules and guidelines for the AI to follow when reviewing code in this repository.
+        </p>
+        <Textarea
+          id={`custom-rules-${settings.owner}-${settings.repo}`}
+          value={localCustomReviewRules}
+          onChange={(e) => setLocalCustomReviewRules(e.target.value)}
+          placeholder="Example: Always check for proper error handling, prefer async/await over promises..."
+          className="min-h-[120px] font-mono text-sm"
+        />
+      </div>
+
       <Button
         className="ml-4"
-        onClick={() => onSave(localEnabled, localTriageEnabled)}
+        onClick={() => onSave(localEnabled, localTriageEnabled, localCustomReviewRules)}
         disabled={isSaving}
         size="sm"
       >
@@ -159,16 +198,19 @@ function ActiveRepoAccordion({
   canEnableReviews,
   canEnableTriage,
   token,
+  orgId,
 }: {
-  settings: RepositorySettings;
+  settings: OrgRepository;
   canEnableReviews: boolean;
   canEnableTriage: boolean;
   token?: string;
+  orgId?: string | null;
 }) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const updateSettings = useUpdateSettings(token);
+  const updateSettings = useUpdateSettings(token, orgId);
+  const deleteSettings = useDeleteRepoSettings(token, orgId);
 
-  const handleSave = async (enabled: boolean, triageEnabled: boolean) => {
+  const handleSave = async (enabled: boolean, triageEnabled: boolean, customReviewRules: string) => {
     setSuccessMessage(null);
     try {
       await updateSettings.mutateAsync({
@@ -176,8 +218,29 @@ function ActiveRepoAccordion({
         repo: settings.repo,
         enabled,
         triageEnabled,
+        customReviewRules,
+        // Preserve repo metadata
+        repoMetadata: {
+          fullName: settings.fullName,
+          description: settings.description,
+          isPrivate: settings.isPrivate,
+          avatarUrl: settings.avatarUrl,
+          defaultBranch: settings.defaultBranch,
+          htmlUrl: settings.htmlUrl,
+        },
       });
       setSuccessMessage("Settings saved");
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteSettings.mutateAsync({
+        owner: settings.owner,
+        repo: settings.repo,
+      });
     } catch {
       // Error handled by mutation
     }
@@ -187,7 +250,12 @@ function ActiveRepoAccordion({
     <AccordionItem>
       <AccordionTrigger className="cursor-pointer">
         <div className="flex items-center gap-3">
-          <span>{settings.owner}/{settings.repo}</span>
+          {settings.isPrivate ? (
+            <Lock className="size-3.5 text-muted-foreground flex-shrink-0" />
+          ) : (
+            <Globe className="size-3.5 text-muted-foreground flex-shrink-0" />
+          )}
+          <span>{settings.fullName || `${settings.owner}/${settings.repo}`}</span>
           <div className="flex items-center gap-2">
             {settings.enabled && settings.effectiveEnabled && (
               <span className="inline-flex items-center gap-1 text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full">
@@ -219,9 +287,42 @@ function ActiveRepoAccordion({
           canEnableTriage={canEnableTriage}
           onSave={handleSave}
           isSaving={updateSettings.isPending}
-          error={updateSettings.error?.message}
+          error={updateSettings.error?.message || deleteSettings.error?.message}
           successMessage={successMessage}
         />
+
+        <Separator className="my-4" />
+
+        <div className="px-4">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteSettings.isPending}
+              >
+                {deleteSettings.isPending && <Loader2 className="size-4 animate-spin" />}
+                <Trash2 className="size-4" />
+                Remove Repository
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove Repository</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to remove {settings.owner}/{settings.repo}?
+                  This will disable all reviews and triage for this repository.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete}>
+                  Remove
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </AccordionContent>
     </AccordionItem>
   );
@@ -229,29 +330,29 @@ function ActiveRepoAccordion({
 
 export function ReviewsPage() {
   const { user, logout } = useAuth();
+  const { currentOrgId, currentSeat, hasSeat } = useOrganization();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const [localSettings, setLocalSettings] = useState<{
     enabled: boolean;
     triageEnabled: boolean;
+    customReviewRules: string;
   } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const debouncedQuery = useDebounce(searchQuery, 300);
 
-  // Fetch activated repos
+  // Use org repos from database - works for all org members regardless of GitHub access
   const {
     data: activatedRepos = [],
     isLoading: isLoadingActivated,
-  } = useActivatedRepos(user?.access_token);
+  } = useOrgRepos(user?.access_token, currentOrgId);
 
-  // Fetch repositories with debounced search
   const {
     data: repositories = [],
     isLoading: isLoadingRepos,
-  } = useRepositories(user?.access_token, debouncedQuery);
+  } = useRepositories(user?.access_token, currentOrgId, debouncedQuery);
 
-  // Fetch settings for selected repo
   const {
     data: settings,
     isLoading: isLoadingSettings,
@@ -261,15 +362,14 @@ export function ReviewsPage() {
     selectedRepo?.name || ""
   );
 
-  // Update settings mutation
-  const updateSettings = useUpdateSettings(user?.access_token);
+  const updateSettings = useUpdateSettings(user?.access_token, currentOrgId);
 
-  // Sync local settings when fetched settings change
   useEffect(() => {
     if (settings) {
       setLocalSettings({
         enabled: settings.enabled,
         triageEnabled: settings.triageEnabled,
+        customReviewRules: settings.customReviewRules || "",
       });
     }
   }, [settings]);
@@ -295,9 +395,16 @@ export function ReviewsPage() {
         repo: selectedRepo.name,
         enabled: localSettings.enabled,
         triageEnabled: localSettings.triageEnabled,
+        customReviewRules: localSettings.customReviewRules,
+        // Include repo metadata so other org members can see this repo
+        repoMetadata: {
+          fullName: selectedRepo.full_name,
+          isPrivate: selectedRepo.private,
+          // Note: We don't have description/avatar from the simple repo list,
+          // but they could be fetched from GitHub API if needed
+        },
       });
       setSuccessMessage("Settings saved successfully");
-      // Clear selection after saving so it appears in the active list
       setSelectedRepo(null);
       setLocalSettings(null);
     } catch {
@@ -305,11 +412,11 @@ export function ReviewsPage() {
     }
   };
 
-  const tier = user?.subscriptionTier || "FREE";
+  // Use seat tier instead of user subscription tier
+  const tier = hasSeat ? currentSeat?.tier : null;
   const canEnableReviews = tier === "CODE_REVIEW" || tier === "TRIAGE" || tier === "BYOK";
   const canEnableTriage = tier === "TRIAGE" || tier === "BYOK";
 
-  // Check if selected repo is already in activated list
   const isRepoAlreadyActive = selectedRepo && activatedRepos.some(
     (r) => r.owner === selectedRepo.owner && r.repo === selectedRepo.name
   );
@@ -318,13 +425,11 @@ export function ReviewsPage() {
     <div className="p-8">
       <h1 className="text-2xl mb-6">Reviews</h1>
 
-      <div className="max-w-2xl space-y-6">
+      <div className="space-y-6">
         {/* Add Repository Dropdown */}
         <Card>
           <CardHeader>
-            <CardTitle>
-              Add Repository
-            </CardTitle>
+            <CardTitle>Add Repository</CardTitle>
           </CardHeader>
           <CardContent>
             {!user?.access_token ? (
@@ -337,6 +442,17 @@ export function ReviewsPage() {
                   Log out to re-authenticate
                 </Button>
               </div>
+            ) : user?.auth_provider === "google" && !user?.hasGithubLinked ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Link your GitHub account to search and add repositories. You can do this in Settings.
+                </p>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/console/settings">
+                    Go to Settings
+                  </Link>
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 <Combobox
@@ -345,8 +461,9 @@ export function ReviewsPage() {
                   onInputValueChange={setSearchQuery}
                 >
                   <ComboboxInput
+                    size="lg"
                     placeholder="Search repositories..."
-                    className="w-full"
+                    className="w-full !bg-card !border"
                   />
                   <ComboboxContent className="p-1">
                     <ComboboxList>
@@ -378,7 +495,7 @@ export function ReviewsPage() {
           </CardContent>
         </Card>
 
-        {/* Settings for newly selected repo (not yet in active list) */}
+        {/* Settings for newly selected repo */}
         {(settingsError || updateSettings.error) && !isRepoAlreadyActive && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
             {settingsError?.message || updateSettings.error?.message}
@@ -417,8 +534,7 @@ export function ReviewsPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      When enabled, the review agent will automatically review
-                      pull requests.
+                      When enabled, the review agent will automatically review pull requests.
                     </p>
                     {!canEnableReviews && (
                       <Link
@@ -452,9 +568,7 @@ export function ReviewsPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      When enabled, the agent will respond to comments and engage
-                      in discussions. When disabled, it will only provide initial
-                      reviews.
+                      When enabled, the agent will respond to comments and engage in discussions.
                     </p>
                     {!canEnableTriage && (
                       <Link
@@ -474,10 +588,29 @@ export function ReviewsPage() {
                     disabled={!canEnableTriage}
                   />
                 </div>
+
+                <div className="h-px bg-border" />
+
+                <div className="space-y-2">
+                  <Label htmlFor="custom-rules">Custom Review Rules</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Define custom rules and guidelines for the AI to follow when reviewing code in this repository.
+                  </p>
+                  <Textarea
+                    id="custom-rules"
+                    value={localSettings.customReviewRules}
+                    onChange={(e) =>
+                      setLocalSettings({ ...localSettings, customReviewRules: e.target.value })
+                    }
+                    placeholder="Example: Always check for proper error handling, prefer async/await over promises..."
+                    className="min-h-[120px] font-mono text-sm"
+                  />
+                </div>
               </div>
 
               <Button
                 className="mt-6"
+                size="sm"
                 onClick={saveSettings}
                 disabled={updateSettings.isPending}
               >
@@ -490,7 +623,7 @@ export function ReviewsPage() {
           </Card>
         )}
 
-        {/* Active Repositories as Accordions */}
+        {/* Active Repositories */}
         {user?.access_token && (
           <div>
             <h2 className="text-lg mb-2">Active Repositories</h2>
@@ -564,6 +697,7 @@ export function ReviewsPage() {
                         canEnableReviews={canEnableReviews}
                         canEnableTriage={canEnableTriage}
                         token={user.access_token}
+                        orgId={currentOrgId}
                       />
                     ))}
                   </div>

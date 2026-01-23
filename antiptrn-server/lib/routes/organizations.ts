@@ -7,27 +7,50 @@ import {
   canManageBilling,
   canDeleteOrg,
   canUpdateOrg,
-  validateSeatAvailability,
   getUserOrganizations,
+  getOrgQuotaPool,
+  getAvailableSeats,
+  getAssignedSeatCount,
 } from "../middleware/organization";
+import { paymentProvider, getPaymentProviderName, SEAT_PRICING, isYearlyProduct } from "../payments";
+import { uploadFile, isStorageConfigured, getKeyFromUrl, deleteFile } from "../storage";
 
 const prisma = new PrismaClient();
 
-// Helper to get user from DB by GitHub token
+// Helper to get user from DB by OAuth token (supports both GitHub and Google)
 async function getUserFromToken(token: string) {
-  const userResponse = await fetch("https://api.github.com/user", {
+  // Try GitHub first
+  const githubResponse = await fetch("https://api.github.com/user", {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
     },
   });
 
-  if (!userResponse.ok) return null;
-  const githubUser = await userResponse.json();
+  if (githubResponse.ok) {
+    const githubUser = await githubResponse.json();
+    const user = await prisma.user.findUnique({
+      where: { githubId: githubUser.id },
+    });
+    if (user) return user;
+  }
 
-  return prisma.user.findUnique({
-    where: { githubId: githubUser.id },
+  // Try Google
+  const googleResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
+
+  if (googleResponse.ok) {
+    const googleUser = await googleResponse.json();
+    const user = await prisma.user.findUnique({
+      where: { googleId: googleUser.id },
+    });
+    if (user) return user;
+  }
+
+  return null;
 }
 
 function slugify(text: string): string {
@@ -74,7 +97,7 @@ organizationRoutes.post("/", async (c) => {
   }
 
   const body = await c.req.json();
-  const { name } = body;
+  const { name, isPersonal } = body;
 
   if (!name || typeof name !== "string" || name.trim().length < 2) {
     return c.json({ error: "Organization name must be at least 2 characters" }, 400);
@@ -96,7 +119,7 @@ organizationRoutes.post("/", async (c) => {
     data: {
       name: name.trim(),
       slug,
-      seatCount: 1,
+      isPersonal: isPersonal === true,
     },
   });
 
@@ -141,7 +164,7 @@ organizationRoutes.get("/:orgId", async (c) => {
   }
 
   // Check membership
-  const membership = await prisma.organizationMember.findUnique({
+  let membership = await prisma.organizationMember.findUnique({
     where: {
       organizationId_userId: { organizationId: orgId, userId: user.id },
     },
@@ -160,17 +183,70 @@ organizationRoutes.get("/:orgId", async (c) => {
 
   const org = membership.organization;
 
+  // Auto-assign seat for solo users who should have one
+  // Solo users with active subscription and available seats get auto-assigned
+  if (
+    user.accountType === "SOLO" &&
+    !membership.hasSeat &&
+    org.subscriptionStatus === "ACTIVE" &&
+    org.seatCount > 0
+  ) {
+    // Check if there are available seats
+    const assignedCount = await prisma.organizationMember.count({
+      where: { organizationId: orgId, hasSeat: true },
+    });
+
+    if (assignedCount < org.seatCount) {
+      // Auto-assign seat to solo user
+      membership = await prisma.organizationMember.update({
+        where: {
+          organizationId_userId: { organizationId: orgId, userId: user.id },
+        },
+        data: { hasSeat: true },
+        include: {
+          organization: {
+            include: {
+              _count: { select: { members: true } },
+            },
+          },
+        },
+      });
+      console.log(`Auto-assigned seat to solo user ${user.login} in org ${org.slug}`);
+    }
+  }
+
+  const quotaPool = await getOrgQuotaPool(orgId);
+  const seats = await getAvailableSeats(orgId);
+
   return c.json({
     id: org.id,
     name: org.name,
     slug: org.slug,
     avatarUrl: org.avatarUrl,
-    subscriptionTier: org.subscriptionTier,
-    subscriptionStatus: org.subscriptionStatus,
-    seatCount: org.seatCount,
     membersCount: org._count.members,
     role: membership.role,
+    hasSeat: membership.hasSeat,
     createdAt: org.createdAt,
+    // Org-level subscription
+    subscription: org.subscriptionTier ? {
+      tier: org.subscriptionTier,
+      status: org.subscriptionStatus,
+      seatCount: org.seatCount,
+      expiresAt: org.subscriptionExpiresAt,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+    } : null,
+    // Seat allocation
+    seats: {
+      total: seats.total,
+      assigned: seats.assigned,
+      available: seats.available,
+    },
+    // Organization quota pool
+    quotaPool: {
+      total: quotaPool.total,
+      used: quotaPool.used,
+      hasUnlimited: quotaPool.hasUnlimited,
+    },
   });
 });
 
@@ -301,6 +377,163 @@ organizationRoutes.delete("/:orgId", async (c) => {
   return c.json({ success: true });
 });
 
+// Upload organization avatar
+organizationRoutes.post("/:orgId/avatar", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const user = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!user) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  // Check membership and permissions
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: user.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canUpdateOrg(membership.role)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+
+  if (!isStorageConfigured()) {
+    return c.json({ error: "File storage is not configured" }, 500);
+  }
+
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get("file") as File | null;
+
+    if (!file) {
+      return c.json({ error: "No file provided" }, 400);
+    }
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, 400);
+    }
+
+    // Validate file size (max 2MB)
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return c.json({ error: "File too large. Maximum size is 2MB" }, 400);
+    }
+
+    // Delete old avatar if exists
+    const oldAvatarUrl = membership.organization.avatarUrl;
+    if (oldAvatarUrl) {
+      const oldKey = getKeyFromUrl(oldAvatarUrl);
+      if (oldKey) {
+        try {
+          await deleteFile(oldKey);
+        } catch (e) {
+          console.error("Failed to delete old avatar:", e);
+        }
+      }
+    }
+
+    // Upload new avatar
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const extension = file.type.split("/")[1];
+    const key = `org_avatars/${orgId}.${extension}`;
+    const baseUrl = await uploadFile(key, buffer, file.type);
+
+    // Add cache-busting timestamp to URL
+    const avatarUrl = `${baseUrl}?v=${Date.now()}`;
+
+    // Update organization
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { avatarUrl },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: user.id,
+      action: "org.avatar.updated",
+      c,
+    });
+
+    return c.json({ avatarUrl });
+  } catch (error) {
+    console.error("Error uploading avatar:", error);
+    return c.json({ error: "Failed to upload avatar" }, 500);
+  }
+});
+
+// Delete organization avatar
+organizationRoutes.delete("/:orgId/avatar", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const user = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!user) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: user.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canUpdateOrg(membership.role)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+
+  const avatarUrl = membership.organization.avatarUrl;
+  if (!avatarUrl) {
+    return c.json({ error: "No avatar to delete" }, 400);
+  }
+
+  try {
+    const key = getKeyFromUrl(avatarUrl);
+    if (key) {
+      await deleteFile(key);
+    }
+
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { avatarUrl: null },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: user.id,
+      action: "org.avatar.deleted",
+      c,
+    });
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting avatar:", error);
+    return c.json({ error: "Failed to delete avatar" }, 500);
+  }
+});
+
 // ==================== MEMBER MANAGEMENT ====================
 
 // List members
@@ -323,6 +556,7 @@ organizationRoutes.get("/:orgId/members", async (c) => {
     where: {
       organizationId_userId: { organizationId: orgId, userId: user.id },
     },
+    include: { organization: true },
   });
 
   if (!membership) {
@@ -348,17 +582,40 @@ organizationRoutes.get("/:orgId/members", async (c) => {
     ],
   });
 
-  return c.json(
-    members.map((m) => ({
+  // Get quota pool and seat info
+  const quotaPool = await getOrgQuotaPool(orgId);
+  const seats = await getAvailableSeats(orgId);
+  const org = membership.organization;
+
+  return c.json({
+    members: members.map((m) => ({
       userId: m.user.id,
       login: m.user.login,
       name: m.user.name,
       email: m.user.email,
       avatarUrl: m.user.avatarUrl,
       role: m.role,
+      hasSeat: m.hasSeat,
       joinedAt: m.createdAt,
-    }))
-  );
+    })),
+    // Org-level subscription info
+    subscription: org.subscriptionTier ? {
+      tier: org.subscriptionTier,
+      status: org.subscriptionStatus,
+      expiresAt: org.subscriptionExpiresAt,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+    } : null,
+    seats: {
+      total: seats.total,
+      assigned: seats.assigned,
+      available: seats.available,
+    },
+    quotaPool: {
+      total: quotaPool.total,
+      used: quotaPool.used,
+      hasUnlimited: quotaPool.hasUnlimited,
+    },
+  });
 });
 
 // Update member role
@@ -471,6 +728,11 @@ organizationRoutes.delete("/:orgId/members/:userId", async (c) => {
     return c.json({ error: "Insufficient permissions" }, 403);
   }
 
+  // Owners cannot leave the organization - they must transfer ownership first
+  if (isSelf && currentMembership.role === "OWNER") {
+    return c.json({ error: "Owners cannot leave the organization. Transfer ownership first." }, 400);
+  }
+
   // Get target membership
   const targetMembership = await prisma.organizationMember.findUnique({
     where: {
@@ -507,6 +769,866 @@ organizationRoutes.delete("/:orgId/members/:userId", async (c) => {
   });
 
   return c.json({ success: true });
+});
+
+// ==================== SUBSCRIPTION MANAGEMENT ====================
+
+// Get subscription details
+organizationRoutes.get("/:orgId/subscription", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const user = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!user) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: user.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  const org = membership.organization;
+  const seats = await getAvailableSeats(orgId);
+  const quotaPool = await getOrgQuotaPool(orgId);
+
+  return c.json({
+    subscription: org.subscriptionTier ? {
+      tier: org.subscriptionTier,
+      status: org.subscriptionStatus,
+      seatCount: org.seatCount,
+      expiresAt: org.subscriptionExpiresAt,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+    } : null,
+    seats: {
+      total: seats.total,
+      assigned: seats.assigned,
+      available: seats.available,
+    },
+    quotaPool: {
+      total: quotaPool.total,
+      used: quotaPool.used,
+      hasUnlimited: quotaPool.hasUnlimited,
+    },
+  });
+});
+
+// Create or update subscription (purchase seats)
+organizationRoutes.post("/:orgId/subscription", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true, user: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can manage subscriptions" }, 403);
+  }
+
+  const body = await c.req.json();
+  const { tier, billing, quantity, seatCount } = body;
+
+  // Validate tier
+  if (!["BYOK", "CODE_REVIEW", "TRIAGE"].includes(tier)) {
+    return c.json({ error: "Invalid tier. Must be BYOK, CODE_REVIEW, or TRIAGE" }, 400);
+  }
+
+  // Validate billing
+  if (!["monthly", "yearly"].includes(billing)) {
+    return c.json({ error: "Invalid billing cycle. Must be monthly or yearly" }, 400);
+  }
+
+  // Validate quantity (accept both quantity and seatCount for compatibility)
+  const seatQuantity = parseInt(seatCount ?? quantity) || 1;
+  if (seatQuantity < 1 || seatQuantity > 100) {
+    return c.json({ error: "Quantity must be between 1 and 100" }, 400);
+  }
+
+  const org = membership.organization;
+
+  try {
+    // If org already has an active subscription, update it
+    if (org.polarSubscriptionId && org.subscriptionStatus === "ACTIVE") {
+      const currentProductId = org.polarProductId;
+      const newProductId = paymentProvider.getProductId(tier, billing);
+
+      // Check if changing tier/billing or just adding seats
+      if (currentProductId === newProductId) {
+        // Just updating seat count (Polar doesn't support quantity updates, tracked internally)
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { seatCount: seatQuantity },
+        });
+
+        await logAudit({
+          organizationId: orgId,
+          userId: currentUser.id,
+          action: "subscription.updated",
+          metadata: { tier, quantity: seatQuantity, action: "quantity_change" },
+          c,
+        });
+
+        return c.json({
+          success: true,
+          message: `Updated to ${seatQuantity} seats`,
+          subscription: {
+            tier: org.subscriptionTier,
+            seatCount: seatQuantity,
+          },
+        });
+      } else {
+        // Changing tier/billing - need to update product
+        await paymentProvider.updateSubscription({
+          subscriptionId: org.polarSubscriptionId,
+          productId: newProductId,
+          quantity: seatQuantity,
+        });
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: {
+            subscriptionTier: tier,
+            polarProductId: newProductId,
+            seatCount: seatQuantity,
+          },
+        });
+
+        await logAudit({
+          organizationId: orgId,
+          userId: currentUser.id,
+          action: "subscription.updated",
+          metadata: { tier, billing, quantity: seatQuantity, action: "tier_change" },
+          c,
+        });
+
+        return c.json({
+          success: true,
+          message: `Changed to ${tier} with ${seatQuantity} seats`,
+          subscription: {
+            tier,
+            seatCount: seatQuantity,
+          },
+        });
+      }
+    }
+
+    // No existing subscription - create checkout
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+    const checkout = await paymentProvider.createCheckout({
+      productId: paymentProvider.getProductId(tier, billing),
+      quantity: seatQuantity,
+      successUrl: `${FRONTEND_URL}/console/settings?tab=organization&subscription_success=1`,
+      customerEmail: membership.user.email || undefined,
+      customerName: membership.user.name || membership.user.login,
+      metadata: {
+        type: "org_subscription",
+        orgId,
+        tier,
+        seatCount: String(seatQuantity),
+      },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: currentUser.id,
+      action: "subscription.created",
+      metadata: { tier, billing, quantity: seatQuantity },
+      c,
+    });
+
+    return c.json({ checkoutUrl: checkout.checkoutUrl });
+  } catch (error) {
+    console.error("Error managing subscription:", error);
+    return c.json({ error: "Failed to process subscription" }, 500);
+  }
+});
+
+// Cancel subscription
+organizationRoutes.post("/:orgId/subscription/cancel", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can cancel subscriptions" }, 403);
+  }
+
+  const org = membership.organization;
+
+  if (!org.polarSubscriptionId) {
+    return c.json({ error: "No active subscription" }, 400);
+  }
+
+  try {
+    await paymentProvider.cancelSubscription(org.polarSubscriptionId);
+
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { cancelAtPeriodEnd: true },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: currentUser.id,
+      action: "subscription.cancelled",
+      c,
+    });
+
+    return c.json({
+      success: true,
+      message: "Subscription will be cancelled at the end of the billing period",
+    });
+  } catch (error) {
+    console.error("Error cancelling subscription:", error);
+    return c.json({ error: "Failed to cancel subscription" }, 500);
+  }
+});
+
+// Reactivate cancelled subscription
+organizationRoutes.post("/:orgId/subscription/reactivate", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can reactivate subscriptions" }, 403);
+  }
+
+  const org = membership.organization;
+
+  if (!org.polarSubscriptionId) {
+    return c.json({ error: "No subscription to reactivate" }, 400);
+  }
+
+  if (!org.cancelAtPeriodEnd) {
+    return c.json({ error: "Subscription is not scheduled for cancellation" }, 400);
+  }
+
+  try {
+    await paymentProvider.reactivateSubscription(org.polarSubscriptionId);
+
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        cancelAtPeriodEnd: false,
+        subscriptionStatus: "ACTIVE",
+      },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: currentUser.id,
+      action: "subscription.resubscribed",
+      c,
+    });
+
+    return c.json({ success: true, message: "Subscription reactivated" });
+  } catch (error) {
+    console.error("Error reactivating subscription:", error);
+    return c.json({ error: "Failed to reactivate subscription" }, 500);
+  }
+});
+
+// ==================== SEAT COUNT MANAGEMENT ====================
+
+// Update seat count (add/remove seats with Stripe)
+organizationRoutes.post("/:orgId/subscription/seats", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can manage seat count" }, 403);
+  }
+
+  const org = membership.organization;
+
+  if (!org.polarSubscriptionId || org.subscriptionStatus !== "ACTIVE") {
+    return c.json({ error: "No active subscription" }, 400);
+  }
+
+  const body = await c.req.json();
+  const { count } = body;
+
+  // Validate seat count
+  const newSeatCount = parseInt(count);
+  if (isNaN(newSeatCount) || newSeatCount < 1 || newSeatCount > 100) {
+    return c.json({ error: "Seat count must be between 1 and 100" }, 400);
+  }
+
+  // Can't reduce below currently assigned seats
+  const assignedSeats = await getAssignedSeatCount(orgId);
+  if (newSeatCount < assignedSeats) {
+    return c.json({
+      error: `Cannot reduce seats below currently assigned count (${assignedSeats})`,
+      assignedSeats,
+    }, 400);
+  }
+
+  if (newSeatCount === org.seatCount) {
+    return c.json({ error: "No change in seat count" }, 400);
+  }
+
+  try {
+    // Check subscription status in Stripe before attempting update
+    // This catches cases where our DB says ACTIVE but Stripe has it as incomplete_expired
+    if (getPaymentProviderName() === "stripe") {
+      const subscription = await paymentProvider.getSubscription(org.polarSubscriptionId);
+      if (subscription.status !== "active") {
+        if (subscription.status === "incomplete" || subscription.status === "incomplete_expired") {
+          return c.json({
+            error: "Your subscription payment is incomplete. Please complete your subscription setup before updating seats.",
+            requiresCheckout: true,
+            subscriptionStatus: subscription.status,
+          }, 400);
+        }
+        return c.json({
+          error: `Cannot update seats: subscription is ${subscription.status}`,
+          subscriptionStatus: subscription.status,
+        }, 400);
+      }
+    }
+
+    // Update Stripe subscription quantity
+    await paymentProvider.updateSubscription({
+      subscriptionId: org.polarSubscriptionId,
+      quantity: newSeatCount,
+    });
+
+    // Update database
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { seatCount: newSeatCount },
+    });
+
+    await logAudit({
+      organizationId: orgId,
+      userId: currentUser.id,
+      action: "subscription.seats.updated",
+      metadata: {
+        previousCount: org.seatCount,
+        newCount: newSeatCount,
+      },
+      c,
+    });
+
+    return c.json({
+      success: true,
+      seatCount: newSeatCount,
+      previousCount: org.seatCount,
+    });
+  } catch (error) {
+    console.error("Error updating seat count:", error);
+    
+    // Handle Stripe-specific errors
+    const errorObj = error as { type?: string; message?: string };
+    if (errorObj?.type === "StripeInvalidRequestError") {
+      const errorMessage = errorObj.message || "";
+      
+      // Check for incomplete_expired subscription error
+      if (errorMessage.includes("incomplete_expired") || errorMessage.includes("incomplete")) {
+        return c.json({
+          error: "Your subscription payment is incomplete. Please complete your subscription setup before updating seats.",
+          requiresCheckout: true,
+        }, 400);
+      }
+      
+      // Return Stripe's error message if available
+      if (errorMessage) {
+        return c.json({ error: errorMessage }, 400);
+      }
+    }
+    
+    return c.json({ error: "Failed to update seat count" }, 500);
+  }
+});
+
+// Preview seat change proration
+organizationRoutes.get("/:orgId/subscription/seats/preview", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can preview seat changes" }, 403);
+  }
+
+  const org = membership.organization;
+
+  if (!org.polarSubscriptionId || org.subscriptionStatus !== "ACTIVE") {
+    return c.json({ error: "No active subscription" }, 400);
+  }
+
+  const countParam = c.req.query("count");
+  const newSeatCount = parseInt(countParam || "");
+
+  if (isNaN(newSeatCount) || newSeatCount < 1 || newSeatCount > 100) {
+    return c.json({ error: "count query parameter must be between 1 and 100" }, 400);
+  }
+
+  try {
+    const preview = await paymentProvider.previewSubscriptionChange({
+      subscriptionId: org.polarSubscriptionId,
+      quantity: newSeatCount,
+    });
+
+    return c.json(preview);
+  } catch (error) {
+    // If preview fails (e.g., Polar doesn't support it), calculate manually
+    
+    const currentSeatCount = org.seatCount ?? 0;
+    const tier = org.subscriptionTier;
+    
+    if (!tier || currentSeatCount === 0 || tier === "FREE") {
+      return c.json({ error: "Invalid subscription state for preview" }, 400);
+    }
+
+    // Get price per seat based on tier and billing cycle
+    const isYearly = isYearlyProduct(org.polarProductId);
+    const tierKey = tier as keyof typeof SEAT_PRICING;
+    const pricePerSeatCents = SEAT_PRICING[tierKey]?.[isYearly ? "yearly" : "monthly"] ?? 0;
+    
+    if (pricePerSeatCents === 0) {
+      return c.json({ error: "Unable to determine price for tier" }, 400);
+    }
+
+    // Calculate proration
+    let proratedCharge = 0;
+    const seatDifference = newSeatCount - currentSeatCount;
+    
+    if (seatDifference !== 0) {
+      // Try to get subscription details for accurate period calculation
+      let periodEnd: Date | null = null;
+      let periodStart: Date | null = null;
+      
+      try {
+        if (!org.polarSubscriptionId) {
+          throw new Error("No subscription ID");
+        }
+        const subscription = await paymentProvider.getSubscription(org.polarSubscriptionId);
+        periodEnd = subscription.currentPeriodEnd;
+        // Estimate period start (1 month or 1 year before end)
+        if (periodEnd) {
+          periodStart = new Date(periodEnd);
+          if (isYearly) {
+            periodStart.setFullYear(periodStart.getFullYear() - 1);
+          } else {
+            periodStart.setMonth(periodStart.getMonth() - 1);
+          }
+        }
+      } catch (subError) {
+        // Fall back to using org.subscriptionExpiresAt
+        console.log("Could not fetch subscription details, using org data:", subError);
+        if (org.subscriptionExpiresAt) {
+          periodEnd = new Date(org.subscriptionExpiresAt);
+          periodStart = new Date(periodEnd);
+          if (isYearly) {
+            periodStart.setFullYear(periodStart.getFullYear() - 1);
+          } else {
+            periodStart.setMonth(periodStart.getMonth() - 1);
+          }
+        }
+      }
+      
+      if (periodEnd && periodStart) {
+        const now = new Date();
+        const totalPeriodMs = periodEnd.getTime() - periodStart.getTime();
+        const remainingPeriodMs = periodEnd.getTime() - now.getTime();
+        
+        if (totalPeriodMs > 0 && remainingPeriodMs > 0) {
+          const prorationRatio = remainingPeriodMs / totalPeriodMs;
+          
+          // Prorated amount = (seat difference) * (price per seat) * (time remaining / total period)
+          proratedCharge = Math.round(seatDifference * pricePerSeatCents * prorationRatio);
+        }
+      }
+    }
+
+    // Calculate next billing amount
+    const nextBillingAmount = newSeatCount * pricePerSeatCents;
+
+    return c.json({
+      currentSeats: currentSeatCount,
+      newSeats: newSeatCount,
+      proratedCharge,
+      nextBillingAmount,
+      effectiveNow: true,
+    });
+  }
+});
+
+// ==================== SEAT ASSIGNMENT ====================
+
+// Assign a seat to a member
+organizationRoutes.post("/:orgId/seats/:userId/assign", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+  const targetUserId = c.req.param("userId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+    include: { organization: true },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can assign seats" }, 403);
+  }
+
+  // Check if org has a subscription
+  const org = membership.organization;
+  if (!org.subscriptionTier || org.subscriptionStatus !== "ACTIVE") {
+    return c.json({ error: "Organization has no active subscription" }, 400);
+  }
+
+  // Check seat availability
+  const seats = await getAvailableSeats(orgId);
+  if (seats.available <= 0) {
+    return c.json({
+      error: "No seats available. Purchase more seats to assign.",
+      seats,
+    }, 400);
+  }
+
+  // Get target member
+  const targetMember = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: targetUserId },
+    },
+    include: { user: true },
+  });
+
+  if (!targetMember) {
+    return c.json({ error: "User is not a member of this organization" }, 404);
+  }
+
+  if (targetMember.hasSeat) {
+    return c.json({ error: "User already has a seat assigned" }, 400);
+  }
+
+  // Assign seat
+  await prisma.organizationMember.update({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: targetUserId },
+    },
+    data: { hasSeat: true },
+  });
+
+  await logAudit({
+    organizationId: orgId,
+    userId: currentUser.id,
+    action: "org.member.updated",
+    target: targetUserId,
+    metadata: { action: "seat_assigned", userLogin: targetMember.user.login },
+    c,
+  });
+
+  return c.json({
+    success: true,
+    message: `Seat assigned to ${targetMember.user.login}`,
+  });
+});
+
+// Unassign a seat from a member
+organizationRoutes.post("/:orgId/seats/:userId/unassign", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+  const targetUserId = c.req.param("userId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageBilling(membership.role)) {
+    return c.json({ error: "Only owners can unassign seats" }, 403);
+  }
+
+  // Get target member
+  const targetMember = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: targetUserId },
+    },
+    include: { user: true },
+  });
+
+  if (!targetMember) {
+    return c.json({ error: "User is not a member of this organization" }, 404);
+  }
+
+  if (!targetMember.hasSeat) {
+    return c.json({ error: "User does not have a seat assigned" }, 400);
+  }
+
+  // Unassign seat
+  await prisma.organizationMember.update({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: targetUserId },
+    },
+    data: { hasSeat: false },
+  });
+
+  await logAudit({
+    organizationId: orgId,
+    userId: currentUser.id,
+    action: "org.member.updated",
+    target: targetUserId,
+    metadata: { action: "seat_unassigned", userLogin: targetMember.user.login },
+    c,
+  });
+
+  return c.json({
+    success: true,
+    message: `Seat unassigned from ${targetMember.user.login}`,
+  });
+});
+
+// Reassign a seat from one member to another
+organizationRoutes.post("/:orgId/seats/:userId/reassign", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const currentUser = await getUserFromToken(token);
+  const orgId = c.req.param("orgId");
+  const sourceUserId = c.req.param("userId");
+
+  if (!currentUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: currentUser.id },
+    },
+  });
+
+  if (!membership) {
+    return c.json({ error: "Not a member of this organization" }, 403);
+  }
+
+  if (!canManageMembers(membership.role)) {
+    return c.json({ error: "Only owners and admins can reassign seats" }, 403);
+  }
+
+  const body = await c.req.json<{ targetUserId: string }>();
+  const { targetUserId } = body;
+
+  if (!targetUserId) {
+    return c.json({ error: "targetUserId is required" }, 400);
+  }
+
+  if (sourceUserId === targetUserId) {
+    return c.json({ error: "Cannot reassign seat to the same user" }, 400);
+  }
+
+  // Get source member
+  const sourceMember = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: sourceUserId },
+    },
+    include: { user: true },
+  });
+
+  if (!sourceMember) {
+    return c.json({ error: "Source user is not a member of this organization" }, 404);
+  }
+
+  if (!sourceMember.hasSeat) {
+    return c.json({ error: "Source user does not have a seat" }, 400);
+  }
+
+  // Get target member
+  const targetMember = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId: orgId, userId: targetUserId },
+    },
+    include: { user: true },
+  });
+
+  if (!targetMember) {
+    return c.json({ error: "Target user is not a member of this organization" }, 404);
+  }
+
+  if (targetMember.hasSeat) {
+    return c.json({ error: "Target user already has a seat" }, 400);
+  }
+
+  // Reassign seat
+  await prisma.$transaction([
+    prisma.organizationMember.update({
+      where: {
+        organizationId_userId: { organizationId: orgId, userId: sourceUserId },
+      },
+      data: { hasSeat: false },
+    }),
+    prisma.organizationMember.update({
+      where: {
+        organizationId_userId: { organizationId: orgId, userId: targetUserId },
+      },
+      data: { hasSeat: true },
+    }),
+  ]);
+
+  await logAudit({
+    organizationId: orgId,
+    userId: currentUser.id,
+    action: "seat.reassigned",
+    target: targetUserId,
+    metadata: {
+      fromUserId: sourceUserId,
+      fromUserLogin: sourceMember.user.login,
+      toUserId: targetUserId,
+      toUserLogin: targetMember.user.login,
+    },
+    c,
+  });
+
+  return c.json({
+    success: true,
+    message: `Seat reassigned from ${sourceMember.user.login} to ${targetMember.user.login}`,
+  });
 });
 
 // ==================== AUDIT LOGS ====================
@@ -694,16 +1816,6 @@ organizationRoutes.post("/:orgId/invites", async (c) => {
 
   if (!membership || !canManageMembers(membership.role)) {
     return c.json({ error: "Insufficient permissions" }, 403);
-  }
-
-  // Check seat availability
-  const seats = await validateSeatAvailability(orgId);
-  if (!seats.available) {
-    return c.json({
-      error: "No seats available. Upgrade your subscription to add more members.",
-      seatsUsed: seats.used,
-      seatsTotal: seats.total,
-    }, 403);
   }
 
   const body = await c.req.json();
@@ -941,18 +2053,13 @@ organizationRoutes.post("/invites/:token/accept", async (c) => {
     return c.json({ error: "You are already a member of this organization" }, 400);
   }
 
-  // Check seat availability
-  const seats = await validateSeatAvailability(invite.organizationId);
-  if (!seats.available) {
-    return c.json({ error: "No seats available in this organization" }, 403);
-  }
-
-  // Add user as member
+  // Add user as member (no seat by default)
   await prisma.organizationMember.create({
     data: {
       organizationId: invite.organizationId,
       userId: user.id,
       role: invite.role,
+      hasSeat: false,
     },
   });
 

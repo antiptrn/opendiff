@@ -10,6 +10,7 @@ export function AuthCallbackPage() {
   useEffect(() => {
     const userParam = searchParams.get("user");
     const error = searchParams.get("error");
+    const redirectUrl = searchParams.get("redirectUrl");
 
     if (error) {
       navigate(`/login?error=${error}`);
@@ -20,13 +21,8 @@ export function AuthCallbackPage() {
       try {
         const userData = JSON.parse(decodeURIComponent(userParam));
         setUser(userData);
-
-        // Redirect to create org if user has no organizations
-        if (!userData.hasOrganizations) {
-          navigate("/create-organization");
-        } else {
-          navigate("/console");
-        }
+        // Use redirectUrl if provided, otherwise go to console
+        navigate(redirectUrl || "/console");
       } catch {
         navigate("/login?error=invalid_user_data");
       }
