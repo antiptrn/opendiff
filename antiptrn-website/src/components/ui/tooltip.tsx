@@ -7,18 +7,58 @@ import { cn } from "@/lib/utils"
 
 const TooltipProvider = Tooltip.Provider
 
-const TooltipRoot = Tooltip.Root
+// Wrapper for TooltipRoot with delay prop
+// Note: Base UI Tooltip.Root doesn't support delay directly, but we keep the prop
+// for API consistency - delay is handled by the Positioner or provider in base-ui
+function TooltipRoot({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  delay,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof Tooltip.Root> & {
+  delay?: number;
+}) {
+  return (
+    <Tooltip.Root {...props}>
+      {children}
+    </Tooltip.Root>
+  );
+}
 
-const TooltipTrigger = Tooltip.Trigger
+// Wrapper for TooltipTrigger with asChild prop (maps to render)
+function TooltipTrigger({
+  asChild,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof Tooltip.Trigger> & {
+  asChild?: boolean;
+}) {
+  if (asChild && React.isValidElement(children)) {
+    return (
+      <Tooltip.Trigger
+        render={children}
+        {...props}
+      />
+    );
+  }
+  return (
+    <Tooltip.Trigger {...props}>
+      {children}
+    </Tooltip.Trigger>
+  );
+}
+
+type Side = "top" | "right" | "bottom" | "left";
 
 const TooltipContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof Tooltip.Popup> & {
-    sideOffset?: number
+    sideOffset?: number;
+    side?: Side;
   }
->(({ className, sideOffset = 4, children, ...props }, ref) => (
+>(({ className, sideOffset = 4, side = "top", children, ...props }, ref) => (
   <Tooltip.Portal>
-    <Tooltip.Positioner sideOffset={sideOffset}>
+    <Tooltip.Positioner sideOffset={sideOffset} side={side}>
       <Tooltip.Popup
         ref={ref}
         className={cn(

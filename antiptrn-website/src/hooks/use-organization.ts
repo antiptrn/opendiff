@@ -190,8 +190,7 @@ export function useOrganization() {
           avatarUrl: data.avatarUrl || null,
           role: "OWNER",
           isPersonal: variables.isPersonal,
-          subscriptionTier: data.subscriptionTier || "FREE",
-          subscriptionStatus: data.subscriptionStatus || "INACTIVE",
+          seat: null, // New org starts with no seat assigned
         };
         return old ? [...old, newOrg] : [newOrg];
       });
@@ -259,7 +258,7 @@ export function useOrganizationMembers(orgId: string | null) {
   return useQuery({
     queryKey: ["organization", orgId, "members"],
     queryFn: async (): Promise<MembersResponse> => {
-      if (!orgId || !user?.access_token) return { members: [], quotaPool: { total: 0, used: 0, hasUnlimited: false } };
+      if (!orgId || !user?.access_token) return { members: [], quotaPool: { total: 0, used: 0, hasUnlimited: false }, seats: { total: 0, assigned: 0, available: 0 } };
 
       const response = await fetch(`${API_URL}/api/organizations/${orgId}/members`, {
         headers: { Authorization: `Bearer ${user.access_token}` },

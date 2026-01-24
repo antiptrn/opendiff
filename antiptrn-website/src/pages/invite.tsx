@@ -166,7 +166,7 @@ export default function InvitePage() {
               <p className="text-sm text-muted-foreground text-center">
                 Please sign in with GitHub to accept this invite.
               </p>
-              <Button onClick={login} className="w-full">
+              <Button onClick={() => login()} className="w-full">
                 Sign in with GitHub
               </Button>
             </div>

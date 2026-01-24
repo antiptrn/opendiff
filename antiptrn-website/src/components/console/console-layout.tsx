@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -198,10 +198,8 @@ export function ConsoleLayout() {
           </ul>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <motion.button
-                initial={false}
-                animate={{ width: isCollapsed ? 36 : 216 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
+              <button
+                type="button"
                 className="cursor-pointer flex items-center gap-2.5 p-1.5 rounded-md group text-left overflow-hidden"
               >
                 <Avatar className="size-6 rounded-sm overflow-hidden shrink-0">
@@ -216,7 +214,7 @@ export function ConsoleLayout() {
                     <ChevronDown className="size-3.5 text-foreground/80 group-hover:text-foreground shrink-0" />
                   </div>
                 )}
-              </motion.button>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-64">
               {/* Current user with submenu for account switching */}

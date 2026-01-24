@@ -98,12 +98,6 @@ function setStoredAccounts(accounts: AccountsStorage) {
   localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
 }
 
-function getActiveUser(): User | null {
-  const { accounts, activeAccountId } = getStoredAccounts();
-  if (!activeAccountId) return null;
-  return accounts.find((a) => getUserId(a) === activeAccountId) || null;
-}
-
 export function useAuth() {
   const queryClient = useQueryClient();
 
@@ -214,8 +208,7 @@ export function useAuth() {
     const userId = getUserId(newUser);
     const existingIndex = storage.accounts.findIndex((a) => getUserId(a) === userId);
 
-    // Check if we're adding a new account
-    const isAddingAccount = sessionStorage.getItem("antiptrn_add_account") === "true";
+    // Clear the adding account flag if it was set
     sessionStorage.removeItem("antiptrn_add_account");
 
     if (existingIndex >= 0) {
