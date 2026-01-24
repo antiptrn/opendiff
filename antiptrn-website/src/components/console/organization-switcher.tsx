@@ -24,7 +24,7 @@ export function OrganizationSwitcher() {
   if (organizations.length <= 1) {
     return (
       <div className="flex items-center gap-2 h-9 px-1.5">
-        <Avatar className="size-6 !rounded-md overflow-hidden">
+        <Avatar className="size-6 rounded-sm overflow-hidden">
           <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
           <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
         </Avatar>
@@ -39,7 +39,7 @@ export function OrganizationSwitcher() {
           variant="ghost"
           className="gap-2 justify-between h-9 rounded-lg px-1.5 !bg-transparent text-foreground/80 hover:text-foreground"
         >
-          <Avatar className="size-6 rounded-md overflow-hidden">
+          <Avatar className="size-6 rounded-sm overflow-hidden">
             <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
             <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
           </Avatar>

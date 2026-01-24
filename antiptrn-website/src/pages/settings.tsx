@@ -294,12 +294,11 @@ function CustomReviewRulesCard({ token, orgId }: { token?: string; orgId?: strin
     <Card>
       <CardHeader>
         <CardTitle>Custom Review Rules</CardTitle>
+        <CardDescription>
+          Define custom rules and guidelines for the AI to follow when reviewing your code. These rules will be included in every review.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Define custom rules and guidelines for the AI to follow when reviewing your code. These rules will be included in every review.
-        </p>
-
         {updateRules.error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
             {updateRules.error?.message}
@@ -313,19 +312,18 @@ function CustomReviewRulesCard({ token, orgId }: { token?: string; orgId?: strin
         )}
 
         <Textarea
-          placeholder="Example rules:&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
+          placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
           value={localRules}
           onChange={(e) => setLocalRules(e.target.value)}
-          className="min-h-[150px] font-mono text-sm"
+          className="min-h-[150px]"
           maxLength={5000}
         />
 
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
+        <div className="flex items-center justify-between mt-6">
+          <p className="text-sm text-muted-foreground">
             {localRules.length}/5000 characters
           </p>
           <Button
-            size="sm"
             onClick={handleSave}
             disabled={!hasChanges || updateRules.isPending}
           >
@@ -388,14 +386,13 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
         )}
 
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <p className="text-sm">Export my data</p>
+          <div className="space-y-1">
+            <p className="text-base">Export my data</p>
             <p className="text-sm text-muted-foreground">
               Download all your data as a JSON file.
             </p>
           </div>
           <Button
-            size="sm"
             variant="outline"
             onClick={handleExportData}
             disabled={exportData.isPending}
@@ -408,14 +405,13 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
         <Separator />
 
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <p className="text-sm text-destructive">Delete my account</p>
+          <div className="space-y-1">
+            <p className="text-base text-destructive">Delete my account</p>
             <p className="text-sm text-muted-foreground">
               Permanently delete your account and all associated data.
             </p>
           </div>
           <Button
-            size="sm"
             variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
             disabled={deleteAccount.isPending}
@@ -435,9 +431,8 @@ function AccountManagementCard({ token, orgId, logout }: { token?: string; orgId
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="default">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              size="sm"
               onClick={handleDeleteAccount}
               variant="destructive"
             >
@@ -505,11 +500,10 @@ function LeaveOrganizationCard({ orgId, orgName }: { orgId: string | null; orgNa
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="default">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              size="sm"
               onClick={handleLeave}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {leaveOrganization.isPending && <Loader2 className="size-4 animate-spin" />}
               Leave Organization
@@ -554,10 +548,12 @@ function LinkGitHubCard({ token, onLinked }: { token?: string; onLinked?: () => 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <SiGithub className="size-5" />
+        <CardTitle>
           Link GitHub Account
         </CardTitle>
+        <CardDescription>
+          Link your GitHub account to access your repositories and enable code reviews.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {githubLinked && (
@@ -584,17 +580,11 @@ function LinkGitHubCard({ token, onLinked }: { token?: string; onLinked?: () => 
           </div>
         )}
 
-        <p className="text-sm text-muted-foreground">
-          Link your GitHub account to access your repositories and enable code reviews.
-        </p>
-
         <Button
-          size="sm"
           onClick={handleLinkGitHub}
           disabled={linkGitHub.isPending}
         >
           {linkGitHub.isPending && <Loader2 className="size-4 animate-spin" />}
-          <SiGithub className="size-4" />
           Link GitHub Account
         </Button>
       </CardContent>
@@ -603,15 +593,8 @@ function LinkGitHubCard({ token, onLinked }: { token?: string; onLinked?: () => 
 }
 
 function GeneralTab({ user, logout, orgId, setUser }: { user: ReturnType<typeof useAuth>["user"]; logout: () => void; orgId?: string | null; setUser: ReturnType<typeof useAuth>["setUser"] }) {
-  const { currentSeat, hasSeat, currentOrg } = useOrganization();
+  const { currentSeat, hasSeat } = useOrganization();
   const tier = hasSeat ? currentSeat?.tier : null;
-
-  // Solo users don't see leave organization option
-  const isSoloUser = user?.accountType === "SOLO";
-  // Owners cannot leave - they must transfer ownership first
-  const isOwner = currentOrg?.role === "OWNER";
-  // Show leave option for non-solo, non-owner users
-  const canLeaveOrg = !isSoloUser && !isOwner && currentOrg;
 
   // Show GitHub link card for Google users who haven't linked GitHub
   const needsGithubLink = user?.auth_provider === "google" && !user?.hasGithubLinked;
@@ -631,12 +614,12 @@ function GeneralTab({ user, logout, orgId, setUser }: { user: ReturnType<typeof 
       <Card>
         <CardHeader>
           <CardTitle>Install GitHub App</CardTitle>
+          <CardDescription>
+            Install the GitHub App on your repositories to enable code reviews. You can install it on your personal account or any organization you have access to.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Install the GitHub App on your repositories to enable code reviews. You can install it on your personal account or any organization you have access to.
-          </p>
-          <Button size="sm" asChild>
+          <Button asChild>
             <a
               href="https://github.com/apps/antiptrn-review-agent/installations/new"
               target="_blank"
@@ -654,9 +637,6 @@ function GeneralTab({ user, logout, orgId, setUser }: { user: ReturnType<typeof 
 
       {/* Custom Review Rules - available for all paid plans */}
       {tier && <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />}
-
-      {/* Leave Organization - for non-solo, non-owner team members */}
-      {canLeaveOrg && <LeaveOrganizationCard orgId={orgId ?? null} orgName={currentOrg.name} />}
 
       {/* Account Management */}
       <AccountManagementCard token={user?.access_token} orgId={orgId} logout={logout} />
@@ -714,7 +694,7 @@ function BillingHistoryCard({ user, orgId, isSoloUser }: { user: ReturnType<type
             ))}
           </div>
         ) : orders.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
+          <p className="text-base text-muted-foreground text-center pb-4 mt-4">
             No billing history yet
           </p>
         ) : (
@@ -810,14 +790,14 @@ function BillingTab({ user, orgId, isSoloUser }: { user: ReturnType<typeof useAu
                     </p>
                   )
                 ) : (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-base text-muted-foreground">
                     You're on the free plan
                   </p>
                 )}
               </div>
 
               {!hasSubscription && (
-                <Button size="sm" asChild>
+                <Button asChild>
                   <Link to="/pricing">Upgrade</Link>
                 </Button>
               )}
@@ -1299,8 +1279,8 @@ function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Organization</CardTitle>
-        <CardDescription>Manage your organization's profile</CardDescription>
+        <CardTitle>Team Profile</CardTitle>
+        <CardDescription>Manage your teams's profile</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (
@@ -1317,56 +1297,40 @@ function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: {
 
         {/* Avatar */}
         <div className="space-y-2">
-          <Label>Avatar</Label>
           <div className="flex flex-col items-start gap-4">
             <div className="relative">
               <Avatar className="size-16 rounded-xl overflow-hidden">
                 <AvatarImage src={avatarUrl ?? undefined} alt={orgName} />
+                <div className="absolute z-10 inset-0 flex items-center justify-center">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="px-0 size-8 bg-background/50 hover:bg-background/30"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading || isDeleting || isSavingName}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Upload className="size-4" />
+                    )}
+                  </Button>
+                </div>
                 <AvatarFallback className="text-3xl">{orgName.charAt(0)}</AvatarFallback>
               </Avatar>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Recommended: Square image, at least 128x128 pixels.
+              </p>
             </div>
 
-            <div className="flex gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading || isDeleting || isSavingName}
-              >
-                {isUploading ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Upload className="size-3.5" />
-                )}
-                {avatarUrl ? "Change" : "Upload"}
-              </Button>
-              {avatarUrl && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleDeleteAvatar}
-                  disabled={isUploading || isDeleting || isSavingName}
-                >
-                  {isDeleting ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="size-3.5" />
-                  )}
-                  Remove
-                </Button>
-              )}
-            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Recommended: Square image, at least 128x128 pixels.
-          </p>
         </div>
 
         {/* Name */}
@@ -1375,22 +1339,20 @@ function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: {
           <div className="flex flex-col gap-4">
             <Input
               id="org-name"
-              size="sm"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               disabled={isUploading || isDeleting || isSavingName}
               placeholder="Organization name"
             />
             <Button
-              className="w-fit"
-              size="sm"
+              className="w-fit mt-2"
               onClick={handleSaveName}
               disabled={!hasNameChanges || isSavingName || isUploading || isDeleting}
             >
               {isSavingName ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                "Save"
+                "Save Settings"
               )}
             </Button>
           </div>
@@ -1549,35 +1511,65 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
   return (
     <div className="space-y-6">
       {/* Organization settings - for owners and admins */}
-      {canUpdateOrg && (
+      {canUpdateOrg ? (
         <OrganizationCard
           orgId={orgId}
           avatarUrl={orgDetails?.avatarUrl ?? null}
           orgName={currentOrg?.name ?? "Organization"}
           onUpdated={handleAvatarUpdated}
         />
+      ) : (
+        /* Read-only org info for members */
+        <Card>
+          <CardHeader>
+            <CardTitle>Team</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              {orgDetails?.avatarUrl ? (
+                <img
+                  src={orgDetails.avatarUrl}
+                  alt={currentOrg?.name}
+                  className="size-16 rounded-full object-cover"
+                />
+              ) : (
+                <div className="size-16 rounded-full bg-muted flex items-center justify-center">
+                  <Building2 className="size-8 text-muted-foreground" />
+                </div>
+              )}
+              <div>
+                <p className="text-lg">{currentOrg?.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  You are a {formatRoleName(currentOrg?.role ?? "MEMBER")}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Subscription & Quota Info */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Organization Subscription</CardTitle>
-            <CardDescription>Manage your team's subscription and seats</CardDescription>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <CardTitle>
+              Team Subscription
+            </CardTitle>
+            {canManageBilling && (
+              <SubscriptionBadge subscription={subscription} />
+            )}
           </div>
-          {canManageBilling && (
-            <SubscriptionBadge subscription={subscription} />
-          )}
+          <CardDescription>Manage your team's subscription and seats</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {subscription?.status === "ACTIVE" ? (
             <>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">
+                  <p className="text-base">
                     {tierLabels[subscription.tier]} Plan
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {assignedSeats} of {subscription.seatCount} seats assigned
                     {availableSeats > 0 && ` (${availableSeats} available)`}
                   </p>
@@ -1585,11 +1577,11 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
                 {canManageBilling && (
                   <div className="flex gap-2">
                     {subscription.cancelAtPeriodEnd ? (
-                      <Button size="sm" onClick={handleReactivateSubscription}>
+                      <Button onClick={handleReactivateSubscription}>
                         Reactivate
                       </Button>
                     ) : (
-                      <Button size="sm" variant="destructive" onClick={handleCancelSubscription}>
+                      <Button variant="destructive" onClick={handleCancelSubscription}>
                         Cancel subscription
                       </Button>
                     )}
@@ -1599,10 +1591,10 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
               {quotaPool && (
                 <div className="pt-4 border-t">
                   {quotaPool.hasUnlimited || quotaPool.total === -1 ? (
-                    <p className="text-sm">Unlimited reviews (BYOK)</p>
+                    <p className="text-base">Unlimited reviews (BYOK)</p>
                   ) : (
                     <>
-                      <p className="text-sm">
+                      <p className="text-base">
                         {quotaPool.used} / {quotaPool.total} reviews used this cycle
                       </p>
                       <div className="w-full bg-muted rounded-full h-2 mt-2">
@@ -2005,6 +1997,11 @@ function OrganizationTab({ user, orgId }: { user: ReturnType<typeof useAuth>["us
       {(canManageBilling || canManageMembers) && (
         <BillingHistoryCard user={user} orgId={orgId} />
       )}
+
+      {/* Leave Organization - shown for non-owners */}
+      {currentOrg?.role !== "OWNER" && (
+        <LeaveOrganizationCard orgId={orgId} orgName={currentOrg?.name ?? "Organization"} />
+      )}
     </div>
   );
 }
@@ -2015,21 +2012,15 @@ type TabType = "general" | "organization" | "reviews" | "billing";
 
 export function SettingsPage() {
   const { user, logout, setUser } = useAuth();
-  const { currentOrgId, canManageMembers, canManageBilling } = useOrganization();
+  const { currentOrgId, currentOrg, canManageMembers, canManageBilling } = useOrganization();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Check if user is a solo user (hide organization tab, show billing instead)
-  const isSoloUser = user?.accountType === "SOLO";
+  // Show Organization tab for team orgs, Billing tab for personal orgs
+  const isPersonalOrg = currentOrg?.isPersonal ?? false;
+  const showOrganizationTab = !isPersonalOrg;
+  const showBillingTab = isPersonalOrg;
 
-  // Determine which tabs to show based on role
-  const isMember = !canManageMembers && !canManageBilling;
-  const isAdminOrOwner = canManageMembers || canManageBilling;
-
-  // Solo users see billing instead of organization, even if they're an owner
-  const showOrganizationTab = isAdminOrOwner && !isSoloUser;
-  const showBillingTab = isMember || isSoloUser;
-
-  // Build valid tabs based on role (reviews tab removed - now in sidebar)
+  // Build valid tabs based on account type
   const validTabs: TabType[] = showOrganizationTab
     ? ["general", "organization"]
     : ["general", "billing"];
@@ -2048,7 +2039,7 @@ export function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          {showOrganizationTab && <TabsTrigger value="organization">Organization</TabsTrigger>}
+          {showOrganizationTab && <TabsTrigger value="organization">Team</TabsTrigger>}
           {showBillingTab && <TabsTrigger value="billing">Billing</TabsTrigger>}
         </TabsList>
 
@@ -2062,7 +2053,7 @@ export function SettingsPage() {
         )}
         {showBillingTab && (
           <TabsContent value="billing">
-            <BillingTab user={user} orgId={currentOrgId} isSoloUser={isSoloUser} />
+            <BillingTab user={user} orgId={currentOrgId} isSoloUser={isPersonalOrg} />
           </TabsContent>
         )}
       </Tabs>

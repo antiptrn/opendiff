@@ -12,8 +12,8 @@ import imageCompression from "browser-image-compression";
 
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const { createOrg, isCreating, hasOrganizations, isLoadingOrgs } = useOrganization();
+  const { user, isLoading: isAuthLoading, logout } = useAuth();
+  const { createOrg, isCreating, hasOrganizations, isLoadingOrgs, isUnauthorized } = useOrganization();
   const api = useApi();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +33,12 @@ export default function CreateOrganizationPage() {
 
   // Redirect to login if not authenticated
   if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // If token is expired/invalid, log out and redirect to login
+  if (isUnauthorized) {
+    logout();
     return <Navigate to="/login" replace />;
   }
 

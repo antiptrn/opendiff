@@ -75,7 +75,7 @@ export function useOrganization() {
   const { selectedOrgId, setSelectedOrgId } = useOrganizationContext();
 
   // Fetch organizations from API
-  const { data: allOrganizations = [], isLoading: isLoadingOrgs, isFetched: hasFetchedOrgs } = useQuery({
+  const { data: allOrganizations = [], isLoading: isLoadingOrgs, isFetched: hasFetchedOrgs, error: orgsError } = useQuery({
     queryKey: ["organizations"],
     queryFn: async (): Promise<UserOrganization[]> => {
       if (!user?.access_token) return [];
@@ -85,12 +85,23 @@ export function useOrganization() {
       });
 
       if (!response.ok) {
-        return [];
+        if (response.status === 401) {
+          // Token expired or invalid - throw to trigger error state
+          throw new Error("UNAUTHORIZED");
+        }
+        throw new Error("Failed to fetch organizations");
       }
 
       return response.json();
     },
     enabled: !!user?.access_token,
+    retry: (failureCount, error) => {
+      // Don't retry on auth errors
+      if (error instanceof Error && error.message === "UNAUTHORIZED") {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 
   // Filter out personal orgs from the visible list (for org switcher)
@@ -199,7 +210,7 @@ export function useOrganization() {
   // Get current user's seat status
   const hasSeat = orgDetails?.hasSeat ?? false;
   const subscription = orgDetails?.subscription ?? null;
-  
+
   // Create currentSeat object for user's seat (if they have one)
   const currentSeat = hasSeat && subscription ? {
     tier: subscription.tier,
@@ -207,6 +218,9 @@ export function useOrganization() {
     expiresAt: subscription.expiresAt,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
   } : null;
+
+  // Check if we got an unauthorized error (token expired)
+  const isUnauthorized = orgsError instanceof Error && orgsError.message === "UNAUTHORIZED";
 
   return {
     // visibleOrganizations is for the org switcher (excludes personal org)
@@ -222,6 +236,8 @@ export function useOrganization() {
     isCreating: createOrgMutation.isPending,
     // hasOrganizations uses allOrganizations (includes personal org for redirect logic)
     hasOrganizations: allOrganizations.length > 0,
+    // Auth state
+    isUnauthorized,
     // Subscription info (org-level)
     subscription,
     hasSeat,

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import {
   Combobox,
   ComboboxInput,
@@ -430,29 +430,22 @@ export function ReviewsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Add Repository</CardTitle>
+            {user?.auth_provider === "google" && !user?.hasGithubLinked ? (
+              <CardDescription>
+                Link your GitHub account to search and add repositories. You can do this in Settings.
+              </CardDescription>
+            ) : !user?.access_token ? (
+              <CardDescription>
+                Please log out and log back in to grant repository access permissions.
+              </CardDescription>
+            ) : null}
           </CardHeader>
           <CardContent>
             {!user?.access_token ? (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Please log out and log back in to grant repository access permissions.
-                </p>
-                <Button variant="outline" onClick={logout}>
-                  <LogIn className="size-4 mr-2" />
-                  Log out to re-authenticate
-                </Button>
-              </div>
-            ) : user?.auth_provider === "google" && !user?.hasGithubLinked ? (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Link your GitHub account to search and add repositories. You can do this in Settings.
-                </p>
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/console/settings">
-                    Go to Settings
-                  </Link>
-                </Button>
-              </div>
+              <Button variant="outline" onClick={logout}>
+                <LogIn className="size-4" />
+                Log out to re-authenticate
+              </Button>
             ) : (
               <div className="space-y-2">
                 <Combobox
@@ -461,9 +454,8 @@ export function ReviewsPage() {
                   onInputValueChange={setSearchQuery}
                 >
                   <ComboboxInput
-                    size="lg"
                     placeholder="Search repositories..."
-                    className="w-full !bg-card !border"
+                    className="w-full !bg-card !border-0 h-11 pr-2 mb-0"
                   />
                   <ComboboxContent className="p-1">
                     <ComboboxList>
