@@ -81,9 +81,7 @@ export function OnboardingPage() {
       <Card className="max-w-lg w-full">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Welcome to antiptrn</CardTitle>
-          <CardDescription>
-            How will you be using antiptrn?
-          </CardDescription>
+          <CardDescription>How will you be using antiptrn?</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button
@@ -124,9 +122,7 @@ export function OnboardingPage() {
             </div>
           </Button>
 
-          {error && (
-            <p className="text-sm text-destructive text-center">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive text-center">{error}</p>}
         </CardContent>
       </Card>
     </div>

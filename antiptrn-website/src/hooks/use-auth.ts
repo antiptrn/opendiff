@@ -18,7 +18,7 @@ export interface UserOrganization {
   slug: string;
   avatarUrl: string | null;
   role: OrganizationRole;
-  isPersonal?: boolean;  // True for solo user's auto-created org
+  isPersonal?: boolean; // True for solo user's auto-created org
   // Per-seat subscription info
   seat: SeatInfo | null;
 }
@@ -34,14 +34,14 @@ export interface User {
   email: string | null;
   access_token?: string;
   auth_provider?: AuthProvider;
-  hasGithubLinked?: boolean;  // For Google users who have linked their GitHub
+  hasGithubLinked?: boolean; // For Google users who have linked their GitHub
   subscriptionTier?: SubscriptionTier;
   subscriptionStatus?: SubscriptionStatus;
   polarProductId?: string | null;
   cancelAtPeriodEnd?: boolean;
   accountType?: AccountType | null;
   onboardingCompletedAt?: string | null;
-  personalOrgId?: string | null;  // The org created for solo users (hidden from switcher)
+  personalOrgId?: string | null; // The org created for solo users (hidden from switcher)
   organizations?: UserOrganization[];
   hasOrganizations?: boolean;
 }
@@ -167,9 +167,7 @@ export function useAuth() {
 
     // If removing the active account, switch to another or clear
     if (storage.activeAccountId === accountId) {
-      storage.activeAccountId = storage.accounts.length > 0
-        ? getUserId(storage.accounts[0])
-        : null;
+      storage.activeAccountId = storage.accounts.length > 0 ? getUserId(storage.accounts[0]) : null;
     }
 
     setStoredAccounts(storage);

@@ -34,14 +34,17 @@ export function GeneralTab({ user, logout, orgId, setUser }: GeneralTabProps) {
   return (
     <div className="space-y-6">
       {/* Link GitHub - for Google users without GitHub linked */}
-      {needsGithubLink && <LinkGitHubCard token={user?.access_token} onLinked={handleGithubLinked} />}
+      {needsGithubLink && (
+        <LinkGitHubCard token={user?.access_token} onLinked={handleGithubLinked} />
+      )}
 
       {/* Install GitHub App */}
       <Card>
         <CardHeader>
           <CardTitle>Install GitHub App</CardTitle>
           <CardDescription>
-            Install the GitHub App on your repositories to enable code reviews. You can install it on your personal account or any organization you have access to.
+            Install the GitHub App on your repositories to enable code reviews. You can install it
+            on your personal account or any organization you have access to.
           </CardDescription>
         </CardHeader>
         <CardContent>

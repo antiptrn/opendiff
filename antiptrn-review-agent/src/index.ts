@@ -1,24 +1,24 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { createAppAuth } from '@octokit/auth-app';
-import { Octokit } from '@octokit/rest';
-import { readFileSync } from 'fs';
-import { Hono } from 'hono';
-import { CodeReviewAgent } from './agent/reviewer';
-import { GitHubClient } from './github/client';
-import { ReviewFormatter } from './review/formatter';
-import { WebhookHandler } from './webhook/handler';
-import { validateWebhookSignature } from './webhook/validator';
+import { readFileSync } from "node:fs";
+import Anthropic from "@anthropic-ai/sdk";
+import { createAppAuth } from "@octokit/auth-app";
+import { Octokit } from "@octokit/rest";
+import { Hono } from "hono";
+import { CodeReviewAgent } from "./agent/reviewer";
+import { GitHubClient } from "./github/client";
+import { ReviewFormatter } from "./review/formatter";
+import { WebhookHandler } from "./webhook/handler";
+import { validateWebhookSignature } from "./webhook/validator";
 
 // Configuration from environment
-const PORT = Number.parseInt(process.env.PORT || '3000', 10);
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET!;
+const PORT = Number.parseInt(process.env.PORT || "3000", 10);
+const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
 const GITHUB_APP_ID = process.env.GITHUB_APP_ID;
 const GITHUB_PRIVATE_KEY = process.env.GITHUB_PRIVATE_KEY;
 const GITHUB_PRIVATE_KEY_PATH = process.env.GITHUB_PRIVATE_KEY_PATH;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
-const BOT_USERNAME = process.env.BOT_USERNAME || 'antiptrn-bot';
-const BOT_TEAMS = (process.env.BOT_TEAMS || '').split(',').filter(Boolean);
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+const BOT_USERNAME = process.env.BOT_USERNAME || "antiptrn-bot";
+const BOT_TEAMS = (process.env.BOT_TEAMS || "").split(",").filter(Boolean);
 const SETTINGS_API_URL = process.env.SETTINGS_API_URL;
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
 
@@ -27,19 +27,19 @@ async function recordReview(data: {
   owner: string;
   repo: string;
   pullNumber: number;
-  reviewType: 'initial' | 'comment_reply';
+  reviewType: "initial" | "comment_reply";
   reviewId?: number;
   commentId?: number;
 }): Promise<void> {
   if (!SETTINGS_API_URL) {
-    console.warn('SETTINGS_API_URL not configured, skipping review recording');
+    console.warn("SETTINGS_API_URL not configured, skipping review recording");
     return;
   }
 
   try {
     const response = await fetch(`${SETTINGS_API_URL}/api/reviews`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...data,
         apiKey: REVIEW_AGENT_API_KEY,
@@ -50,7 +50,7 @@ async function recordReview(data: {
       console.warn(`Failed to record review: ${response.status}`);
     }
   } catch (error) {
-    console.warn('Error recording review:', error);
+    console.warn("Error recording review:", error);
   }
 }
 
@@ -73,7 +73,7 @@ async function getCustomReviewRules(owner: string, repo: string): Promise<string
   try {
     const response = await fetch(`${SETTINGS_API_URL}/api/internal/review-rules/${owner}/${repo}`, {
       headers: {
-        'X-API-Key': REVIEW_AGENT_API_KEY,
+        "X-API-Key": REVIEW_AGENT_API_KEY,
       },
     });
     if (!response.ok) {
@@ -118,9 +118,13 @@ async function getRepositorySettings(owner: string, repo: string): Promise<Repos
 }
 
 // Check if a GitHub user has an active seat in the organization that owns a repository
-async function checkUserHasSeat(owner: string, repo: string, githubLogin: string): Promise<boolean> {
+async function checkUserHasSeat(
+  owner: string,
+  repo: string,
+  githubLogin: string
+): Promise<boolean> {
   if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
-    console.warn('SETTINGS_API_URL or REVIEW_AGENT_API_KEY not configured, skipping seat check');
+    console.warn("SETTINGS_API_URL or REVIEW_AGENT_API_KEY not configured, skipping seat check");
     return true; // Allow review if we can't check (fail open)
   }
 
@@ -129,13 +133,15 @@ async function checkUserHasSeat(owner: string, repo: string, githubLogin: string
       `${SETTINGS_API_URL}/api/internal/check-seat/${owner}/${repo}?githubLogin=${encodeURIComponent(githubLogin)}`,
       {
         headers: {
-          'X-API-Key': REVIEW_AGENT_API_KEY,
+          "X-API-Key": REVIEW_AGENT_API_KEY,
         },
       }
     );
 
     if (!response.ok) {
-      console.warn(`Failed to check seat for ${githubLogin} in ${owner}/${repo}: ${response.status}`);
+      console.warn(
+        `Failed to check seat for ${githubLogin} in ${owner}/${repo}: ${response.status}`
+      );
       return true; // Allow review if check fails (fail open)
     }
 
@@ -156,7 +162,7 @@ function getPrivateKey(): string | undefined {
     return GITHUB_PRIVATE_KEY;
   }
   if (GITHUB_PRIVATE_KEY_PATH) {
-    return readFileSync(GITHUB_PRIVATE_KEY_PATH, 'utf-8');
+    return readFileSync(GITHUB_PRIVATE_KEY_PATH, "utf-8");
   }
   return undefined;
 }
@@ -164,7 +170,7 @@ function getPrivateKey(): string | undefined {
 // Create Octokit with personal token
 function createOctokitWithToken(): Octokit {
   if (!GITHUB_TOKEN) {
-    throw new Error('GITHUB_TOKEN not configured');
+    throw new Error("GITHUB_TOKEN not configured");
   }
   return new Octokit({ auth: GITHUB_TOKEN });
 }
@@ -173,7 +179,7 @@ function createOctokitWithToken(): Octokit {
 function createOctokitWithApp(installationId: number): Octokit {
   const privateKey = getPrivateKey();
   if (!GITHUB_APP_ID || !privateKey) {
-    throw new Error('GITHUB_APP_ID and private key required for App auth');
+    throw new Error("GITHUB_APP_ID and private key required for App auth");
   }
 
   return new Octokit({
@@ -200,37 +206,37 @@ function createOctokit(installationId?: number): Octokit {
   }
 
   throw new Error(
-    'No GitHub authentication configured. Set GITHUB_TOKEN or GITHUB_APP_ID + GITHUB_PRIVATE_KEY_PATH'
+    "No GitHub authentication configured. Set GITHUB_TOKEN or GITHUB_APP_ID + GITHUB_PRIVATE_KEY_PATH"
   );
 }
 
 const app = new Hono();
 
 // Health check endpoint
-app.get('/health', (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get("/health", (c) => {
+  return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Webhook endpoint
-app.post('/webhook', async (c) => {
+app.post("/webhook", async (c) => {
   // Validate signature
-  const signature = c.req.header('x-hub-signature-256') || c.req.header('x-hub-signature') || '';
+  const signature = c.req.header("x-hub-signature-256") || c.req.header("x-hub-signature") || "";
   const body = await c.req.text();
 
   if (!validateWebhookSignature(body, signature, WEBHOOK_SECRET)) {
-    console.error('Invalid webhook signature');
-    return c.json({ error: 'Invalid signature' }, 401);
+    console.error("Invalid webhook signature");
+    return c.json({ error: "Invalid signature" }, 401);
   }
 
   // Parse payload
   const payload = JSON.parse(body);
-  const event = c.req.header('x-github-event');
+  const event = c.req.header("x-github-event");
 
-  console.log(`Received webhook: ${event} - ${payload.action || 'no action'}`);
+  console.log(`Received webhook: ${event} - ${payload.action || "no action"}`);
 
   // Handle pull request events
-  if (event === 'pull_request') {
-    const triggerActions = ['opened', 'synchronize', 'ready_for_review'];
+  if (event === "pull_request") {
+    const triggerActions = ["opened", "synchronize", "ready_for_review"];
 
     if (triggerActions.includes(payload.action)) {
       try {
@@ -240,8 +246,10 @@ app.post('/webhook', async (c) => {
         // Check repository settings - use effectiveEnabled which accounts for subscription status
         const settings = await getRepositorySettings(owner, repo);
         if (!settings.effectiveEnabled) {
-          console.log(`Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`);
-          return c.json({ status: 'skipped', reason: 'disabled' });
+          console.log(
+            `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`
+          );
+          return c.json({ status: "skipped", reason: "disabled" });
         }
 
         // Check if PR author has an active seat
@@ -250,7 +258,7 @@ app.post('/webhook', async (c) => {
           const hasSeat = await checkUserHasSeat(owner, repo, prAuthor);
           if (!hasSeat) {
             console.log(`PR author ${prAuthor} does not have an active seat for ${owner}/${repo}`);
-            return c.json({ status: 'skipped', reason: 'author_no_seat' });
+            return c.json({ status: "skipped", reason: "author_no_seat" });
           }
         }
 
@@ -265,8 +273,8 @@ app.post('/webhook', async (c) => {
 
         // Skip draft PRs
         if (payload.pull_request?.draft) {
-          console.log('Skipping draft PR');
-          return c.json({ status: 'skipped', reason: 'draft' });
+          console.log("Skipping draft PR");
+          return c.json({ status: "skipped", reason: "draft" });
         }
 
         // Fetch custom review rules
@@ -279,12 +287,12 @@ app.post('/webhook', async (c) => {
         const result = await handler.handlePullRequestOpened(payload, BOT_USERNAME, customRules);
 
         if (result.skipped) {
-          console.log('PR skipped (opened by bot)');
-          return c.json({ status: 'skipped' });
+          console.log("PR skipped (opened by bot)");
+          return c.json({ status: "skipped" });
         }
 
         if (!result.success) {
-          console.error('Review failed:', result.error);
+          console.error("Review failed:", result.error);
           return c.json({ error: result.error }, 500);
         }
 
@@ -293,21 +301,21 @@ app.post('/webhook', async (c) => {
           owner,
           repo,
           pullNumber: payload.pull_request.number,
-          reviewType: 'initial',
+          reviewType: "initial",
           reviewId: result.reviewId,
         });
 
         console.log(`Review submitted successfully: ${result.reviewId}`);
-        return c.json({ status: 'reviewed', reviewId: result.reviewId });
+        return c.json({ status: "reviewed", reviewId: result.reviewId });
       } catch (error) {
-        console.error('Error processing webhook:', error);
-        return c.json({ error: 'Internal error' }, 500);
+        console.error("Error processing webhook:", error);
+        return c.json({ error: "Internal error" }, 500);
       }
     }
   }
 
   // Handle review comments (inline code comments)
-  if (event === 'pull_request_review_comment' && payload.action === 'created') {
+  if (event === "pull_request_review_comment" && payload.action === "created") {
     try {
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
@@ -315,8 +323,10 @@ app.post('/webhook', async (c) => {
       // Check repository settings - triage must be enabled for comment responses (uses effective state for subscription checking)
       const settings = await getRepositorySettings(owner, repo);
       if (!settings.effectiveEnabled || !settings.effectiveTriageEnabled) {
-        console.log(`Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`);
-        return c.json({ status: 'skipped', reason: 'triage_disabled' });
+        console.log(
+          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`
+        );
+        return c.json({ status: "skipped", reason: "triage_disabled" });
       }
 
       const installationId = payload.installation?.id;
@@ -333,12 +343,12 @@ app.post('/webhook', async (c) => {
       const result = await handler.handleReviewComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
-        console.log('Review comment skipped (not for bot)');
-        return c.json({ status: 'skipped' });
+        console.log("Review comment skipped (not for bot)");
+        return c.json({ status: "skipped" });
       }
 
       if (!result.success) {
-        console.error('Comment reply failed:', result.error);
+        console.error("Comment reply failed:", result.error);
         return c.json({ error: result.error }, 500);
       }
 
@@ -347,20 +357,20 @@ app.post('/webhook', async (c) => {
         owner,
         repo,
         pullNumber: payload.pull_request.number,
-        reviewType: 'comment_reply',
+        reviewType: "comment_reply",
         commentId: result.reviewId,
       });
 
       console.log(`Comment reply posted: ${result.reviewId}`);
-      return c.json({ status: 'replied', commentId: result.reviewId });
+      return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
-      console.error('Error processing review comment:', error);
-      return c.json({ error: 'Internal error' }, 500);
+      console.error("Error processing review comment:", error);
+      return c.json({ error: "Internal error" }, 500);
     }
   }
 
   // Handle issue comments (PR general comments)
-  if (event === 'issue_comment' && payload.action === 'created') {
+  if (event === "issue_comment" && payload.action === "created") {
     try {
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
@@ -368,8 +378,10 @@ app.post('/webhook', async (c) => {
       // Check repository settings - triage must be enabled for comment responses (uses effective state for subscription checking)
       const settings = await getRepositorySettings(owner, repo);
       if (!settings.effectiveEnabled || !settings.effectiveTriageEnabled) {
-        console.log(`Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`);
-        return c.json({ status: 'skipped', reason: 'triage_disabled' });
+        console.log(
+          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`
+        );
+        return c.json({ status: "skipped", reason: "triage_disabled" });
       }
 
       const installationId = payload.installation?.id;
@@ -386,12 +398,12 @@ app.post('/webhook', async (c) => {
       const result = await handler.handleIssueComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
-        console.log('Issue comment skipped (not for bot or not a PR)');
-        return c.json({ status: 'skipped' });
+        console.log("Issue comment skipped (not for bot or not a PR)");
+        return c.json({ status: "skipped" });
       }
 
       if (!result.success) {
-        console.error('Comment reply failed:', result.error);
+        console.error("Comment reply failed:", result.error);
         return c.json({ error: result.error }, 500);
       }
 
@@ -400,33 +412,33 @@ app.post('/webhook', async (c) => {
         owner,
         repo,
         pullNumber: payload.issue.number,
-        reviewType: 'comment_reply',
+        reviewType: "comment_reply",
         commentId: result.reviewId,
       });
 
       console.log(`Comment reply posted: ${result.reviewId}`);
-      return c.json({ status: 'replied', commentId: result.reviewId });
+      return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
-      console.error('Error processing issue comment:', error);
-      return c.json({ error: 'Internal error' }, 500);
+      console.error("Error processing issue comment:", error);
+      return c.json({ error: "Internal error" }, 500);
     }
   }
 
   // Unknown or unhandled event
-  return c.json({ status: 'ignored' });
+  return c.json({ status: "ignored" });
 });
 
 // Start server
 console.log(`Starting antiptrn-review-agent on port ${PORT}...`);
 console.log(`Bot username: ${BOT_USERNAME}`);
-console.log(`Bot teams: ${BOT_TEAMS.length > 0 ? BOT_TEAMS.join(', ') : 'none'}`);
+console.log(`Bot teams: ${BOT_TEAMS.length > 0 ? BOT_TEAMS.join(", ") : "none"}`);
 const privateKey = getPrivateKey();
 if (GITHUB_APP_ID && privateKey) {
   console.log(`Auth: GitHub App (ID: ${GITHUB_APP_ID})`);
 } else if (GITHUB_TOKEN) {
-  console.log('Auth: Personal Access Token');
+  console.log("Auth: Personal Access Token");
 } else {
-  console.log('Auth: Not configured!');
+  console.log("Auth: Not configured!");
 }
 
 export default {

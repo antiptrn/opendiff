@@ -15,8 +15,8 @@ export function CTASection() {
               Ready to Transform Your Engineering Team?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Schedule a free consultation to discuss how AI-augmented workflows
-              can accelerate your development velocity.
+              Schedule a free consultation to discuss how AI-augmented workflows can accelerate your
+              development velocity.
             </p>
 
             <div className="space-y-6">
@@ -50,9 +50,7 @@ export function CTASection() {
                 </div>
                 <div>
                   <h3 className="font-semibold mb-1">Direct Contact</h3>
-                  <p className="text-sm text-muted-foreground">
-                    hello@antiptrn.com
-                  </p>
+                  <p className="text-sm text-muted-foreground">hello@antiptrn.com</p>
                 </div>
               </div>
             </div>

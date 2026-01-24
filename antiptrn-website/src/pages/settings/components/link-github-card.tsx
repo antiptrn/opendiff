@@ -46,9 +46,7 @@ export function LinkGitHubCard({ token, onLinked }: LinkGitHubCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          Link GitHub Account
-        </CardTitle>
+        <CardTitle>Link GitHub Account</CardTitle>
         <CardDescription>
           Link your GitHub account to access your repositories and enable code reviews.
         </CardDescription>
@@ -78,10 +76,7 @@ export function LinkGitHubCard({ token, onLinked }: LinkGitHubCardProps) {
           </div>
         )}
 
-        <Button
-          onClick={handleLinkGitHub}
-          disabled={linkGitHub.isPending}
-        >
+        <Button onClick={handleLinkGitHub} disabled={linkGitHub.isPending}>
           {linkGitHub.isPending && <Loader2 className="size-4 animate-spin" />}
           Link GitHub Account
         </Button>

@@ -17,7 +17,19 @@ import { TooltipRoot, TooltipContent, TooltipTrigger } from "@/components/ui/too
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganization } from "@/hooks/use-organization";
 import { cn } from "@/lib/utils";
-import { ChevronDown, FileText, Home, LifeBuoy, Loader2, LogOut, PanelLeftClose, PanelLeft, Settings, Shield, UserPlus } from "lucide-react";
+import {
+  ChevronDown,
+  FileText,
+  Home,
+  LifeBuoy,
+  Loader2,
+  LogOut,
+  PanelLeftClose,
+  PanelLeft,
+  Settings,
+  Shield,
+  UserPlus,
+} from "lucide-react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { OrganizationSwitcher } from "./organization-switcher";
 
@@ -25,7 +37,15 @@ const SIDEBAR_COLLAPSED_KEY = "antiptrn_sidebar_collapsed";
 
 export function ConsoleLayout() {
   const { user, accounts, isLoading, logout, switchAccount } = useAuth();
-  const { organizations, hasOrganizations, isLoadingOrgs, isLoadingDetails, hasFetchedOrgs, canManageMembers, isUnauthorized } = useOrganization();
+  const {
+    organizations,
+    hasOrganizations,
+    isLoadingOrgs,
+    isLoadingDetails,
+    hasFetchedOrgs,
+    canManageMembers,
+    isUnauthorized,
+  } = useOrganization();
   const location = useLocation();
 
   // Sidebar collapsed state with localStorage persistence
@@ -86,33 +106,32 @@ export function ConsoleLayout() {
     { label: "Dashboard", href: "/console", icon: Home },
     { label: "Reviews", href: "/console/reviews", icon: FileText },
     { label: "Settings", href: "/console/settings", icon: Settings },
-    ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield }] : []),
   ];
 
   const sidebarFooterItems = [
-    { label: "Support", href: "/support", icon: LifeBuoy },
     ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield }] : []),
+    { label: "Support", href: "/support", icon: LifeBuoy },
   ];
 
   // Helper to render nav item with optional tooltip when collapsed
-  const NavItem = ({ item, isActive }: { item: typeof sidebarItems[0]; isActive: boolean }) => {
+  const NavItem = ({ item, isActive }: { item: (typeof sidebarItems)[0]; isActive: boolean }) => {
     const linkContent = (
       <div className="overflow-hidden">
         <Link
           to={item.href}
           className={cn(
             "flex items-center gap-3.5 h-9 px-2.5 rounded-md text-sm font-medium",
-            isActive
-              ? "bg-card text-foreground"
-              : "text-muted-foreground hover:text-foreground"
+            isActive ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <item.icon className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground")} strokeWidth={2.4} />
-          {!isCollapsed && (
-            <span className="whitespace-nowrap">
-              {item.label}
-            </span>
-          )}
+          <item.icon
+            className={cn(
+              "size-3.5 shrink-0",
+              isActive ? "text-foreground" : "text-muted-foreground"
+            )}
+            strokeWidth={2.4}
+          />
+          {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
         </Link>
       </div>
     );
@@ -120,12 +139,8 @@ export function ConsoleLayout() {
     if (isCollapsed) {
       return (
         <TooltipRoot delay={0}>
-          <TooltipTrigger asChild>
-            {linkContent}
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {item.label}
-          </TooltipContent>
+          <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+          <TooltipContent side="right">{item.label}</TooltipContent>
         </TooltipRoot>
       );
     }
@@ -208,9 +223,7 @@ export function ConsoleLayout() {
                 </Avatar>
                 {!isCollapsed && (
                   <div className="flex-1 min-w-0 flex items-center gap-2.5 whitespace-nowrap">
-                    <p className="text-sm truncate flex-1">
-                      {user.login}
-                    </p>
+                    <p className="text-sm truncate flex-1">{user.login}</p>
                     <ChevronDown className="size-3.5 text-foreground/80 group-hover:text-foreground shrink-0" />
                   </div>
                 )}
@@ -225,11 +238,15 @@ export function ConsoleLayout() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-64">
                   {/* Other accounts to switch to */}
-                  {accounts.filter(a => (a.visitorId || a.id) !== (user.visitorId || user.id)).length > 0 && (
+                  {accounts.filter((a) => (a.visitorId || a.id) !== (user.visitorId || user.id))
+                    .length > 0 && (
                     <>
                       <DropdownMenuLabel>Switch account</DropdownMenuLabel>
                       {accounts
-                        .filter(account => (account.visitorId || account.id) !== (user.visitorId || user.id))
+                        .filter(
+                          (account) =>
+                            (account.visitorId || account.id) !== (user.visitorId || user.id)
+                        )
                         .map((account) => {
                           const accountId = account.visitorId || account.id;
                           return (
@@ -252,7 +269,9 @@ export function ConsoleLayout() {
 
                   {/* Add account */}
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link to={`/login?addAccount=true&redirectUrl=${encodeURIComponent(location.pathname)}`}>
+                    <Link
+                      to={`/login?addAccount=true&redirectUrl=${encodeURIComponent(location.pathname)}`}
+                    >
                       <UserPlus className="size-3.5" />
                       Add account
                     </Link>
@@ -276,7 +295,7 @@ export function ConsoleLayout() {
         initial={false}
         animate={{
           left: isCollapsed ? 52 : 240,
-          width: isCollapsed ? "calc(100% - 60px)" : "calc(100% - 248px)"
+          width: isCollapsed ? "calc(100% - 60px)" : "calc(100% - 248px)",
         }}
         transition={{ duration: 0.2, ease: "easeInOut" }}
         className="border flex-1 overflow-auto top-1 m-1 ml-0 bg-background dark:bg-card h-[calc(100%-18px)] fixed rounded-xl"

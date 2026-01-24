@@ -73,15 +73,13 @@ export function LeaveOrganizationCard({ orgId, orgName }: LeaveOrganizationCardP
           <AlertDialogHeader>
             <AlertDialogTitle>Leave Organization</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to leave {orgName}? You will lose access to this organization and all its repositories. You'll need to be re-invited to rejoin.
+              Are you sure you want to leave {orgName}? You will lose access to this organization
+              and all its repositories. You'll need to be re-invited to rejoin.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel variant="default">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleLeave}
-              variant="destructive"
-            >
+            <AlertDialogAction onClick={handleLeave} variant="destructive">
               {leaveOrganization.isPending && <Loader2 className="size-4 animate-spin" />}
               Leave Organization
             </AlertDialogAction>

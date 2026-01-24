@@ -1,34 +1,34 @@
-import type { CodeReviewAgent } from '../agent/reviewer';
-import type { FileToReview } from '../agent/types';
-import type { GitHubClient } from '../github/client';
-import type { DiffPatches, ReviewFormatter } from '../review/formatter';
+import type { CodeReviewAgent } from "../agent/reviewer";
+import type { FileToReview } from "../agent/types";
+import type { GitHubClient } from "../github/client";
+import type { DiffPatches, ReviewFormatter } from "../review/formatter";
 
 // File extensions to review
 const CODE_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.py',
-  '.rb',
-  '.go',
-  '.rs',
-  '.java',
-  '.kt',
-  '.scala',
-  '.c',
-  '.cpp',
-  '.h',
-  '.hpp',
-  '.cs',
-  '.php',
-  '.swift',
-  '.m',
-  '.mm',
-  '.vue',
-  '.svelte',
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".scala",
+  ".c",
+  ".cpp",
+  ".h",
+  ".hpp",
+  ".cs",
+  ".php",
+  ".swift",
+  ".m",
+  ".mm",
+  ".vue",
+  ".svelte",
 ]);
 
 // Files to always skip
@@ -120,11 +120,14 @@ export class WebhookHandler {
     return this.performReview(payload, customRules);
   }
 
-  private async performReview(payload: WebhookPayload, customRules?: string | null): Promise<HandlerResult> {
+  private async performReview(
+    payload: WebhookPayload,
+    customRules?: string | null
+  ): Promise<HandlerResult> {
     const { repository, pull_request } = payload;
 
     if (!pull_request) {
-      return { success: false, error: 'No pull request in payload' };
+      return { success: false, error: "No pull request in payload" };
     }
 
     const owner = repository.owner.login;
@@ -138,7 +141,7 @@ export class WebhookHandler {
       // Filter to reviewable code files
       const codeFiles = files.filter((file) => {
         // Skip deleted files
-        if (file.status === 'removed') return false;
+        if (file.status === "removed") return false;
 
         // Skip non-code files
         if (!this.isCodeFile(file.filename)) return false;
@@ -161,17 +164,21 @@ export class WebhookHandler {
 
           return {
             filename: file.filename,
-            content: content || '',
+            content: content || "",
             patch: file.patch,
           };
         })
       );
 
       // Run AI review
-      const reviewResult = await this.agent.reviewFiles(filesToReview, {
-        prTitle: pull_request.title,
-        prBody: pull_request.body,
-      }, customRules);
+      const reviewResult = await this.agent.reviewFiles(
+        filesToReview,
+        {
+          prTitle: pull_request.title,
+          prBody: pull_request.body,
+        },
+        customRules
+      );
 
       // Build patches map for filtering inline comments to valid diff lines
       const patches: DiffPatches = {};
@@ -261,7 +268,13 @@ export class WebhookHandler {
       const response = await this.agent.respondToComment(conversation, codeContext, customRules);
 
       // Reply to the comment
-      const { id } = await this.github.replyToReviewComment(owner, repo, prNumber, comment.id, response);
+      const { id } = await this.github.replyToReviewComment(
+        owner,
+        repo,
+        prNumber,
+        comment.id,
+        response
+      );
 
       return { success: true, reviewId: id };
     } catch (error) {
@@ -328,7 +341,7 @@ export class WebhookHandler {
   }
 
   private isCodeFile(filename: string): boolean {
-    const ext = filename.slice(filename.lastIndexOf('.'));
+    const ext = filename.slice(filename.lastIndexOf("."));
     return CODE_EXTENSIONS.has(ext);
   }
 

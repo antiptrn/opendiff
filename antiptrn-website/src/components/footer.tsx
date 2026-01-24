@@ -50,9 +50,7 @@ export function Footer() {
     <footer className="py-16 w-full border-t">
       <div className="container mx-auto w-full px-4 sm:px-6 lg:px-8">
         <div className="">
-
           <div className="flex gap-8 mb-16 justify-between">
-
             <div>
               <h3 className="mb-3 text-sm text-muted-foreground">Services</h3>
               <ul className="space-y-2">

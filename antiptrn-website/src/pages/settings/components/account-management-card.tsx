@@ -76,15 +76,9 @@ export function AccountManagementCard({ token, orgId, logout }: AccountManagemen
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-base">Export my data</p>
-            <p className="text-sm text-muted-foreground">
-              Download all your data as a JSON file.
-            </p>
+            <p className="text-sm text-muted-foreground">Download all your data as a JSON file.</p>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleExportData}
-            disabled={exportData.isPending}
-          >
+          <Button variant="outline" onClick={handleExportData} disabled={exportData.isPending}>
             {exportData.isPending && <Loader2 className="size-4 animate-spin" />}
             {exportData.isPending ? "Exporting..." : "Export Data"}
           </Button>
@@ -115,15 +109,13 @@ export function AccountManagementCard({ token, orgId, logout }: AccountManagemen
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Account</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete your account? This action cannot be undone. All your data, settings, and subscription will be permanently deleted.
+              Are you sure you want to delete your account? This action cannot be undone. All your
+              data, settings, and subscription will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel variant="default">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAccount}
-              variant="destructive"
-            >
+            <AlertDialogAction onClick={handleDeleteAccount} variant="destructive">
               Delete Account
             </AlertDialogAction>
           </AlertDialogFooter>

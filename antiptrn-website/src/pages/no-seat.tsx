@@ -65,13 +65,14 @@ export function NoSeatPage() {
             <div className="text-center space-y-4">
               {hasAvailableSeats ? (
                 <p className="text-muted-foreground">
-                  Your organization has {seats?.available} available seat{seats?.available !== 1 ? "s" : ""}.
-                  Contact your organization admin to get a seat assigned.
+                  Your organization has {seats?.available} available seat
+                  {seats?.available !== 1 ? "s" : ""}. Contact your organization admin to get a seat
+                  assigned.
                 </p>
               ) : (
                 <p className="text-muted-foreground">
-                  Your organization has no available seats.
-                  Contact your organization admin to add more seats or reassign an existing one.
+                  Your organization has no available seats. Contact your organization admin to add
+                  more seats or reassign an existing one.
                 </p>
               )}
               <p className="text-sm text-muted-foreground">
@@ -79,9 +80,7 @@ export function NoSeatPage() {
               </p>
               {canManageBilling && (
                 <Button asChild variant="outline">
-                  <Link to="/console/settings?tab=organization">
-                    Manage Seats
-                  </Link>
+                  <Link to="/console/settings?tab=organization">Manage Seats</Link>
                 </Button>
               )}
             </div>
@@ -107,7 +106,9 @@ export function NoSeatPage() {
                   </Button>
                   <div className="flex flex-col items-center min-w-[60px]">
                     <span className="text-2xl font-semibold">{seatCount}</span>
-                    <span className="text-xs text-muted-foreground">{seatCount === 1 ? "seat" : "seats"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {seatCount === 1 ? "seat" : "seats"}
+                    </span>
                   </div>
                   <Button
                     variant="outline"
@@ -128,7 +129,9 @@ export function NoSeatPage() {
                   disabled={manageSubscriptionMutation.isPending}
                 >
                   <span>BYOK - Bring your own API key</span>
-                  <span className="text-muted-foreground">${tierPrices.BYOK * (isSoloUser ? 1 : seatCount)}/month</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.BYOK * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
                 </Button>
 
                 <Button
@@ -138,7 +141,9 @@ export function NoSeatPage() {
                   disabled={manageSubscriptionMutation.isPending}
                 >
                   <span>Review - 100 reviews/month</span>
-                  <span className="text-muted-foreground">${tierPrices.CODE_REVIEW * (isSoloUser ? 1 : seatCount)}/month</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.CODE_REVIEW * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
                 </Button>
 
                 <Button
@@ -146,9 +151,13 @@ export function NoSeatPage() {
                   onClick={() => handleSubscribe("TRIAGE")}
                   disabled={manageSubscriptionMutation.isPending}
                 >
-                  {manageSubscriptionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  {manageSubscriptionMutation.isPending && (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  )}
                   <span>Triage - 250 reviews + triage mode</span>
-                  <span className="text-muted-foreground">${tierPrices.TRIAGE * (isSoloUser ? 1 : seatCount)}/month</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.TRIAGE * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
                 </Button>
               </div>
             </div>
@@ -156,8 +165,8 @@ export function NoSeatPage() {
             // No subscription and user can't manage billing
             <div className="text-center">
               <p className="text-muted-foreground mb-4">
-                Your organization doesn't have an active subscription.
-                Contact your organization admin to set one up.
+                Your organization doesn't have an active subscription. Contact your organization
+                admin to set one up.
               </p>
               <p className="text-sm text-muted-foreground">
                 Organization: <span className="font-medium">{currentOrg?.name}</span>

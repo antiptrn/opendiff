@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Collapsible } from "@base-ui/react"
-import { ChevronDown } from "lucide-react"
+import * as React from "react";
+import { Collapsible } from "@base-ui/react";
+import { ChevronDown } from "lucide-react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 interface AccordionItemProps {
-  children: React.ReactNode
-  className?: string
-  defaultOpen?: boolean
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
+  children: React.ReactNode;
+  className?: string;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 function AccordionItem({
@@ -30,12 +30,12 @@ function AccordionItem({
     >
       {children}
     </Collapsible.Root>
-  )
+  );
 }
 
 interface AccordionTriggerProps {
-  children: React.ReactNode
-  className?: string
+  children: React.ReactNode;
+  className?: string;
 }
 
 function AccordionTrigger({ children, className }: AccordionTriggerProps) {
@@ -49,12 +49,12 @@ function AccordionTrigger({ children, className }: AccordionTriggerProps) {
       {children}
       <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200" />
     </Collapsible.Trigger>
-  )
+  );
 }
 
 interface AccordionContentProps {
-  children: React.ReactNode
-  className?: string
+  children: React.ReactNode;
+  className?: string;
 }
 
 function AccordionContent({ children, className }: AccordionContentProps) {
@@ -67,7 +67,7 @@ function AccordionContent({ children, className }: AccordionContentProps) {
     >
       <div>{children}</div>
     </Collapsible.Panel>
-  )
+  );
 }
 
-export { AccordionItem, AccordionTrigger, AccordionContent }
+export { AccordionItem, AccordionTrigger, AccordionContent };

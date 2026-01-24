@@ -6,14 +6,22 @@ import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Loader2, Building2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
 
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
-  const { createOrg, isCreating, hasOrganizations, isLoadingOrgs, isUnauthorized } = useOrganization();
+  const { createOrg, isCreating, hasOrganizations, isLoadingOrgs, isUnauthorized } =
+    useOrganization();
   const api = useApi();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -205,14 +213,10 @@ export default function CreateOrganizationPage() {
                 disabled={isCreating}
                 autoFocus
               />
-              <p className="text-sm text-muted-foreground">
-                You can always change this later.
-              </p>
+              <p className="text-sm text-muted-foreground">You can always change this later.</p>
             </div>
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </CardContent>
 
           <CardFooter>

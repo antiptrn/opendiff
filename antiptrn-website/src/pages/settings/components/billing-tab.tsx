@@ -53,9 +53,7 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
                     </p>
                   )
                 ) : (
-                  <p className="text-base text-muted-foreground">
-                    You're on the free plan
-                  </p>
+                  <p className="text-base text-muted-foreground">You're on the free plan</p>
                 )}
               </div>
 
@@ -98,7 +96,21 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
                   <dd>
                     {currentSeat.status === "ACTIVE" ? (
                       <span className="inline-flex items-center gap-1.5">
-                        {cancelAtPeriodEnd ? <Badge variant="secondary" className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400">Cancelling</Badge> : <Badge variant="secondary" className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">Active</Badge>}
+                        {cancelAtPeriodEnd ? (
+                          <Badge
+                            variant="secondary"
+                            className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400"
+                          >
+                            Cancelling
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="secondary"
+                            className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400"
+                          >
+                            Active
+                          </Badge>
+                        )}
                       </span>
                     ) : (
                       <span className="text-orange-600 dark:text-orange-400">

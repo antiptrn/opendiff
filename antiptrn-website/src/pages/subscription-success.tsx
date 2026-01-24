@@ -133,17 +133,13 @@ export function SubscriptionSuccessPage() {
                 <Button variant="outline" onClick={handleRetry}>
                   Try again
                 </Button>
-                <Button onClick={() => navigate("/console")}>
-                  Go to console
-                </Button>
+                <Button onClick={() => navigate("/console")}>Go to console</Button>
               </div>
             </>
           )}
 
           {checkoutId && (
-            <p className="text-xs text-muted-foreground mt-6">
-              Checkout ID: {checkoutId}
-            </p>
+            <p className="text-xs text-muted-foreground mt-6">Checkout ID: {checkoutId}</p>
           )}
         </div>
       </div>

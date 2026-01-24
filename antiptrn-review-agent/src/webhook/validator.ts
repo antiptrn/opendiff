@@ -1,9 +1,9 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export class WebhookValidationError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'WebhookValidationError';
+    this.name = "WebhookValidationError";
   }
 }
 
@@ -22,22 +22,22 @@ export function validateWebhookSignature(
   }
 
   // Parse the signature format: "sha256=..." or "sha1=..."
-  const [algorithm, hash] = signature.split('=');
+  const [algorithm, hash] = signature.split("=");
 
   if (!algorithm || !hash) {
     return false;
   }
 
   // Only support sha256 and sha1
-  if (algorithm !== 'sha256' && algorithm !== 'sha1') {
+  if (algorithm !== "sha256" && algorithm !== "sha1") {
     return false;
   }
 
   try {
-    const expectedHash = createHmac(algorithm, secret).update(payload).digest('hex');
+    const expectedHash = createHmac(algorithm, secret).update(payload).digest("hex");
 
-    const expectedBuffer = Buffer.from(expectedHash, 'hex');
-    const actualBuffer = Buffer.from(hash, 'hex');
+    const expectedBuffer = Buffer.from(expectedHash, "hex");
+    const actualBuffer = Buffer.from(hash, "hex");
 
     // Timing-safe comparison requires equal lengths
     if (expectedBuffer.length !== actualBuffer.length) {

@@ -9,8 +9,9 @@ interface NavHoverIndicatorProps {
 export function NavHoverIndicator({ hoverStyle, isVisible }: NavHoverIndicatorProps) {
   return (
     <div
-      className={`absolute h-8 bg-muted rounded-full transition-all duration-200 ease-out pointer-events-none -z-10 ${isVisible ? "opacity-100" : "opacity-0"
-        }`}
+      className={`absolute h-8 bg-muted rounded-full transition-all duration-200 ease-out pointer-events-none -z-10 ${
+        isVisible ? "opacity-100" : "opacity-0"
+      }`}
       style={{
         left: hoverStyle.left,
         width: hoverStyle.width,

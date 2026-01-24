@@ -61,7 +61,8 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Your BYOK plan requires your own Anthropic API key. You pay Anthropic directly for API usage.
+          Your BYOK plan requires your own Anthropic API key. You pay Anthropic directly for API
+          usage.
         </p>
 
         {(updateApiKey.error || deleteApiKey.error) && (
@@ -73,16 +74,11 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
         {apiKeyStatus?.hasKey && !showInput ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <code className="bg-muted px-2 py-1 rounded text-sm">
-                {apiKeyStatus.maskedKey}
-              </code>
+              <code className="bg-muted px-2 py-1 rounded text-sm">{apiKeyStatus.maskedKey}</code>
               <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setShowInput(true)}
-              >
+              <Button variant="secondary" onClick={() => setShowInput(true)}>
                 Update Key
               </Button>
               <Button
@@ -105,10 +101,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 onChange={(e) => setApiKeyInput(e.target.value)}
                 className="font-mono"
               />
-              <Button
-                onClick={handleSave}
-                disabled={!apiKeyInput.trim() || updateApiKey.isPending}
-              >
+              <Button onClick={handleSave} disabled={!apiKeyInput.trim() || updateApiKey.isPending}>
                 {updateApiKey.isPending && <Loader2 className="size-4 animate-spin" />}
                 {updateApiKey.isPending ? "Saving..." : "Save"}
               </Button>

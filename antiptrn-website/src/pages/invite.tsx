@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Loader2, Building2, CheckCircle2, XCircle } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -157,9 +164,7 @@ export default function InvitePage() {
         </CardHeader>
 
         <CardContent>
-          {error && (
-            <p className="text-sm text-destructive mb-4 text-center">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive mb-4 text-center">{error}</p>}
 
           {!user ? (
             <div className="space-y-4">
@@ -174,11 +179,7 @@ export default function InvitePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                 <div className="flex items-center gap-3">
-                  <img
-                    src={user.avatar_url}
-                    alt={user.login}
-                    className="w-10 h-10 rounded-full"
-                  />
+                  <img src={user.avatar_url} alt={user.login} className="w-10 h-10 rounded-full" />
                   <div>
                     <p className="font-medium">{user.name || user.login}</p>
                     <p className="text-sm text-muted-foreground">@{user.login}</p>

@@ -1,31 +1,37 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { Header } from "./header";
 import { DesktopNav } from "./desktop-nav";
 import { MobileMenu } from "./mobile-menu";
 import { NavHoverIndicator } from "./nav-hover-indicator";
 import { NAV_LINKS } from "./header.constants";
 
+/** Wraps component in MemoryRouter for testing components that use useNavigate */
+function withRouter(ui: React.ReactElement) {
+  return <MemoryRouter>{ui}</MemoryRouter>;
+}
+
 describe("Header", () => {
   it("renders logo", () => {
-    render(<Header />);
-    expect(screen.getByText("/antiptrn")).toBeInTheDocument();
+    render(withRouter(<Header />));
+    expect(screen.getByText("/ap")).toBeInTheDocument();
   });
 
   it("renders desktop navigation links", () => {
-    render(<Header />);
+    render(withRouter(<Header />));
     NAV_LINKS.forEach((link) => {
       expect(screen.getByText(link.label)).toBeInTheDocument();
     });
   });
 
-  it("renders get in touch button", () => {
-    render(<Header />);
-    expect(screen.getByText("Get in touch")).toBeInTheDocument();
+  it("renders log in button", () => {
+    render(withRouter(<Header />));
+    expect(screen.getByText("Log In")).toBeInTheDocument();
   });
 
   it("toggles mobile menu on button click", () => {
-    render(<Header />);
+    render(withRouter(<Header />));
     const menuButton = screen.getByRole("button", { name: "" });
 
     expect(screen.queryByText("Get Started")).not.toBeInTheDocument();
@@ -40,14 +46,14 @@ describe("Header", () => {
 
 describe("DesktopNav", () => {
   it("renders all navigation links", () => {
-    render(<DesktopNav />);
+    render(withRouter(<DesktopNav />));
     NAV_LINKS.forEach((link) => {
       expect(screen.getByText(link.label)).toBeInTheDocument();
     });
   });
 
   it("renders badge for links with badge property", () => {
-    render(<DesktopNav />);
+    render(withRouter(<DesktopNav />));
     const careersLink = NAV_LINKS.find((link) => link.badge);
     if (careersLink?.badge) {
       expect(screen.getByText(careersLink.badge)).toBeInTheDocument();

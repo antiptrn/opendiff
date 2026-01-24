@@ -5,7 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useOrganization } from "@/hooks/use-organization";
 import { Building2, Check, ChevronDown } from "lucide-react";
@@ -25,8 +25,14 @@ export function OrganizationSwitcher() {
     return (
       <div className="flex items-center gap-2 h-9 px-1.5">
         <Avatar className="size-6 rounded-sm overflow-hidden">
-          <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
-          <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
+          <AvatarImage
+            className="rounded-none"
+            src={currentOrg.avatarUrl ?? undefined}
+            alt={currentOrg.name}
+          />
+          <AvatarFallback className="text-sm rounded-none">
+            {currentOrg.name.charAt(0)}
+          </AvatarFallback>
         </Avatar>
       </div>
     );
@@ -40,10 +46,21 @@ export function OrganizationSwitcher() {
           className="gap-2 justify-between h-9 rounded-lg px-1.5 !bg-transparent text-foreground/80 hover:text-foreground"
         >
           <Avatar className="size-6 rounded-sm overflow-hidden">
-            <AvatarImage className="rounded-none" src={currentOrg.avatarUrl ?? undefined} alt={currentOrg.name} />
-            <AvatarFallback className="text-sm rounded-none">{currentOrg.name.charAt(0)}</AvatarFallback>
+            <AvatarImage
+              className="rounded-none"
+              src={currentOrg.avatarUrl ?? undefined}
+              alt={currentOrg.name}
+            />
+            <AvatarFallback className="text-sm rounded-none">
+              {currentOrg.name.charAt(0)}
+            </AvatarFallback>
           </Avatar>
-          <ChevronDown className={cn("size-3.5 shrink-0 transition-transform duration-200", isOpen && "rotate-180")} />
+          <ChevronDown
+            className={cn(
+              "size-3.5 shrink-0 transition-transform duration-200",
+              isOpen && "rotate-180"
+            )}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[200px]">
@@ -56,9 +73,7 @@ export function OrganizationSwitcher() {
           >
             <Building2 className="size-3.5 mr-1" />
             <span className="truncate flex-1">{org.name}</span>
-            {currentOrg.id === org.id && (
-              <Check className="ml-auto size-3.5" />
-            )}
+            {currentOrg.id === org.id && <Check className="ml-auto size-3.5" />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

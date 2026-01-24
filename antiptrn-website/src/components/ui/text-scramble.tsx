@@ -25,9 +25,7 @@ export function TextScramble({
   onScrambleComplete,
   ...props
 }: TextScrambleProps) {
-  const MotionComponent = motion.create(
-    Component as keyof JSX.IntrinsicElements
-  );
+  const MotionComponent = motion.create(Component as keyof JSX.IntrinsicElements);
   const [displayText, setDisplayText] = useState(children);
   const [isAnimating, setIsAnimating] = useState(false);
   const [height, setHeight] = useState<number | undefined>(undefined);
@@ -78,14 +76,10 @@ export function TextScramble({
     }, speed * 1000);
 
     return () => clearInterval(interval);
-  }, [trigger]);
+  }, [trigger, text, duration, speed, characterSet, onScrambleComplete, isAnimating]);
 
   return (
-    <MotionComponent
-      className={className}
-      style={{ height, overflow: "hidden" }}
-      {...props}
-    >
+    <MotionComponent className={className} style={{ height, overflow: "hidden" }} {...props}>
       <span ref={textRef} className={height === undefined ? "invisible" : "hidden"}>
         {text}
       </span>

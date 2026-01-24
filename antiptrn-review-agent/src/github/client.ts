@@ -1,5 +1,5 @@
-import type { Octokit } from '@octokit/rest';
-import type { PullRequest, PullRequestFile, Review } from './types';
+import type { Octokit } from "@octokit/rest";
+import type { PullRequest, PullRequestFile, Review } from "./types";
 
 export class GitHubClient {
   constructor(private octokit: Octokit) {}
@@ -58,19 +58,19 @@ export class GitHubClient {
       });
 
       // Check if it's a file (not a directory)
-      if (Array.isArray(data) || data.type !== 'file') {
+      if (Array.isArray(data) || data.type !== "file") {
         return null;
       }
 
       // Decode base64 content
-      if (data.encoding === 'base64' && data.content) {
-        return Buffer.from(data.content, 'base64').toString('utf-8');
+      if (data.encoding === "base64" && data.content) {
+        return Buffer.from(data.content, "base64").toString("utf-8");
       }
 
       return null;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Return null for 404 (file not found)
-      if (error?.status === 404) {
+      if (error && typeof error === "object" && "status" in error && error.status === 404) {
         return null;
       }
       throw error;
@@ -91,9 +91,9 @@ export class GitHubClient {
       commit_id: commitId,
       body: review.body,
       event: review.event,
-      comments: review.comments?.map(c => ({
+      comments: review.comments?.map((c) => ({
         ...c,
-        side: 'RIGHT' as const,  // Always comment on the new version of the file
+        side: "RIGHT" as const, // Always comment on the new version of the file
       })),
     });
 
@@ -142,7 +142,7 @@ export class GitHubClient {
       .filter((c) => c.id === rootId || c.in_reply_to_id === rootId)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       .map((c) => ({
-        user: c.user?.login || 'unknown',
+        user: c.user?.login || "unknown",
         body: c.body,
         id: c.id,
       }));
@@ -179,8 +179,8 @@ export class GitHubClient {
     });
 
     return data.map((c) => ({
-      user: c.user?.login || 'unknown',
-      body: c.body || '',
+      user: c.user?.login || "unknown",
+      body: c.body || "",
       id: c.id,
     }));
   }

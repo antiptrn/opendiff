@@ -17,6 +17,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useOrganization } from "@/hooks/use-organization";
 import { useAuditLogs, type AuditLog } from "@/hooks/use-api";
 
+/**
+ * Custom hook that debounces a value
+ */
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -28,8 +31,17 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-function formatAction(action: string): { label: string; variant: "default" | "secondary" | "destructive" | "outline" } {
-  const actionMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+/**
+ * Maps action strings to human-readable labels and badge variants
+ */
+function formatAction(action: string): {
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+} {
+  const actionMap: Record<
+    string,
+    { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+  > = {
     "user.login": { label: "Login", variant: "secondary" },
     "user.data_export": { label: "Data Export", variant: "secondary" },
     "user.account_deleted": { label: "Account Deleted", variant: "destructive" },
@@ -55,6 +67,9 @@ function formatAction(action: string): { label: string; variant: "default" | "se
   return actionMap[action] || { label: action, variant: "secondary" };
 }
 
+/**
+ * Formats a date string into a human-readable relative time
+ */
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -75,6 +90,9 @@ function formatDate(dateString: string): string {
   });
 }
 
+/**
+ * Renders a single audit log row
+ */
 function AuditLogRow({ log }: { log: AuditLog }) {
   const { label, variant } = formatAction(log.action);
 
@@ -89,11 +107,7 @@ function AuditLogRow({ log }: { log: AuditLog }) {
         {log.user ? (
           <div className="flex items-center gap-2">
             {log.user.avatarUrl && (
-              <img
-                src={log.user.avatarUrl}
-                alt={log.user.login}
-                className="size-5 rounded-full"
-              />
+              <img src={log.user.avatarUrl} alt={log.user.login} className="size-5 rounded-full" />
             )}
             <span className="text-sm">{log.user.name || log.user.login}</span>
           </div>
@@ -111,42 +125,123 @@ function AuditLogRow({ log }: { log: AuditLog }) {
   );
 }
 
+/**
+ * Skeleton loader for audit log rows
+ */
 function AuditLogSkeleton() {
   return (
     <TableRow>
-      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-24" />
+      </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
           <Skeleton className="size-5 rounded-full" />
           <Skeleton className="h-4 w-24" />
         </div>
       </TableCell>
-      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-32" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-16" />
+      </TableCell>
     </TableRow>
   );
 }
 
-export function AdminPage() {
+/**
+ * Props for the paginated log table component
+ */
+interface PaginatedLogTableProps {
+  search: string;
+}
+
+/**
+ * Paginated log table that resets page when search changes via key prop
+ */
+function PaginatedLogTable({ search }: PaginatedLogTableProps) {
   const { user } = useAuth();
   const { currentOrg } = useOrganization();
-  const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-
-  const debouncedSearch = useDebounce(searchQuery, 300);
-
-  // Reset to page 1 when search changes
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch]);
 
   const { data, isLoading } = useAuditLogs(user?.access_token, currentOrg?.id, {
     page,
-    search: debouncedSearch,
+    search,
   });
 
   const logs = data?.logs || [];
   const pagination = data?.pagination;
+
+  return (
+    <>
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[140px]">Action</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Target</TableHead>
+              <TableHead className="w-[100px]">Time</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders don't reorder
+              Array.from({ length: 10 }).map((_, i) => <AuditLogSkeleton key={i} />)
+            ) : logs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  {search ? "No results found" : "No audit logs yet"}
+                </TableCell>
+              </TableRow>
+            ) : (
+              logs.map((log) => <AuditLogRow key={log.id} log={log} />)
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {pagination && pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
+            {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}{" "}
+            entries
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground px-2">
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+              disabled={page === pagination.totalPages}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Admin page component for viewing audit logs
+ */
+export function AdminPage() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   return (
     <div className="p-8">
@@ -154,9 +249,7 @@ export function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Audit Logs</CardTitle>
-          <CardDescription>
-            Track all actions performed in your organization
-          </CardDescription>
+          <CardDescription>Track all actions performed in your organization</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4">
@@ -171,64 +264,8 @@ export function AdminPage() {
             </div>
           </div>
 
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[140px]">Action</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead className="w-[100px]">Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
-                    <AuditLogSkeleton key={i} />
-                  ))
-                ) : logs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      {searchQuery ? "No results found" : "No audit logs yet"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  logs.map((log) => <AuditLogRow key={log.id} log={log} />)
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-muted-foreground">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to{" "}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
-                {pagination.total} entries
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="text-sm text-muted-foreground px-2">
-                  Page {pagination.page} of {pagination.totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-                  disabled={page === pagination.totalPages}
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          {/* Use key prop to reset pagination when search changes */}
+          <PaginatedLogTable key={debouncedSearch} search={debouncedSearch} />
         </CardContent>
       </Card>
     </div>

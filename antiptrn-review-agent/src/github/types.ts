@@ -17,7 +17,7 @@ export interface PullRequest {
 
 export interface PullRequestFile {
   filename: string;
-  status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged';
+  status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed" | "unchanged";
   additions: number;
   deletions: number;
   patch?: string;
@@ -27,12 +27,12 @@ export interface ReviewComment {
   path: string;
   line: number;
   body: string;
-  side?: 'LEFT' | 'RIGHT';
+  side?: "LEFT" | "RIGHT";
 }
 
 export interface Review {
   body: string;
-  event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+  event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
   comments?: ReviewComment[];
 }
 

@@ -69,7 +69,9 @@ export function BillingPage() {
     try {
       await cancelSubscription.mutateAsync();
       await refreshSubscription();
-      setSuccessMessage("Subscription cancelled. You will have access until the end of your billing period.");
+      setSuccessMessage(
+        "Subscription cancelled. You will have access until the end of your billing period."
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to cancel subscription");
     }
@@ -145,19 +147,14 @@ export function BillingPage() {
                       </p>
                     )
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Upgrade to enable code reviews
-                    </p>
+                    <p className="text-sm text-muted-foreground">Upgrade to enable code reviews</p>
                   )}
                 </div>
 
                 <div className="flex gap-2">
                   {hasSubscription ? (
                     cancelAtPeriodEnd ? (
-                      <Button
-                        onClick={handleResubscribe}
-                        disabled={resubscribe.isPending}
-                      >
+                      <Button onClick={handleResubscribe} disabled={resubscribe.isPending}>
                         {resubscribe.isPending ? (
                           <>
                             <Loader2 className="size-4 animate-spin" />
@@ -227,9 +224,7 @@ export function BillingPage() {
                     <dt className="text-muted-foreground">Status</dt>
                     <dd>
                       {subscription?.status === "ACTIVE" ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          Active
-                        </span>
+                        <span className="inline-flex items-center gap-1.5">Active</span>
                       ) : (
                         <span className="text-orange-600 dark:text-orange-400">
                           {subscription?.status}
@@ -328,15 +323,15 @@ export function BillingPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to cancel your subscription? You will have access until the end of your current billing period.
+                Are you sure you want to cancel your subscription? You will have access until the
+                end of your current billing period.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-primary text-background hover:bg-primary/90">Keep Subscription</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleCancelSubscription}
-                variant="destructive"
-              >
+              <AlertDialogCancel className="bg-primary text-background hover:bg-primary/90">
+                Keep Subscription
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleCancelSubscription} variant="destructive">
                 Downgrade to Free
               </AlertDialogAction>
             </AlertDialogFooter>

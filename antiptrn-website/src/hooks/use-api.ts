@@ -94,7 +94,12 @@ export const queryKeys = {
 };
 
 // Fetch helpers
-async function fetchWithAuth(url: string, token?: string, orgId?: string | null, options?: RequestInit) {
+async function fetchWithAuth(
+  url: string,
+  token?: string,
+  orgId?: string | null,
+  options?: RequestInit
+) {
   const headers: Record<string, string> = {
     ...((options?.headers as Record<string, string>) || {}),
   };
@@ -587,8 +592,9 @@ function getTokenFromStorage(): string | undefined {
   if (accountsStored) {
     try {
       const { accounts, activeAccountId } = JSON.parse(accountsStored);
-      const activeUser = accounts.find((a: { visitorId?: string; id: string | number }) =>
-        (a.visitorId || a.id) === activeAccountId
+      const activeUser = accounts.find(
+        (a: { visitorId?: string; id: string | number }) =>
+          (a.visitorId || a.id) === activeAccountId
       );
       if (activeUser?.access_token) return activeUser.access_token;
     } catch {

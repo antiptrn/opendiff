@@ -19,35 +19,49 @@ const prisma = new PrismaClient();
 
 // Helper to get user from DB by OAuth token (supports both GitHub and Google)
 async function getUserFromToken(token: string) {
-  // Try GitHub first
-  const githubResponse = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-  });
+  // Detect provider from token format
+  // GitHub OAuth tokens start with gho_, ghu_, ghp_, or github_pat_
+  const isGitHubToken = /^(gho_|ghu_|ghp_|github_pat_)/.test(token);
 
-  if (githubResponse.ok) {
-    const githubUser = await githubResponse.json();
-    const user = await prisma.user.findUnique({
-      where: { githubId: githubUser.id },
-    });
-    if (user) return user;
-  }
+  if (isGitHubToken) {
+    // GitHub token - only try GitHub
+    try {
+      const githubResponse = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
 
-  // Try Google
-  const googleResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+      if (githubResponse.ok) {
+        const githubUser = await githubResponse.json();
+        const user = await prisma.user.findUnique({
+          where: { githubId: githubUser.id },
+        });
+        if (user) return user;
+      }
+    } catch (error) {
+      console.error("Failed to connect to GitHub API:", error);
+    }
+  } else {
+    // Assume Google token
+    try {
+      const googleResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-  if (googleResponse.ok) {
-    const googleUser = await googleResponse.json();
-    const user = await prisma.user.findUnique({
-      where: { googleId: googleUser.id },
-    });
-    if (user) return user;
+      if (googleResponse.ok) {
+        const googleUser = await googleResponse.json();
+        const user = await prisma.user.findUnique({
+          where: { googleId: googleUser.id },
+        });
+        if (user) return user;
+      }
+    } catch (error) {
+      console.error("Failed to connect to Google API:", error);
+    }
   }
 
   return null;

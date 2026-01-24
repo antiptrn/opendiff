@@ -1,7 +1,12 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth, type UserOrganization, type OrganizationRole, type SubscriptionTier } from "./use-auth";
-import { useOrganizationContext } from "@/contexts/organization-context";
+import {
+  useAuth,
+  type UserOrganization,
+  type OrganizationRole,
+  type SubscriptionTier,
+} from "./use-auth";
+import { useOrganizationContext } from "@/contexts/use-organization-context";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -22,7 +27,7 @@ export interface OrganizationMember {
   avatarUrl: string | null;
   role: OrganizationRole;
   joinedAt: string;
-  hasSeat: boolean;  // Whether this member has a seat assigned
+  hasSeat: boolean; // Whether this member has a seat assigned
 }
 
 export interface QuotaPool {
@@ -61,8 +66,8 @@ export interface OrganizationDetails {
   membersCount: number;
   role: OrganizationRole;
   createdAt: string;
-  hasSeat: boolean;  // Current user's seat assignment
-  subscription: OrgSubscription | null;  // Org subscription info
+  hasSeat: boolean; // Current user's seat assignment
+  subscription: OrgSubscription | null; // Org subscription info
   quotaPool: QuotaPool;
   seats: SeatsInfo;
 }
@@ -75,7 +80,12 @@ export function useOrganization() {
   const { selectedOrgId, setSelectedOrgId } = useOrganizationContext();
 
   // Fetch organizations from API
-  const { data: allOrganizations = [], isLoading: isLoadingOrgs, isFetched: hasFetchedOrgs, error: orgsError } = useQuery({
+  const {
+    data: allOrganizations = [],
+    isLoading: isLoadingOrgs,
+    isFetched: hasFetchedOrgs,
+    error: orgsError,
+  } = useQuery({
     queryKey: ["organizations"],
     queryFn: async (): Promise<UserOrganization[]> => {
       if (!user?.access_token) return [];
@@ -106,12 +116,13 @@ export function useOrganization() {
 
   // Filter out personal orgs from the visible list (for org switcher)
   // but keep allOrganizations for finding the current org
-  const visibleOrganizations = allOrganizations.filter(org => !org.isPersonal);
+  const visibleOrganizations = allOrganizations.filter((org) => !org.isPersonal);
 
   // Find current org - prefer visible orgs, but fall back to personal org for solo users with no team orgs
   // If selected org is visible, use it. Otherwise, prefer first visible org, then fall back to any org.
-  const selectedOrgIsVisible = selectedOrgId && visibleOrganizations.find(o => o.id === selectedOrgId);
-  const selectedOrgExists = selectedOrgId && allOrganizations.find(o => o.id === selectedOrgId);
+  const selectedOrgIsVisible =
+    selectedOrgId && visibleOrganizations.find((o) => o.id === selectedOrgId);
+  const selectedOrgExists = selectedOrgId && allOrganizations.find((o) => o.id === selectedOrgId);
 
   let currentOrgId: string | null;
   if (selectedOrgIsVisible) {
@@ -135,7 +146,7 @@ export function useOrganization() {
     }
   }, [currentOrgId, selectedOrgId, setSelectedOrgId]);
 
-  const currentOrg = allOrganizations.find(o => o.id === currentOrgId) || null;
+  const currentOrg = allOrganizations.find((o) => o.id === currentOrgId) || null;
 
   // Fetch detailed organization info
   const { data: orgDetails, isLoading: isLoadingDetails } = useQuery({
@@ -211,12 +222,15 @@ export function useOrganization() {
   const subscription = orgDetails?.subscription ?? null;
 
   // Create currentSeat object for user's seat (if they have one)
-  const currentSeat = hasSeat && subscription ? {
-    tier: subscription.tier,
-    status: subscription.status,
-    expiresAt: subscription.expiresAt,
-    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-  } : null;
+  const currentSeat =
+    hasSeat && subscription
+      ? {
+          tier: subscription.tier,
+          status: subscription.status,
+          expiresAt: subscription.expiresAt,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        }
+      : null;
 
   // Check if we got an unauthorized error (token expired)
   const isUnauthorized = orgsError instanceof Error && orgsError.message === "UNAUTHORIZED";
@@ -258,7 +272,12 @@ export function useOrganizationMembers(orgId: string | null) {
   return useQuery({
     queryKey: ["organization", orgId, "members"],
     queryFn: async (): Promise<MembersResponse> => {
-      if (!orgId || !user?.access_token) return { members: [], quotaPool: { total: 0, used: 0, hasUnlimited: false }, seats: { total: 0, assigned: 0, available: 0 } };
+      if (!orgId || !user?.access_token)
+        return {
+          members: [],
+          quotaPool: { total: 0, used: 0, hasUnlimited: false },
+          seats: { total: 0, assigned: 0, available: 0 },
+        };
 
       const response = await fetch(`${API_URL}/api/organizations/${orgId}/members`, {
         headers: { Authorization: `Bearer ${user.access_token}` },
@@ -407,10 +426,13 @@ export function useLeaveOrganization(orgId: string | null) {
     mutationFn: async () => {
       if (!user?.visitorId) throw new Error("Not authenticated");
 
-      const response = await fetch(`${API_URL}/api/organizations/${orgId}/members/${user.visitorId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${user.access_token}` },
-      });
+      const response = await fetch(
+        `${API_URL}/api/organizations/${orgId}/members/${user.visitorId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${user.access_token}` },
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();
@@ -499,10 +521,13 @@ export function useReactivateSubscription(orgId: string | null) {
 
   return useMutation({
     mutationFn: async () => {
-      const response = await fetch(`${API_URL}/api/organizations/${orgId}/subscription/reactivate`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user?.access_token}` },
-      });
+      const response = await fetch(
+        `${API_URL}/api/organizations/${orgId}/subscription/reactivate`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${user?.access_token}` },
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();
@@ -622,10 +647,13 @@ export function useUnassignSeat(orgId: string | null) {
 
   return useMutation({
     mutationFn: async (userId: string) => {
-      const response = await fetch(`${API_URL}/api/organizations/${orgId}/seats/${userId}/unassign`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user?.access_token}` },
-      });
+      const response = await fetch(
+        `${API_URL}/api/organizations/${orgId}/seats/${userId}/unassign`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${user?.access_token}` },
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();
@@ -647,15 +675,24 @@ export function useReassignSeat(orgId: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ sourceUserId, targetUserId }: { sourceUserId: string; targetUserId: string }) => {
-      const response = await fetch(`${API_URL}/api/organizations/${orgId}/seats/${sourceUserId}/reassign`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${user?.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ targetUserId }),
-      });
+    mutationFn: async ({
+      sourceUserId,
+      targetUserId,
+    }: {
+      sourceUserId: string;
+      targetUserId: string;
+    }) => {
+      const response = await fetch(
+        `${API_URL}/api/organizations/${orgId}/seats/${sourceUserId}/reassign`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${user?.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ targetUserId }),
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();

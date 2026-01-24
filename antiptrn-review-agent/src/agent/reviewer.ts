@@ -1,5 +1,5 @@
-import type Anthropic from '@anthropic-ai/sdk';
-import type { FileToReview, ReviewResult } from './types';
+import type Anthropic from "@anthropic-ai/sdk";
+import type { FileToReview, ReviewResult } from "./types";
 
 const MAX_FILE_CONTENT_LENGTH = 50000; // ~50KB per file to stay within token limits
 const MAX_TOTAL_CONTENT_LENGTH = 150000; // ~150KB total
@@ -97,16 +97,20 @@ ${customRules}`;
     return prompt;
   }
 
-  async reviewFiles(files: FileToReview[], context: PRContext, customRules?: string | null): Promise<ReviewResult> {
+  async reviewFiles(
+    files: FileToReview[],
+    context: PRContext,
+    customRules?: string | null
+  ): Promise<ReviewResult> {
     const userPrompt = this.buildUserPrompt(files, context);
 
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: this.getSystemPrompt(customRules),
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: userPrompt,
         },
       ],
@@ -116,14 +120,14 @@ ${customRules}`;
   }
 
   private buildUserPrompt(files: FileToReview[], context: PRContext): string {
-    let prompt = '## Pull Request\n\n';
+    let prompt = "## Pull Request\n\n";
     prompt += `**Title:** ${context.prTitle}\n`;
 
     if (context.prBody) {
       prompt += `**Description:** ${context.prBody}\n`;
     }
 
-    prompt += '\n## Files to Review\n\n';
+    prompt += "\n## Files to Review\n\n";
 
     let totalLength = prompt.length;
 
@@ -139,7 +143,7 @@ ${customRules}`;
       const fileSection = `### ${file.filename}\n\n\`\`\`\n${content}\n\`\`\`\n\n`;
 
       if (totalLength + fileSection.length > MAX_TOTAL_CONTENT_LENGTH) {
-        prompt += '\n(Additional files omitted due to size limits)\n';
+        prompt += "\n(Additional files omitted due to size limits)\n";
         break;
       }
 
@@ -153,16 +157,16 @@ ${customRules}`;
       totalLength += fileSection.length;
     }
 
-    prompt += '\nPlease review these changes and respond with your analysis in JSON format.';
+    prompt += "\nPlease review these changes and respond with your analysis in JSON format.";
 
     return prompt;
   }
 
   private parseResponse(response: Anthropic.Message): ReviewResult {
-    const textContent = response.content.find((c) => c.type === 'text');
+    const textContent = response.content.find((c) => c.type === "text");
 
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('Failed to parse review response: No text content');
+    if (!textContent || textContent.type !== "text") {
+      throw new Error("Failed to parse review response: No text content");
     }
 
     try {
@@ -179,7 +183,7 @@ ${customRules}`;
 
       // Validate the response structure
       if (!result.summary || !Array.isArray(result.issues) || !result.verdict) {
-        throw new Error('Invalid response structure');
+        throw new Error("Invalid response structure");
       }
 
       return result;
@@ -226,10 +230,10 @@ ${customRules}`;
     codeContext?: { filename: string; content: string; diff?: string },
     customRules?: string | null
   ): Promise<string> {
-    let prompt = '';
+    let prompt = "";
 
     if (codeContext) {
-      prompt += `## Code Context\n\n`;
+      prompt += "## Code Context\n\n";
       prompt += `**File:** ${codeContext.filename}\n\n`;
       if (codeContext.diff) {
         prompt += `**Diff:**\n\`\`\`diff\n${codeContext.diff}\n\`\`\`\n\n`;
@@ -237,28 +241,28 @@ ${customRules}`;
       prompt += `**Content:**\n\`\`\`\n${codeContext.content.slice(0, 10000)}\n\`\`\`\n\n`;
     }
 
-    prompt += `## Conversation\n\n`;
+    prompt += "## Conversation\n\n";
     for (const msg of conversation) {
       prompt += `**${msg.user}:** ${msg.body}\n\n`;
     }
 
-    prompt += `Please respond to the latest message.`;
+    prompt += "Please respond to the latest message.";
 
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
       system: this.getConversationSystemPrompt(customRules),
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: prompt,
         },
       ],
     });
 
-    const textContent = response.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('Failed to get response');
+    const textContent = response.content.find((c) => c.type === "text");
+    if (!textContent || textContent.type !== "text") {
+      throw new Error("Failed to get response");
     }
 
     return textContent.text;

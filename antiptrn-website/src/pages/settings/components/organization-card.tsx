@@ -159,7 +159,6 @@ export function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: Organ
                 Recommended: Square image, at least 128x128 pixels.
               </p>
             </div>
-
           </div>
         </div>
 
@@ -179,11 +178,7 @@ export function OrganizationCard({ orgId, avatarUrl, orgName, onUpdated }: Organ
               onClick={handleSaveName}
               disabled={!hasNameChanges || isSavingName || isUploading || false}
             >
-              {isSavingName ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                "Save Settings"
-              )}
+              {isSavingName ? <Loader2 className="size-4 animate-spin" /> : "Save Settings"}
             </Button>
           </div>
         </div>

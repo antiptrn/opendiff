@@ -1,19 +1,19 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { OrganizationContext } from "./organization-context-type";
 
 const CURRENT_ORG_KEY = "antiptrn_current_org";
 
-interface OrganizationContextValue {
-  selectedOrgId: string | null;
-  setSelectedOrgId: (orgId: string | null) => void;
-}
-
-const OrganizationContext = createContext<OrganizationContextValue | null>(null);
-
+/**
+ * Gets the stored organization ID from localStorage
+ */
 function getStoredOrgId(): string | null {
   return localStorage.getItem(CURRENT_ORG_KEY);
 }
 
+/**
+ * Persists the organization ID to localStorage
+ */
 function setStoredOrgId(orgId: string | null) {
   if (orgId) {
     localStorage.setItem(CURRENT_ORG_KEY, orgId);
@@ -22,6 +22,10 @@ function setStoredOrgId(orgId: string | null) {
   }
 }
 
+/**
+ * Provider component for organization context
+ * Manages the currently selected organization and persists it to localStorage
+ */
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [selectedOrgId, setSelectedOrgIdState] = useState<string | null>(getStoredOrgId);
   const queryClient = useQueryClient();
@@ -48,12 +52,4 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       {children}
     </OrganizationContext.Provider>
   );
-}
-
-export function useOrganizationContext() {
-  const context = useContext(OrganizationContext);
-  if (!context) {
-    throw new Error("useOrganizationContext must be used within OrganizationProvider");
-  }
-  return context;
 }

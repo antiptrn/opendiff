@@ -13,7 +13,8 @@ export function useNavHover() {
 
   /** Updates hover indicator position based on hovered element */
   const handleMouseEnter = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const navRect = navRef.current!.getBoundingClientRect();
+    if (!navRef.current) return;
+    const navRect = navRef.current.getBoundingClientRect();
     const targetRect = e.currentTarget.getBoundingClientRect();
     setHoverStyle({
       left: targetRect.left - navRect.left,

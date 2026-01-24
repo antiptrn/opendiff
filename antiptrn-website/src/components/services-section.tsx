@@ -1,42 +1,40 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import {
-  Bot,
-  GitBranch,
-  Shield,
-  Workflow,
-  Users,
-  Zap
-} from "lucide-react";
+import { Bot, GitBranch, Shield, Workflow, Users, Zap } from "lucide-react";
 
 const services = [
   {
     icon: Bot,
     title: "AI Tool Integration",
-    description: "Seamlessly integrate AI coding assistants like Copilot, Claude, and Cursor into your development workflow.",
+    description:
+      "Seamlessly integrate AI coding assistants like Copilot, Claude, and Cursor into your development workflow.",
     features: ["IDE setup & configuration", "Custom prompt engineering", "Context optimization"],
   },
   {
     icon: Workflow,
     title: "Workflow Automation",
-    description: "Automate repetitive tasks with AI-powered pipelines for code review, testing, and deployment.",
+    description:
+      "Automate repetitive tasks with AI-powered pipelines for code review, testing, and deployment.",
     features: ["CI/CD enhancement", "Automated code review", "Smart testing strategies"],
   },
   {
     icon: GitBranch,
     title: "Codebase Augmentation",
-    description: "Prepare your codebase for maximum AI assistance with better documentation and structure.",
+    description:
+      "Prepare your codebase for maximum AI assistance with better documentation and structure.",
     features: ["Documentation generation", "Code refactoring", "Architecture optimization"],
   },
   {
     icon: Users,
     title: "Team Training",
-    description: "Hands-on training programs to help your team effectively leverage AI tools for development.",
+    description:
+      "Hands-on training programs to help your team effectively leverage AI tools for development.",
     features: ["Workshop sessions", "Best practices guides", "Ongoing mentorship"],
   },
   {
     icon: Shield,
     title: "Security & Compliance",
-    description: "Implement AI tools while maintaining security standards and regulatory compliance.",
+    description:
+      "Implement AI tools while maintaining security standards and regulatory compliance.",
     features: ["Code audit protocols", "Data privacy setup", "Compliance frameworks"],
   },
   {
@@ -52,9 +50,7 @@ export function ServicesSection() {
     <section id="services" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
       <div className="max-w-[1200px] mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Our Services
-          </h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Our Services</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Comprehensive solutions to transform your engineering workflow with AI
           </p>
@@ -73,7 +69,10 @@ export function ServicesSection() {
               <CardContent>
                 <ul className="space-y-2">
                   {service.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <li
+                      key={feature}
+                      className="flex items-center gap-2 text-sm text-muted-foreground"
+                    >
                       <span className="size-1.5 rounded-full bg-primary" />
                       {feature}
                     </li>

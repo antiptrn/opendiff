@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Tooltip } from "@base-ui/react"
+import * as React from "react";
+import { Tooltip } from "@base-ui/react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-const TooltipProvider = Tooltip.Provider
+const TooltipProvider = Tooltip.Provider;
 
 // Wrapper for TooltipRoot with delay prop
 // Note: Base UI Tooltip.Root doesn't support delay directly, but we keep the prop
@@ -18,11 +18,7 @@ function TooltipRoot({
 }: React.ComponentPropsWithoutRef<typeof Tooltip.Root> & {
   delay?: number;
 }) {
-  return (
-    <Tooltip.Root {...props}>
-      {children}
-    </Tooltip.Root>
-  );
+  return <Tooltip.Root {...props}>{children}</Tooltip.Root>;
 }
 
 // Wrapper for TooltipTrigger with asChild prop (maps to render)
@@ -34,18 +30,9 @@ function TooltipTrigger({
   asChild?: boolean;
 }) {
   if (asChild && React.isValidElement(children)) {
-    return (
-      <Tooltip.Trigger
-        render={children}
-        {...props}
-      />
-    );
+    return <Tooltip.Trigger render={children} {...props} />;
   }
-  return (
-    <Tooltip.Trigger {...props}>
-      {children}
-    </Tooltip.Trigger>
-  );
+  return <Tooltip.Trigger {...props}>{children}</Tooltip.Trigger>;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
@@ -71,7 +58,7 @@ const TooltipContent = React.forwardRef<
       </Tooltip.Popup>
     </Tooltip.Positioner>
   </Tooltip.Portal>
-))
-TooltipContent.displayName = "TooltipContent"
+));
+TooltipContent.displayName = "TooltipContent";
 
-export { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent }
+export { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent };

@@ -40,7 +40,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Copy, Check, Trash2, MoreHorizontal, Mail, Link as LinkIcon, Minus, Plus, Building2 } from "lucide-react";
+import {
+  Loader2,
+  Copy,
+  Check,
+  Trash2,
+  MoreHorizontal,
+  Mail,
+  Link as LinkIcon,
+  Minus,
+  Plus,
+  Building2,
+} from "lucide-react";
 import type { useAuth, OrganizationRole } from "@/hooks/use-auth";
 import {
   useOrganization,
@@ -73,7 +84,14 @@ function SeatBadge({ hasSeat }: { hasSeat: boolean }) {
   if (!hasSeat) {
     return <span className="text-sm text-muted-foreground">No seat</span>;
   }
-  return <Badge variant="secondary" className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">Seat assigned</Badge>;
+  return (
+    <Badge
+      variant="secondary"
+      className="bg-green-600/10 text-green-600 dark:bg-green-400/10 dark:text-green-400"
+    >
+      Seat assigned
+    </Badge>
+  );
 }
 
 function SubscriptionBadge({ subscription }: { subscription: OrgSubscription | null }) {
@@ -85,7 +103,10 @@ function SubscriptionBadge({ subscription }: { subscription: OrgSubscription | n
 
   if (subscription.cancelAtPeriodEnd) {
     return (
-      <Badge variant="secondary" className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400">
+      <Badge
+        variant="secondary"
+        className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400"
+      >
         Cancelling
       </Badge>
     );
@@ -99,7 +120,11 @@ function SubscriptionBadge({ subscription }: { subscription: OrgSubscription | n
     );
   }
 
-  return <Badge variant="secondary">{tierLabel} ({subscription.seatCount} seats)</Badge>;
+  return (
+    <Badge variant="secondary">
+      {tierLabel} ({subscription.seatCount} seats)
+    </Badge>
+  );
 }
 
 interface OrganizationTabProps {
@@ -111,7 +136,15 @@ interface OrganizationTabProps {
  * Organization tab - team profile, subscription, members, invites
  */
 export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
-  const { orgDetails, canManageMembers, canManageBilling, canUpdateOrg, subscription, seats, currentOrg } = useOrganization();
+  const {
+    orgDetails,
+    canManageMembers,
+    canManageBilling,
+    canUpdateOrg,
+    subscription,
+    seats,
+    currentOrg,
+  } = useOrganization();
   const queryClient = useQueryClient();
   const { data: membersData, isLoading: isLoadingMembers } = useOrganizationMembers(orgId);
   const members = membersData?.members || [];
@@ -193,7 +226,11 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
     }
   };
 
-  const handleManageSubscription = async (tier: "BYOK" | "CODE_REVIEW" | "TRIAGE", billing: "monthly" | "yearly", seatCount: number) => {
+  const handleManageSubscription = async (
+    tier: "BYOK" | "CODE_REVIEW" | "TRIAGE",
+    billing: "monthly" | "yearly",
+    seatCount: number
+  ) => {
     setSubscriptionError(null);
     try {
       const result = await manageSubscriptionMutation.mutateAsync({ tier, billing, seatCount });
@@ -201,12 +238,19 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
         window.location.href = result.checkoutUrl;
       }
     } catch (error) {
-      setSubscriptionError(error instanceof Error ? error.message : "Failed to manage subscription");
+      setSubscriptionError(
+        error instanceof Error ? error.message : "Failed to manage subscription"
+      );
     }
   };
 
   const handleCancelSubscription = async () => {
-    if (!confirm("Are you sure you want to cancel this subscription? All members will lose access at the end of the billing period.")) return;
+    if (
+      !confirm(
+        "Are you sure you want to cancel this subscription? All members will lose access at the end of the billing period."
+      )
+    )
+      return;
     try {
       await cancelSubscriptionMutation.mutateAsync();
     } catch (error) {
@@ -231,7 +275,12 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
   };
 
   const handleUnassignSeat = async (userId: string) => {
-    if (!confirm("Are you sure you want to unassign this seat? The user will lose access immediately.")) return;
+    if (
+      !confirm(
+        "Are you sure you want to unassign this seat? The user will lose access immediately."
+      )
+    )
+      return;
     try {
       await unassignSeatMutation.mutateAsync(userId);
     } catch (error) {
@@ -249,7 +298,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
 
   const assignedSeats = members.filter((m) => m.hasSeat).length;
   const membersWithoutSeat = members.filter((m) => !m.hasSeat);
-  const availableSeats = (seatsInfo?.available ?? 0);
+  const availableSeats = seatsInfo?.available ?? 0;
 
   const handleAvatarUpdated = () => {
     queryClient.invalidateQueries({ queryKey: ["organization"] });
@@ -300,12 +349,8 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <CardTitle>
-              Team Subscription
-            </CardTitle>
-            {canManageBilling && (
-              <SubscriptionBadge subscription={subscription} />
-            )}
+            <CardTitle>Team Subscription</CardTitle>
+            {canManageBilling && <SubscriptionBadge subscription={subscription} />}
           </div>
           <CardDescription>Manage your team's subscription and seats</CardDescription>
         </CardHeader>
@@ -314,9 +359,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
             <>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-base">
-                    {tierLabels[subscription.tier]} Plan
-                  </p>
+                  <p className="text-base">{tierLabels[subscription.tier]} Plan</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     {assignedSeats} of {subscription.seatCount} seats assigned
                     {availableSeats > 0 && ` (${availableSeats} available)`}
@@ -325,9 +368,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                 {canManageBilling && (
                   <div className="flex gap-2">
                     {subscription.cancelAtPeriodEnd ? (
-                      <Button onClick={handleReactivateSubscription}>
-                        Reactivate
-                      </Button>
+                      <Button onClick={handleReactivateSubscription}>Reactivate</Button>
                     ) : (
                       <Button variant="destructive" onClick={handleCancelSubscription}>
                         Cancel subscription
@@ -348,7 +389,9 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                       <div className="w-full bg-muted rounded-full h-2 mt-2">
                         <div
                           className="bg-primary h-2 rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%` }}
+                          style={{
+                            width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%`,
+                          }}
                         />
                       </div>
                     </>
@@ -375,7 +418,9 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                     </Button>
                     <div className="flex flex-col items-center min-w-[60px]">
                       <span className="text-2xl font-semibold">{initialSeatCount}</span>
-                      <span className="text-xs text-muted-foreground">{initialSeatCount === 1 ? "seat" : "seats"}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {initialSeatCount === 1 ? "seat" : "seats"}
+                      </span>
                     </div>
                     <Button
                       variant="outline"
@@ -388,13 +433,25 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => handleManageSubscription("BYOK", "monthly", initialSeatCount)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleManageSubscription("BYOK", "monthly", initialSeatCount)}
+                    >
                       BYOK (${9 * initialSeatCount}/mo)
                     </Button>
-                    <Button variant="outline" onClick={() => handleManageSubscription("CODE_REVIEW", "monthly", initialSeatCount)}>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleManageSubscription("CODE_REVIEW", "monthly", initialSeatCount)
+                      }
+                    >
                       Review (${19 * initialSeatCount}/mo)
                     </Button>
-                    <Button onClick={() => handleManageSubscription("TRIAGE", "monthly", initialSeatCount)}>
+                    <Button
+                      onClick={() =>
+                        handleManageSubscription("TRIAGE", "monthly", initialSeatCount)
+                      }
+                    >
                       Triage (${49 * initialSeatCount}/mo)
                     </Button>
                   </div>
@@ -413,11 +470,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
 
       {/* Seat Management - show when subscription is active */}
       {canManageBilling && subscription?.status === "ACTIVE" && (
-        <SeatManagementCard
-          orgId={orgId}
-          subscription={subscription}
-          seats={seatsInfo}
-        />
+        <SeatManagementCard orgId={orgId} subscription={subscription} seats={seatsInfo} />
       )}
 
       <Card>
@@ -428,22 +481,25 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
               {isLoadingMembers ? (
                 <Skeleton className="h-4 w-32" />
               ) : (
-                <>{assignedSeats} seats assigned, {members.length} members</>
+                <>
+                  {assignedSeats} seats assigned, {members.length} members
+                </>
               )}
             </CardDescription>
           </div>
           {canManageMembers && (
-            <Dialog open={inviteDialogOpen} onOpenChange={(open) => {
-              setInviteDialogOpen(open);
-              if (!open) {
-                setInviteEmail("");
-                setInviteLink(null);
-              }
-            }}>
+            <Dialog
+              open={inviteDialogOpen}
+              onOpenChange={(open) => {
+                setInviteDialogOpen(open);
+                if (!open) {
+                  setInviteEmail("");
+                  setInviteLink(null);
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button size="sm">
-                  Invite member
-                </Button>
+                <Button size="sm">Invite member</Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
@@ -465,10 +521,13 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                       Share this link with the person you want to invite. It expires in 7 days.
                     </p>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => {
-                        setInviteLink(null);
-                        setInviteDialogOpen(false);
-                      }}>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setInviteLink(null);
+                          setInviteDialogOpen(false);
+                        }}
+                      >
                         Done
                       </Button>
                     </DialogFooter>
@@ -621,7 +680,9 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                                         {membersWithoutSeat.map((targetMember) => (
                                           <DropdownMenuItem
                                             key={targetMember.userId}
-                                            onClick={() => handleReassignSeat(member.userId, targetMember.userId)}
+                                            onClick={() =>
+                                              handleReassignSeat(member.userId, targetMember.userId)
+                                            }
                                           >
                                             {targetMember.name || targetMember.login}
                                           </DropdownMenuItem>
@@ -641,7 +702,12 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                               {/* Role management */}
                               {canManageMembers && !isSelf && member.role !== "OWNER" && (
                                 <DropdownMenuItem
-                                  onClick={() => handleRoleChange(member.userId, member.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                                  onClick={() =>
+                                    handleRoleChange(
+                                      member.userId,
+                                      member.role === "ADMIN" ? "MEMBER" : "ADMIN"
+                                    )
+                                  }
                                 >
                                   Make {member.role === "ADMIN" ? "Member" : "Admin"}
                                 </DropdownMenuItem>
@@ -673,9 +739,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
         <Card>
           <CardHeader>
             <CardTitle>Pending Invites</CardTitle>
-            <CardDescription>
-              Invites that haven't been accepted yet
-            </CardDescription>
+            <CardDescription>Invites that haven't been accepted yet</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingInvites ? (
@@ -690,9 +754,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                 ))}
               </div>
             ) : invites.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                No pending invites
-              </p>
+              <p className="text-center text-muted-foreground py-8">No pending invites</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -708,18 +770,14 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                   {invites.map((invite) => (
                     <TableRow key={invite.id}>
                       <TableCell>
-                        {invite.email || (
-                          <span className="text-muted-foreground">Link invite</span>
-                        )}
+                        {invite.email || <span className="text-muted-foreground">Link invite</span>}
                       </TableCell>
                       <TableCell>
                         <Badge variant={roleBadgeVariant[invite.role]}>
                           {formatRoleName(invite.role)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {invite.invitedBy}
-                      </TableCell>
+                      <TableCell className="text-muted-foreground">{invite.invitedBy}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {new Date(invite.expiresAt).toLocaleDateString()}
                       </TableCell>
@@ -742,9 +800,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
       )}
 
       {/* Billing History - shown for owners and admins */}
-      {(canManageBilling || canManageMembers) && (
-        <BillingHistoryCard user={user} orgId={orgId} />
-      )}
+      {(canManageBilling || canManageMembers) && <BillingHistoryCard user={user} orgId={orgId} />}
 
       {/* Leave Organization - shown for non-owners */}
       {currentOrg?.role !== "OWNER" && (

@@ -9,6 +9,9 @@
     "dev:website": "bun run --cwd antiptrn-website dev",
     "dev:agent": "bun run --cwd antiptrn-review-agent dev",
     "build": "bun run --cwd antiptrn-website build",
-    "lint": "bun run --cwd antiptrn-website lint"
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --fix .",
+    "format": "biome format --write .",
+    "check": "biome check ."
   }
 }

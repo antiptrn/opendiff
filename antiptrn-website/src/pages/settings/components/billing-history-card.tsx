@@ -87,9 +87,9 @@ export function BillingHistoryCard({ user, orgId, isSoloUser }: BillingHistoryCa
                     <td className="py-3">
                       {isSoloUser
                         ? order.productName
-                          .replace(/^1\s*[×x]\s*/i, "")
-                          .replace(/\(at\s+/i, "at ")
-                          .replace(/\s*\/\s*(month|year)\)/, " / $1")
+                            .replace(/^1\s*[×x]\s*/i, "")
+                            .replace(/\(at\s+/i, "at ")
+                            .replace(/\s*\/\s*(month|year)\)/, " / $1")
                         : order.productName}
                     </td>
                     <td className="py-3 text-right">
