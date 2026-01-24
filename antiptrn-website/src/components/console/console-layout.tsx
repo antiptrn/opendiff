@@ -97,12 +97,7 @@ export function ConsoleLayout() {
   // Helper to render nav item with optional tooltip when collapsed
   const NavItem = ({ item, isActive }: { item: typeof sidebarItems[0]; isActive: boolean }) => {
     const linkContent = (
-      <motion.div
-        initial={false}
-        animate={{ width: isCollapsed ? 36 : 208 }}
-        transition={{ duration: 0.2, ease: "easeInOut" }}
-        className="overflow-hidden"
-      >
+      <div className="overflow-hidden">
         <Link
           to={item.href}
           className={cn(
@@ -119,7 +114,7 @@ export function ConsoleLayout() {
             </span>
           )}
         </Link>
-      </motion.div>
+      </div>
     );
 
     if (isCollapsed) {
