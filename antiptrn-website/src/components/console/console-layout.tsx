@@ -1,4 +1,7 @@
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,17 +13,30 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TooltipRoot, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganization } from "@/hooks/use-organization";
 import { cn } from "@/lib/utils";
-import { ChevronDown, FileText, Home, LifeBuoy, Loader2, LogOut, Settings, Shield, UserPlus } from "lucide-react";
+import { ChevronDown, FileText, Home, LifeBuoy, Loader2, LogOut, PanelLeftClose, PanelLeft, Settings, Shield, UserPlus } from "lucide-react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { OrganizationSwitcher } from "./organization-switcher";
+
+const SIDEBAR_COLLAPSED_KEY = "antiptrn_sidebar_collapsed";
 
 export function ConsoleLayout() {
   const { user, accounts, isLoading, logout, switchAccount } = useAuth();
   const { organizations, hasOrganizations, isLoadingOrgs, isLoadingDetails, hasFetchedOrgs, canManageMembers, isUnauthorized } = useOrganization();
   const location = useLocation();
+
+  // Sidebar collapsed state with localStorage persistence
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    return stored === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   // Check auth loading first
   if (isLoading) {
@@ -78,74 +94,134 @@ export function ConsoleLayout() {
     ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield }] : []),
   ];
 
+  // Helper to render nav item with optional tooltip when collapsed
+  const NavItem = ({ item, isActive }: { item: typeof sidebarItems[0]; isActive: boolean }) => {
+    const linkContent = (
+      <motion.div
+        initial={false}
+        animate={{ width: isCollapsed ? 36 : 208 }}
+        transition={{ duration: 0.2, ease: "easeInOut" }}
+        className="overflow-hidden"
+      >
+        <Link
+          to={item.href}
+          className={cn(
+            "flex items-center gap-3.5 h-9 px-2.5 rounded-md text-sm font-medium",
+            isActive
+              ? "bg-card text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <item.icon className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground")} strokeWidth={2.4} />
+          {!isCollapsed && (
+            <span className="whitespace-nowrap">
+              {item.label}
+            </span>
+          )}
+        </Link>
+      </motion.div>
+    );
+
+    if (isCollapsed) {
+      return (
+        <TooltipRoot delay={0}>
+          <TooltipTrigger asChild>
+            {linkContent}
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {item.label}
+          </TooltipContent>
+        </TooltipRoot>
+      );
+    }
+
+    return linkContent;
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
-      <aside className="fixed left-0 top-0 w-60 h-screen bg-background flex flex-col">
+      <motion.aside
+        initial={false}
+        animate={{ width: isCollapsed ? 52 : 240 }}
+        transition={{ duration: 0.2, ease: "easeInOut" }}
+        className="fixed left-0 top-0 h-screen bg-background flex flex-col"
+      >
+        <motion.div
+          initial={false}
+          animate={{ paddingLeft: isCollapsed ? 8 : 16, paddingRight: 8 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className="pt-4 pb-4 flex flex-row items-center justify-between"
+        >
+          {organizations.length > 0 && !isCollapsed && <OrganizationSwitcher />}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 p-0 rounded-lg shrink-0"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+          >
+            {isCollapsed ? (
+              <PanelLeft className="size-3.5" />
+            ) : (
+              <PanelLeftClose className="size-3.5" />
+            )}
+          </Button>
+        </motion.div>
 
-        {organizations.length > 0 && (
-          <div className="pl-4 pt-4 pr-2 pb-4 flex flex-row items-center justify-between">
-            <OrganizationSwitcher />
-          </div>
-        )}
-
-        <nav className={cn("flex-1 p-4 pt-0", organizations.length === 0 && "pt-4")}>
+        <motion.nav
+          initial={false}
+          animate={{ paddingLeft: isCollapsed ? 8 : 16, paddingRight: isCollapsed ? 8 : 16 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className={cn("flex-1 pt-0", organizations.length === 0 && "pt-4")}
+        >
           <ul className="space-y-1">
             {sidebarItems.map((item) => {
               const isActive = location.pathname === item.href;
               return (
-                <li key={item.href}>
-                  <Link
-                    to={item.href}
-                    className={cn(
-                      "flex items-center gap-3.5 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-card text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("size-3.5 text-muted-foreground", isActive && "text-foreground")} strokeWidth={2.4} />
-                    {item.label}
-                  </Link>
+                <li key={item.href} className="h-9">
+                  <NavItem item={item} isActive={isActive} />
                 </li>
               );
             })}
           </ul>
-        </nav>
+        </motion.nav>
 
-        <div className="p-3">
+        <motion.div
+          initial={false}
+          animate={{ paddingLeft: isCollapsed ? 8 : 12, paddingRight: isCollapsed ? 8 : 12 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className="py-3"
+        >
           <ul className="space-y-1 mb-2">
             {sidebarFooterItems.map((item) => {
               const isActive = location.pathname === item.href;
               return (
-                <li key={item.href}>
-                  <Link
-                    to={item.href}
-                    className={cn(
-                      "flex items-center gap-3.5 px-3 py-2 font-medium rounded-md text-sm transition-colors",
-                      isActive
-                        ? "bg-card text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("size-3.5 text-muted-foreground", isActive && "text-foreground")} strokeWidth={2.4} />
-                    {item.label}
-                  </Link>
+                <li key={item.href} className="h-9">
+                  <NavItem item={item} isActive={isActive} />
                 </li>
               );
             })}
           </ul>
           <DropdownMenu>
-            <DropdownMenuTrigger className="cursor-pointer flex items-center gap-2.5 w-full p-2 rounded-md group transition-colors text-left">
-              <Avatar className="size-6 rounded-sm overflow-hidden">
-                <AvatarImage src={user.avatar_url} />
-                <AvatarFallback>{user.login.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm truncate">
-                  {user.login}
-                </p>
-              </div>
-              <ChevronDown className="size-3.5 text-foreground/80 group-hover:text-foreground" />
+            <DropdownMenuTrigger asChild>
+              <motion.button
+                initial={false}
+                animate={{ width: isCollapsed ? 36 : 216 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+                className="cursor-pointer flex items-center gap-2.5 p-1.5 rounded-md group text-left overflow-hidden"
+              >
+                <Avatar className="size-6 rounded-sm overflow-hidden shrink-0">
+                  <AvatarImage src={user.avatar_url} />
+                  <AvatarFallback>{user.login.charAt(0)}</AvatarFallback>
+                </Avatar>
+                {!isCollapsed && (
+                  <div className="flex-1 min-w-0 flex items-center gap-2.5 whitespace-nowrap">
+                    <p className="text-sm truncate flex-1">
+                      {user.login}
+                    </p>
+                    <ChevronDown className="size-3.5 text-foreground/80 group-hover:text-foreground shrink-0" />
+                  </div>
+                )}
+              </motion.button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-64">
               {/* Current user with submenu for account switching */}
@@ -200,12 +276,20 @@ export function ConsoleLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </aside>
+        </motion.div>
+      </motion.aside>
 
-      <main className="border flex-1 overflow-auto top-1 m-1 ml-0 w-[calc(100%-248px)] left-60 bg-card h-[calc(100%-18px)] fixed rounded-xl">
+      <motion.main
+        initial={false}
+        animate={{
+          left: isCollapsed ? 52 : 240,
+          width: isCollapsed ? "calc(100% - 60px)" : "calc(100% - 248px)"
+        }}
+        transition={{ duration: 0.2, ease: "easeInOut" }}
+        className="border flex-1 overflow-auto top-1 m-1 ml-0 bg-background dark:bg-card h-[calc(100%-18px)] fixed rounded-xl"
+      >
         <Outlet />
-      </main>
+      </motion.main>
     </div>
   );
 }
