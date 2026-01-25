@@ -3,6 +3,7 @@ import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
 import { useApi } from "@services";
+import { safeLogError } from "@utils/logger";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
@@ -17,57 +18,6 @@ import {
 } from "@shared/components/ui/card";
 import { Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
-
-// Safe error types that are allowed to be logged
-type SafeErrorType = 'IMAGE_COMPRESSION_FAILED' | 'ORGANIZATION_CREATION_FAILED' | 'AVATAR_UPLOAD_FAILED';
-
-// Safe logging function that prevents sensitive information leakage
-const logError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): void => {
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  
-  // Predefined safe error messages to prevent sensitive data leakage
-  const safeErrorMessages: Record<SafeErrorType, string> = {
-    IMAGE_COMPRESSION_FAILED: 'Image compression operation failed',
-    ORGANIZATION_CREATION_FAILED: 'Organization creation operation failed',
-    AVATAR_UPLOAD_FAILED: 'Avatar upload operation failed'
-  };
-  
-  const safeMessage = safeErrorMessages[errorType];
-  
-  if (isDevelopment) {
-    // In development, log more details for debugging
-    console.error(`[${errorType}] ${safeMessage}`, {
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      context
-    });
-  } else {
-    // In production, only log sanitized information
-    const sanitizedContext = {
-      timestamp: new Date().toISOString(),
-      errorType,
-      // Only include non-sensitive context information
-      hasFile: context?.fileName ? true : false
-    };
-    
-    console.error(safeMessage, sanitizedContext);
-    
-    // Here you would typically send to a proper logging service
-    // Example: await loggerService.error(safeMessage, sanitizedContext);
-  }
-};
-
-// Safe logging wrapper that provides fallback logging if the main logger fails
-const safeLogError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): void => {
-  try {
-    logError(errorType, error, context);
-  } catch (loggingError) {
-    // Fallback logging if the main logger fails - prevents silent failures
-    console.error(`[LOGGING_ERROR] Failed to log ${errorType}:`, {
-      originalError: error instanceof Error ? error.message : 'Unknown error',
-      loggingError: loggingError instanceof Error ? loggingError.message : 'Unknown logging error'
-    });
-  }
-};
 
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
