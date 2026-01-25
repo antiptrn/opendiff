@@ -18,6 +18,8 @@ import {
 import { Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
 
+const REMOVE_BUTTON_OFFSET = '-0.375rem';
+
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
@@ -195,7 +197,11 @@ export default function CreateOrganizationPage() {
                     <button
                       type="button"
                       onClick={removeAvatar}
-                      className="absolute top-[-0.375rem] right-[-0.375rem] size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
+                      className="absolute size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
+                      style={{
+                        top: REMOVE_BUTTON_OFFSET,
+                        right: REMOVE_BUTTON_OFFSET,
+                      }}
                     >
                       <X className="size-3" />
                     </button>
