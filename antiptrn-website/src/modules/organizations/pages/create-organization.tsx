@@ -176,6 +176,7 @@ export default function CreateOrganizationPage() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isCreating}
+                  aria-label="Upload organization logo"
                   className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <Upload className="size-5 text-white" />
