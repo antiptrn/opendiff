@@ -33,7 +33,10 @@ const logError = (message: string, error: unknown, context?: Record<string, any>
       fileType: '[REDACTED]'
     } : undefined;
     
-    console.error(message, safeContext);
+    // Sanitize the error object to prevent logging sensitive data
+    const sanitizedError = error instanceof Error ? error.message : '[REDACTED]';
+    
+    console.error(message, { error: sanitizedError }, safeContext);
     
     // Here you would typically send to a proper logging service
     // Example: loggerService.error(message, { error: error?.message, context: safeContext });
