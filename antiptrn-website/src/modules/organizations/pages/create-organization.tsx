@@ -201,9 +201,7 @@ export default function CreateOrganizationPage() {
           await api.upload(`/api/organizations/${newOrg.id}/avatar`, formData);
         } catch (avatarError) {
           // Log the avatar upload error
-          logError('AVATAR_UPLOAD_FAILED', avatarError, {
-            organizationId: newOrg.id
-          }).catch(() => {});
+          logError('AVATAR_UPLOAD_FAILED', avatarError).catch(() => {});
           
           // Show user feedback about partial failure with continue button
           setError("Organization created successfully, but logo upload failed. You can upload it later from organization settings.");
