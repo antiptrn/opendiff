@@ -18,7 +18,22 @@ import {
 import { Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
 
-const REMOVE_BUTTON_TOP_RIGHT_OFFSET = '-0.375rem';
+const removeButtonStyles = {
+  position: 'absolute' as const,
+  top: 'calc(-0.375rem)',
+  right: 'calc(-0.375rem)',
+  width: '1.25rem',
+  height: '1.25rem',
+  borderRadius: '50%',
+  backgroundColor: 'hsl(var(--destructive))',
+  color: 'hsl(var(--destructive-foreground))',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: 'none',
+  cursor: 'pointer',
+  transition: 'background-color 0.15s ease-in-out',
+} as const;
 
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
@@ -194,10 +209,12 @@ export default function CreateOrganizationPage() {
                     <button
                       type="button"
                       onClick={removeAvatar}
-                      className="absolute size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
-                      style={{
-                        top: REMOVE_BUTTON_TOP_RIGHT_OFFSET,
-                        right: REMOVE_BUTTON_TOP_RIGHT_OFFSET,
+                      style={removeButtonStyles}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'hsl(var(--destructive) / 0.9)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'hsl(var(--destructive))';
                       }}
                     >
                       <X className="size-3" />
