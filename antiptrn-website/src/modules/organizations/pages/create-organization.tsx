@@ -22,7 +22,7 @@ import imageCompression from "browser-image-compression";
 type SafeErrorType = 'IMAGE_COMPRESSION_FAILED' | 'ORGANIZATION_CREATION_FAILED' | 'AVATAR_UPLOAD_FAILED';
 
 // Safe logging function that prevents sensitive information leakage
-const logError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>) => {
+const logError = async (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): Promise<void> => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   
   // Predefined safe error messages to prevent sensitive data leakage
@@ -52,7 +52,7 @@ const logError = (errorType: SafeErrorType, error: unknown, context?: Record<str
     console.error(safeMessage, sanitizedContext);
     
     // Here you would typically send to a proper logging service
-    // Example: loggerService.error(safeMessage, sanitizedContext);
+    // Example: await loggerService.error(safeMessage, sanitizedContext);
   }
 };
 
