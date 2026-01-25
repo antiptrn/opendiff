@@ -112,10 +112,7 @@ export default function CreateOrganizationPage() {
 
   const removeAvatar = () => {
     setAvatarFile(null);
-    if (avatarPreview) {
-      URL.revokeObjectURL(avatarPreview);
-      setAvatarPreview(null);
-    }
+    setAvatarPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
