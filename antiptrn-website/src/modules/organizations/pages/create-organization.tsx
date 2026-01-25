@@ -18,6 +18,28 @@ import {
 import { Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
 
+// Safe logging function that removes sensitive information in production
+const logError = (message: string, error: unknown, context?: Record<string, any>) => {
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  if (isDevelopment) {
+    console.error(message, error, context);
+  } else {
+    // In production, log only safe information
+    const safeContext = context ? {
+      ...context,
+      // Remove potentially sensitive file information
+      fileName: '[REDACTED]',
+      fileType: '[REDACTED]'
+    } : undefined;
+    
+    console.error(message, safeContext);
+    
+    // Here you would typically send to a proper logging service
+    // Example: loggerService.error(message, { error: error?.message, context: safeContext });
+  }
+};
+
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
@@ -104,7 +126,10 @@ export default function CreateOrganizationPage() {
       setAvatarFile(compressedFile);
       setAvatarPreview(newPreviewUrl);
     } catch (error) {
-      console.error('Image compression failed for file:', file.name, file.type, error);
+      logError('Image compression failed', error, {
+        fileName: file.name,
+        fileType: file.type
+      });
       setError("Failed to process image");
     }
   };
