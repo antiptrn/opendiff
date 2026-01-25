@@ -34,14 +34,14 @@ export default function CreateOrganizationPage() {
   // Simple string operation - no need for memoization
   const fallbackText = name.trim() ? name.charAt(0).toUpperCase() : "?";
 
-  // Cleanup avatarPreview URL when it changes or on unmount
+  // Cleanup avatarPreview URL on unmount
   useEffect(() => {
     return () => {
       if (avatarPreview) {
         URL.revokeObjectURL(avatarPreview);
       }
     };
-  }, [avatarPreview]);
+  }, []);
 
   // Show loading while checking auth
   if (isAuthLoading) {
@@ -98,6 +98,11 @@ export default function CreateOrganizationPage() {
         useWebWorker: true,
       });
 
+      // Revoke the previous URL before creating a new one
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+
       setAvatarFile(compressedFile);
       setAvatarPreview(URL.createObjectURL(compressedFile));
     } catch (error) {
@@ -107,6 +112,11 @@ export default function CreateOrganizationPage() {
   };
 
   const removeAvatar = () => {
+    // Revoke the URL before clearing the state
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+    
     setAvatarFile(null);
     setAvatarPreview(null);
     if (fileInputRef.current) {
