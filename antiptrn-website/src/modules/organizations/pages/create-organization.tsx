@@ -106,7 +106,7 @@ export default function CreateOrganizationPage() {
       setAvatarFile(compressedFile);
       setAvatarPreview(URL.createObjectURL(compressedFile));
     } catch (error) {
-      console.error('Image compression failed:', error);
+      console.error('Image compression failed for file:', file.name, file.type, error);
       setError("Failed to process image");
     }
   };
