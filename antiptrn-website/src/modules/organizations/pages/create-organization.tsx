@@ -38,12 +38,9 @@ export default function CreateOrganizationPage() {
 
   // Cleanup avatarPreview URL when it changes or on unmount
   useEffect(() => {
-    // Store the current preview URL to clean up when it changes
-    const currentPreview = avatarPreview;
-    
     return () => {
-      if (currentPreview) {
-        URL.revokeObjectURL(currentPreview);
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview);
       }
     };
   }, [avatarPreview]);
