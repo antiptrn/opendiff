@@ -50,20 +50,27 @@ export default function CreateOrganizationPage() {
     useOrganization();
   const api = useApi();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentAvatarUrlRef = useRef<string | null>(null);
 
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Cleanup avatarPreview URL on unmount
+  // Cleanup function to revoke the current URL if it exists
+  const cleanupCurrentUrl = () => {
+    if (currentAvatarUrlRef.current) {
+      URL.revokeObjectURL(currentAvatarUrlRef.current);
+      currentAvatarUrlRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (avatarPreview) {
-        URL.revokeObjectURL(avatarPreview);
-      }
+      cleanupCurrentUrl();
     };
-  }, [avatarPreview]);
+  }, []);
 
   // Show loading while checking auth
   if (isAuthLoading) {
@@ -120,12 +127,11 @@ export default function CreateOrganizationPage() {
         useWebWorker: true,
       });
 
-      // Revoke the previous URL before creating a new one
-      if (avatarPreview) {
-        URL.revokeObjectURL(avatarPreview);
-      }
+      // Clean up the previous URL before creating a new one
+      cleanupCurrentUrl();
 
       const newPreviewUrl = URL.createObjectURL(compressedFile);
+      currentAvatarUrlRef.current = newPreviewUrl;
       setAvatarFile(compressedFile);
       setAvatarPreview(newPreviewUrl);
     } catch (error) {
@@ -138,10 +144,8 @@ export default function CreateOrganizationPage() {
   };
 
   const removeAvatar = () => {
-    // Revoke the URL before clearing the state
-    if (avatarPreview) {
-      URL.revokeObjectURL(avatarPreview);
-    }
+    // Clean up the current URL
+    cleanupCurrentUrl();
     
     setAvatarFile(null);
     setAvatarPreview(null);
