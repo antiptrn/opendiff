@@ -40,16 +40,22 @@ enum AccountType {
 }
 
 model User {
-  id        String  @id @default(cuid())
-  githubId  Int?    @unique
-  googleId  String? @unique
-  login     String
-  name      String?
-  email     String? @unique
-  avatarUrl String?
+  id          String  @id @default(cuid())
+  githubId    Int?    @unique
+  googleId    String? @unique
+  microsoftId String? @unique
+  login       String
+  name        String?
+  email       String? @unique
+  avatarUrl   String?
 
   // GitHub token for repo access (stored for Google-auth users who link GitHub)
   githubAccessToken    String?
+  githubRefreshToken   String?  // Only used if GitHub App has expiring tokens enabled
+
+  // OAuth refresh tokens for automatic token renewal
+  googleRefreshToken    String?
+  microsoftRefreshToken String?
 
   // Onboarding
   accountType          AccountType?
@@ -59,9 +65,9 @@ model User {
   // Legacy subscription fields (kept for migration, will be removed later)
   subscriptionTier      SubscriptionTier?
   subscriptionStatus    SubscriptionStatus?
-  polarSubscriptionId   String?            @unique
-  polarProductId        String?
-  polarCustomerId       String?
+  subscriptionId        String?            @unique @map("polarSubscriptionId")
+  productId             String?            @map("polarProductId")
+  customerId            String?            @map("polarCustomerId")
   subscriptionExpiresAt DateTime?
   cancelAtPeriodEnd     Boolean?
   reviewsUsedThisCycle  Int?
@@ -87,8 +93,8 @@ model Organization {
   // Subscription (quantity-based, covers all seats)
   subscriptionTier      SubscriptionTier?
   subscriptionStatus    SubscriptionStatus?
-  polarSubscriptionId   String?              @unique
-  polarProductId        String?
+  subscriptionId        String?              @unique @map("polarSubscriptionId")
+  productId             String?              @map("polarProductId")
   subscriptionExpiresAt DateTime?
   cancelAtPeriodEnd     Boolean              @default(false)
   seatCount             Int                  @default(0)
@@ -97,6 +103,11 @@ model Organization {
   reviewsUsedThisCycle  Int                @default(0)
   anthropicApiKey       String?
   customReviewRules     String?
+
+  // Business info (for invoicing)
+  isRegisteredBusiness  Boolean            @default(false)
+  businessName          String?
+  taxVatId              String?
 
   // Relations
   members            OrganizationMember[]
@@ -168,6 +179,8 @@ model RepositorySettings {
   avatarUrl         String?       // Owner's avatar
   defaultBranch     String?
   htmlUrl           String?       // GitHub URL
+  language          String?       // Primary programming language
+  pushedAt          DateTime?     // Last push/update time from GitHub
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

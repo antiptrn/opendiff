@@ -1,25 +1,49 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { OrganizationProvider } from "./contexts/organization-context";
 
 import "./index.css";
 import App from "./App.tsx";
-import { HomePage } from "./pages/home.tsx";
-import { ServicesPage } from "./pages/services.tsx";
-import LoginPage from "./pages/login.tsx";
-import { AuthCallbackPage } from "./pages/auth-callback.tsx";
-import { ConsoleLayout } from "./components/console/console-layout.tsx";
-import { ConsolePage } from "./pages/console.tsx";
-import { SettingsPage } from "./pages/settings";
-import { ReviewsPage } from "./pages/reviews.tsx";
-import { AdminPage } from "./pages/admin.tsx";
-import { PricingPage } from "./pages/pricing";
-import { SubscriptionSuccessPage } from "./pages/subscription-success.tsx";
-import CreateOrganizationPage from "./pages/create-organization.tsx";
-import InvitePage from "./pages/invite.tsx";
-import OnboardingPage from "./pages/onboarding.tsx";
+import { ConsoleLayout } from "@shared/components/layout/console";
+
+// Features
+import { LoginPage, AuthCallbackPage, OnboardingPage, useAuth } from "@features/auth";
+import { ConsolePage } from "@features/dashboard";
+import { PricingPage, SubscriptionSuccessPage } from "@features/billing";
+import { SettingsPage } from "@features/settings";
+import { RepositoriesPage } from "@features/reviews";
+import { AdminPage } from "@features/admin";
+import { HomePage, ServicesPage } from "@features/marketing";
+
+// Modules
+import {
+  OrganizationProvider,
+  CreateOrganizationPage,
+  InvitePage,
+} from "@modules/organizations";
+
+// Get active account ID from localStorage (avoids React state timing issues)
+function getActiveAccountId(): string {
+  try {
+    const stored = localStorage.getItem("antiptrn_accounts");
+    if (stored) {
+      const data = JSON.parse(stored);
+      return data.activeAccountId || "anonymous";
+    }
+  } catch {
+    // ignore
+  }
+  return "anonymous";
+}
+
+// Wrapper that keys OrganizationProvider by user ID so it remounts on account switch
+function KeyedOrganizationProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  // Use localStorage value for initial render stability, fall back to user from state
+  const userId = user?.visitorId ?? user?.id ?? getActiveAccountId();
+  return <OrganizationProvider key={userId}>{children}</OrganizationProvider>;
+}
 
 const queryClient = new QueryClient();
 
@@ -45,14 +69,14 @@ const router = createBrowserRouter([
     element: <ConsoleLayout />,
     children: [
       { index: true, element: <ConsolePage /> },
-      { path: "reviews", element: <ReviewsPage /> },
+      { path: "repositories", element: <RepositoriesPage /> },
+      { path: "reviews", element: <Navigate to="/console/repositories" replace /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/:tab", element: <SettingsPage /> },
       { path: "admin", element: <AdminPage /> },
-      {
-        path: "organization",
-        element: <Navigate to="/console/settings?tab=organization" replace />,
-      },
-      { path: "billing", element: <Navigate to="/console/settings?tab=billing" replace /> },
+      // Legacy redirects
+      { path: "organization", element: <Navigate to="/console/settings/organization" replace /> },
+      { path: "billing", element: <Navigate to="/console/settings/billing" replace /> },
     ],
   },
 ]);
@@ -63,9 +87,9 @@ if (!rootElement) throw new Error("Root element not found");
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <OrganizationProvider>
+      <KeyedOrganizationProvider>
         <RouterProvider router={router} />
-      </OrganizationProvider>
+      </KeyedOrganizationProvider>
     </QueryClientProvider>
   </StrictMode>
 );

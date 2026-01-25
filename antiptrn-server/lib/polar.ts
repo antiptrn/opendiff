@@ -125,9 +125,9 @@ export async function createSubscriptionCheckout(params: CreateSubscriptionCheck
 /**
  * Cancel the org subscription at period end
  */
-export async function cancelSubscription(polarSubscriptionId: string) {
+export async function cancelSubscription(subscriptionId: string) {
   await polar.subscriptions.update({
-    id: polarSubscriptionId,
+    id: subscriptionId,
     subscriptionUpdate: {
       cancelAtPeriodEnd: true,
     },
@@ -137,9 +137,9 @@ export async function cancelSubscription(polarSubscriptionId: string) {
 /**
  * Reactivate a subscription that was set to cancel
  */
-export async function reactivateSubscription(polarSubscriptionId: string) {
+export async function reactivateSubscription(subscriptionId: string) {
   await polar.subscriptions.update({
-    id: polarSubscriptionId,
+    id: subscriptionId,
     subscriptionUpdate: {
       cancelAtPeriodEnd: false,
     },
@@ -150,7 +150,7 @@ export async function reactivateSubscription(polarSubscriptionId: string) {
  * Change subscription tier (e.g., upgrade from CODE_REVIEW to TRIAGE)
  */
 export async function changeSubscriptionTier(
-  polarSubscriptionId: string,
+  subscriptionId: string,
   newTier: "BYOK" | "CODE_REVIEW" | "TRIAGE",
   billing: "monthly" | "yearly"
 ) {
@@ -160,7 +160,7 @@ export async function changeSubscriptionTier(
   }
 
   await polar.subscriptions.update({
-    id: polarSubscriptionId,
+    id: subscriptionId,
     subscriptionUpdate: {
       productId: newProductId,
     },

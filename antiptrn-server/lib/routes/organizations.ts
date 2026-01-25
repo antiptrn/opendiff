@@ -261,6 +261,10 @@ organizationRoutes.get("/:orgId", async (c) => {
       used: quotaPool.used,
       hasUnlimited: quotaPool.hasUnlimited,
     },
+    // Business info
+    isRegisteredBusiness: org.isRegisteredBusiness,
+    businessName: org.businessName,
+    taxVatId: org.taxVatId,
   });
 });
 
@@ -295,9 +299,15 @@ organizationRoutes.put("/:orgId", async (c) => {
   }
 
   const body = await c.req.json();
-  const { name, slug: newSlug } = body;
+  const { name, slug: newSlug, isRegisteredBusiness, businessName, taxVatId } = body;
 
-  const updateData: { name?: string; slug?: string } = {};
+  const updateData: {
+    name?: string;
+    slug?: string;
+    isRegisteredBusiness?: boolean;
+    businessName?: string | null;
+    taxVatId?: string | null;
+  } = {};
 
   if (name && typeof name === "string" && name.trim().length >= 2) {
     updateData.name = name.trim();
@@ -314,6 +324,24 @@ organizationRoutes.put("/:orgId", async (c) => {
         return c.json({ error: "This URL is already taken" }, 400);
       }
       updateData.slug = cleanSlug;
+    }
+  }
+
+  // Business info fields (owner only)
+  if (membership.role === "OWNER") {
+    if (typeof isRegisteredBusiness === "boolean") {
+      updateData.isRegisteredBusiness = isRegisteredBusiness;
+      // Clear business fields if not a registered business
+      if (!isRegisteredBusiness) {
+        updateData.businessName = null;
+        updateData.taxVatId = null;
+      }
+    }
+    if (typeof businessName === "string") {
+      updateData.businessName = businessName.trim() || null;
+    }
+    if (typeof taxVatId === "string") {
+      updateData.taxVatId = taxVatId.trim() || null;
     }
   }
 
@@ -891,8 +919,8 @@ organizationRoutes.post("/:orgId/subscription", async (c) => {
 
   try {
     // If org already has an active subscription, update it
-    if (org.polarSubscriptionId && org.subscriptionStatus === "ACTIVE") {
-      const currentProductId = org.polarProductId;
+    if (org.subscriptionId && org.subscriptionStatus === "ACTIVE") {
+      const currentProductId = org.productId;
       const newProductId = paymentProvider.getProductId(tier, billing);
 
       // Check if changing tier/billing or just adding seats
@@ -921,8 +949,13 @@ organizationRoutes.post("/:orgId/subscription", async (c) => {
         });
       } else {
         // Changing tier/billing - need to update product
+        // If subscription is set to cancel, first uncancel it
+        if (org.cancelAtPeriodEnd) {
+          await paymentProvider.reactivateSubscription(org.subscriptionId);
+        }
+
         await paymentProvider.updateSubscription({
-          subscriptionId: org.polarSubscriptionId,
+          subscriptionId: org.subscriptionId,
           productId: newProductId,
           quantity: seatQuantity,
         });
@@ -931,8 +964,9 @@ organizationRoutes.post("/:orgId/subscription", async (c) => {
           where: { id: orgId },
           data: {
             subscriptionTier: tier,
-            polarProductId: newProductId,
+            productId: newProductId,
             seatCount: seatQuantity,
+            cancelAtPeriodEnd: false,
           },
         });
 
@@ -1018,12 +1052,12 @@ organizationRoutes.post("/:orgId/subscription/cancel", async (c) => {
 
   const org = membership.organization;
 
-  if (!org.polarSubscriptionId) {
+  if (!org.subscriptionId) {
     return c.json({ error: "No active subscription" }, 400);
   }
 
   try {
-    await paymentProvider.cancelSubscription(org.polarSubscriptionId);
+    await paymentProvider.cancelSubscription(org.subscriptionId);
 
     await prisma.organization.update({
       where: { id: orgId },
@@ -1079,7 +1113,7 @@ organizationRoutes.post("/:orgId/subscription/reactivate", async (c) => {
 
   const org = membership.organization;
 
-  if (!org.polarSubscriptionId) {
+  if (!org.subscriptionId) {
     return c.json({ error: "No subscription to reactivate" }, 400);
   }
 
@@ -1088,7 +1122,7 @@ organizationRoutes.post("/:orgId/subscription/reactivate", async (c) => {
   }
 
   try {
-    await paymentProvider.reactivateSubscription(org.polarSubscriptionId);
+    await paymentProvider.reactivateSubscription(org.subscriptionId);
 
     await prisma.organization.update({
       where: { id: orgId },
@@ -1146,7 +1180,7 @@ organizationRoutes.post("/:orgId/subscription/seats", async (c) => {
 
   const org = membership.organization;
 
-  if (!org.polarSubscriptionId || org.subscriptionStatus !== "ACTIVE") {
+  if (!org.subscriptionId || org.subscriptionStatus !== "ACTIVE") {
     return c.json({ error: "No active subscription" }, 400);
   }
 
@@ -1176,7 +1210,7 @@ organizationRoutes.post("/:orgId/subscription/seats", async (c) => {
     // Check subscription status in Stripe before attempting update
     // This catches cases where our DB says ACTIVE but Stripe has it as incomplete_expired
     if (getPaymentProviderName() === "stripe") {
-      const subscription = await paymentProvider.getSubscription(org.polarSubscriptionId);
+      const subscription = await paymentProvider.getSubscription(org.subscriptionId);
       if (subscription.status !== "active") {
         if (subscription.status === "incomplete" || subscription.status === "incomplete_expired") {
           return c.json({
@@ -1194,7 +1228,7 @@ organizationRoutes.post("/:orgId/subscription/seats", async (c) => {
 
     // Update Stripe subscription quantity
     await paymentProvider.updateSubscription({
-      subscriptionId: org.polarSubscriptionId,
+      subscriptionId: org.subscriptionId,
       quantity: newSeatCount,
     });
 
@@ -1278,7 +1312,7 @@ organizationRoutes.get("/:orgId/subscription/seats/preview", async (c) => {
 
   const org = membership.organization;
 
-  if (!org.polarSubscriptionId || org.subscriptionStatus !== "ACTIVE") {
+  if (!org.subscriptionId || org.subscriptionStatus !== "ACTIVE") {
     return c.json({ error: "No active subscription" }, 400);
   }
 
@@ -1291,7 +1325,7 @@ organizationRoutes.get("/:orgId/subscription/seats/preview", async (c) => {
 
   try {
     const preview = await paymentProvider.previewSubscriptionChange({
-      subscriptionId: org.polarSubscriptionId,
+      subscriptionId: org.subscriptionId,
       quantity: newSeatCount,
     });
 
@@ -1307,7 +1341,7 @@ organizationRoutes.get("/:orgId/subscription/seats/preview", async (c) => {
     }
 
     // Get price per seat based on tier and billing cycle
-    const isYearly = isYearlyProduct(org.polarProductId);
+    const isYearly = isYearlyProduct(org.productId);
     const tierKey = tier as keyof typeof SEAT_PRICING;
     const pricePerSeatCents = SEAT_PRICING[tierKey]?.[isYearly ? "yearly" : "monthly"] ?? 0;
     
@@ -1325,10 +1359,10 @@ organizationRoutes.get("/:orgId/subscription/seats/preview", async (c) => {
       let periodStart: Date | null = null;
       
       try {
-        if (!org.polarSubscriptionId) {
+        if (!org.subscriptionId) {
           throw new Error("No subscription ID");
         }
-        const subscription = await paymentProvider.getSubscription(org.polarSubscriptionId);
+        const subscription = await paymentProvider.getSubscription(org.subscriptionId);
         periodEnd = subscription.currentPeriodEnd;
         // Estimate period start (1 month or 1 year before end)
         if (periodEnd) {
@@ -2014,6 +2048,7 @@ organizationRoutes.get("/invites/:token", async (c) => {
     role: invite.role,
     invitedBy: invite.invitedBy.name || invite.invitedBy.login,
     expiresAt: invite.expiresAt,
+    invitedEmail: invite.email,
   });
 });
 

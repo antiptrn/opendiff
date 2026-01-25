@@ -154,7 +154,7 @@ export async function getOrgQuotaPool(orgId: string): Promise<{
     return { total: 0, used: 0, hasUnlimited: false };
   }
 
-  const quota = getOrgReviewQuota(org.subscriptionTier, org.seatCount, org.polarProductId);
+  const quota = getOrgReviewQuota(org.subscriptionTier, org.seatCount, org.productId);
   const hasUnlimited = quota === -1;
 
   return {

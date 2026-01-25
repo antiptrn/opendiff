@@ -25,6 +25,8 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
+const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 // Helper to get GitHub user from token (for GitHub-specific API calls)
@@ -222,11 +224,12 @@ app.get("/auth/github/callback", async (c) => {
       }
 
       // Link GitHub to the user's account
-      await prisma.user.update({
+      const updatedUser = await prisma.user.update({
         where: { id: linkOperation.userId },
         data: {
           githubId: userData.id,
           githubAccessToken: tokenData.access_token,
+          githubRefreshToken: tokenData.refresh_token,
           login: userData.login,
         },
       });
@@ -238,7 +241,33 @@ app.get("/auth/github/callback", async (c) => {
         c,
       });
 
-      return c.redirect(`${FRONTEND_URL}/console/settings?github_linked=true`);
+      // Get user's organizations and return updated user data
+      const organizations = await getUserOrganizations(updatedUser.id);
+
+      const authData = {
+        id: updatedUser.googleId,
+        visitorId: updatedUser.id,
+        login: updatedUser.login,
+        name: updatedUser.name,
+        avatar_url: updatedUser.avatarUrl,
+        email: updatedUser.email,
+        access_token: tokenData.access_token,
+        auth_provider: "google",
+        hasGithubLinked: true,
+        subscriptionTier: updatedUser.subscriptionTier,
+        subscriptionStatus: updatedUser.subscriptionStatus,
+        accountType: updatedUser.accountType,
+        onboardingCompletedAt: updatedUser.onboardingCompletedAt,
+        personalOrgId: updatedUser.personalOrgId,
+        organizations,
+        hasOrganizations: organizations.length > 0,
+      };
+
+      const encodedUser = encodeURIComponent(JSON.stringify(authData));
+      const callbackUrl = new URL(`${FRONTEND_URL}/auth/callback`);
+      callbackUrl.searchParams.set("user", encodedUser);
+      callbackUrl.searchParams.set("redirectUrl", "/console/settings");
+      return c.redirect(callbackUrl.toString());
     }
 
     // Normal GitHub sign-in flow
@@ -254,23 +283,54 @@ app.get("/auth/github/callback", async (c) => {
       (e: { primary: boolean }) => e.primary
     )?.email;
 
-    // Upsert user in database
-    const user = await prisma.user.upsert({
+    const email = primaryEmail || userData.email;
+
+    // Check if user exists by githubId first
+    let user = await prisma.user.findUnique({
       where: { githubId: userData.id },
-      update: {
-        login: userData.login,
-        name: userData.name,
-        email: primaryEmail || userData.email,
-        avatarUrl: userData.avatar_url,
-      },
-      create: {
-        githubId: userData.id,
-        login: userData.login,
-        name: userData.name,
-        email: primaryEmail || userData.email,
-        avatarUrl: userData.avatar_url,
-      },
     });
+
+    if (user) {
+      // User exists with this GitHub ID - update their info
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          login: userData.login,
+          name: userData.name,
+          email,
+          avatarUrl: userData.avatar_url,
+          // Store refresh token if GitHub provides one (expiring tokens enabled)
+          ...(tokenData.refresh_token && { githubRefreshToken: tokenData.refresh_token }),
+        },
+      });
+    } else {
+      // No user with this GitHub ID - check if email exists (e.g., Google user)
+      const existingUserByEmail = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUserByEmail) {
+        // Email already used by another account - don't auto-link
+        return c.redirect(
+          `${FRONTEND_URL}/login?error=email_exists&message=${encodeURIComponent(
+            "This email is already associated with another account. Please sign in with that account and link your GitHub from settings."
+          )}`
+        );
+      } else {
+        // No existing user - create new one
+        user = await prisma.user.create({
+          data: {
+            githubId: userData.id,
+            login: userData.login,
+            name: userData.name,
+            email,
+            avatarUrl: userData.avatar_url,
+            // Store refresh token if GitHub provides one (expiring tokens enabled)
+            githubRefreshToken: tokenData.refresh_token,
+          },
+        });
+      }
+    }
 
     // Get user's organizations
     const organizations = await getUserOrganizations(user.id);
@@ -281,7 +341,7 @@ app.get("/auth/github/callback", async (c) => {
       login: userData.login,
       name: userData.name,
       avatar_url: userData.avatar_url,
-      email: primaryEmail || userData.email,
+      email,
       access_token: tokenData.access_token,
       subscriptionTier: user.subscriptionTier,
       subscriptionStatus: user.subscriptionStatus,
@@ -290,6 +350,8 @@ app.get("/auth/github/callback", async (c) => {
       personalOrgId: user.personalOrgId,
       organizations,
       hasOrganizations: organizations.length > 0,
+      auth_provider: "github",
+      hasGithubLinked: true,
     };
 
     await logAudit({
@@ -327,6 +389,7 @@ app.get("/auth/google", (c) => {
   googleAuthUrl.searchParams.set("response_type", "code");
   googleAuthUrl.searchParams.set("scope", scope);
   googleAuthUrl.searchParams.set("access_type", "offline");
+  googleAuthUrl.searchParams.set("prompt", "consent"); // Always show consent to get refresh token
 
   // Encode redirectUrl in state if provided
   if (clientRedirectUrl) {
@@ -418,6 +481,8 @@ app.get("/auth/google/callback", async (c) => {
           avatarUrl: googleUser.picture || user.avatarUrl,
           // Don't overwrite login if user signed up with GitHub first
           login: user.login || login,
+          // Store refresh token if provided (only on first auth or re-consent)
+          ...(tokenData.refresh_token && { googleRefreshToken: tokenData.refresh_token }),
         },
       });
     } else {
@@ -429,6 +494,8 @@ app.get("/auth/google/callback", async (c) => {
           name: googleUser.name,
           email: googleUser.email,
           avatarUrl: googleUser.picture,
+          // Store refresh token if provided
+          googleRefreshToken: tokenData.refresh_token,
         },
       });
     }
@@ -475,6 +542,171 @@ app.get("/auth/google/callback", async (c) => {
   }
 });
 
+// Microsoft OAuth (Entra ID)
+app.get("/auth/microsoft", (c) => {
+  const redirectUri = `${c.req.url.split("/auth/microsoft")[0]}/auth/microsoft/callback`;
+  const scope = "openid email profile User.Read";
+  const clientRedirectUrl = c.req.query("redirectUrl");
+
+  const microsoftAuthUrl = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
+  microsoftAuthUrl.searchParams.set("client_id", MICROSOFT_CLIENT_ID);
+  microsoftAuthUrl.searchParams.set("redirect_uri", redirectUri);
+  microsoftAuthUrl.searchParams.set("response_type", "code");
+  microsoftAuthUrl.searchParams.set("scope", scope);
+  microsoftAuthUrl.searchParams.set("response_mode", "query");
+
+  // Encode redirectUrl in state if provided
+  if (clientRedirectUrl) {
+    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString("base64");
+    microsoftAuthUrl.searchParams.set("state", state);
+  }
+
+  return c.redirect(microsoftAuthUrl.toString());
+});
+
+app.get("/auth/microsoft/callback", async (c) => {
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const redirectUri = `${c.req.url.split("/auth/microsoft/callback")[0]}/auth/microsoft/callback`;
+
+  if (!code) {
+    return c.redirect(`${FRONTEND_URL}/login?error=no_code`);
+  }
+
+  // Parse redirectUrl from state
+  let clientRedirectUrl: string | null = null;
+  if (state) {
+    try {
+      const decoded = JSON.parse(Buffer.from(state, "base64").toString());
+      if (decoded.redirectUrl) {
+        clientRedirectUrl = decoded.redirectUrl;
+      }
+    } catch {
+      // Invalid state, ignore
+    }
+  }
+
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: MICROSOFT_CLIENT_ID,
+        client_secret: MICROSOFT_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        scope: "openid email profile User.Read",
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      console.error("Microsoft token error:", tokenData);
+      return c.redirect(`${FRONTEND_URL}/login?error=${tokenData.error_description || tokenData.error}`);
+    }
+
+    // Get user info from Microsoft Graph
+    const userResponse = await fetch("https://graph.microsoft.com/v1.0/me", {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    const microsoftUser = await userResponse.json();
+
+    if (!microsoftUser.mail && !microsoftUser.userPrincipalName) {
+      return c.redirect(`${FRONTEND_URL}/login?error=no_email`);
+    }
+
+    const email = microsoftUser.mail || microsoftUser.userPrincipalName;
+
+    // Generate a username from email (before @)
+    const login = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Try to find existing user by Microsoft ID or email
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { microsoftId: microsoftUser.id },
+          { email: email },
+        ],
+      },
+    });
+
+    if (user) {
+      // Update existing user with Microsoft info
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          microsoftId: microsoftUser.id,
+          name: microsoftUser.displayName || user.name,
+          // Don't overwrite login if user signed up with another provider first
+          login: user.login || login,
+          // Store refresh token if provided (only on first auth or re-consent)
+          ...(tokenData.refresh_token && { microsoftRefreshToken: tokenData.refresh_token }),
+        },
+      });
+    } else {
+      // Create new user
+      user = await prisma.user.create({
+        data: {
+          microsoftId: microsoftUser.id,
+          login,
+          name: microsoftUser.displayName,
+          email: email,
+          // Store refresh token if provided
+          microsoftRefreshToken: tokenData.refresh_token,
+        },
+      });
+    }
+
+    // Get user's organizations
+    const organizations = await getUserOrganizations(user.id);
+
+    const authData = {
+      id: microsoftUser.id,
+      visitorId: user.id,
+      login: user.login,
+      name: user.name,
+      avatar_url: user.avatarUrl,
+      email: user.email,
+      access_token: tokenData.access_token,
+      auth_provider: "microsoft",
+      hasGithubLinked: !!user.githubId,
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
+      accountType: user.accountType,
+      onboardingCompletedAt: user.onboardingCompletedAt,
+      personalOrgId: user.personalOrgId,
+      organizations,
+      hasOrganizations: organizations.length > 0,
+    };
+
+    await logAudit({
+      userId: user.id,
+      action: "user.login",
+      metadata: { login: user.login, provider: "microsoft" },
+      c,
+    });
+
+    const encodedUser = encodeURIComponent(JSON.stringify(authData));
+    const callbackUrl = new URL(`${FRONTEND_URL}/auth/callback`);
+    callbackUrl.searchParams.set("user", encodedUser);
+    if (clientRedirectUrl) {
+      callbackUrl.searchParams.set("redirectUrl", clientRedirectUrl);
+    }
+    return c.redirect(callbackUrl.toString());
+  } catch (error) {
+    console.error("Microsoft OAuth error:", error);
+    return c.redirect(`${FRONTEND_URL}/login?error=auth_failed`);
+  }
+});
+
 // GitHub linking for users who signed in with Google
 app.get("/auth/github/link", async (c) => {
   // Get the user's token to verify they're logged in
@@ -506,6 +738,246 @@ app.get("/auth/github/link", async (c) => {
   githubAuthUrl.searchParams.set("state", state);
 
   return c.json({ url: githubAuthUrl.toString() });
+});
+
+// GitHub unlinking for users who signed in with Google
+app.delete("/auth/github/unlink", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const providerUser = await getUserFromToken(token);
+  if (!providerUser) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  const user = await findDbUser(providerUser);
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Only allow unlinking for Google/Microsoft users who have GitHub linked
+  if (!user.googleId && !user.microsoftId) {
+    return c.json({ error: "Only Google or Microsoft users can unlink GitHub" }, 400);
+  }
+
+  if (!user.githubId) {
+    return c.json({ error: "GitHub is not linked" }, 400);
+  }
+
+  // Unlink GitHub by clearing the GitHub fields
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      githubId: null,
+      githubAccessToken: null,
+    },
+  });
+
+  return c.json({ success: true });
+});
+
+// Refresh access token using stored refresh token
+app.post("/auth/refresh", async (c) => {
+  const body = await c.req.json();
+  const { visitorId, authProvider } = body;
+
+  if (!visitorId || !authProvider) {
+    return c.json({ error: "Missing visitorId or authProvider" }, 400);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: visitorId },
+  });
+
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  try {
+    if (authProvider === "google") {
+      if (!user.googleRefreshToken) {
+        return c.json({ error: "No refresh token available. Please log in again." }, 401);
+      }
+
+      // Exchange refresh token for new access token
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          refresh_token: user.googleRefreshToken,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+
+      if (tokenData.error) {
+        console.error("Google refresh error:", tokenData);
+        // Clear invalid refresh token
+        if (tokenData.error === "invalid_grant") {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { googleRefreshToken: null },
+          });
+        }
+        return c.json({ error: "Token refresh failed. Please log in again." }, 401);
+      }
+
+      // Get updated user info
+      const organizations = await getUserOrganizations(user.id);
+
+      return c.json({
+        access_token: tokenData.access_token,
+        visitorId: user.id,
+        login: user.login,
+        name: user.name,
+        avatar_url: user.avatarUrl,
+        email: user.email,
+        auth_provider: "google",
+        hasGithubLinked: !!user.githubId,
+        accountType: user.accountType,
+        onboardingCompletedAt: user.onboardingCompletedAt,
+        personalOrgId: user.personalOrgId,
+        organizations,
+        hasOrganizations: organizations.length > 0,
+      });
+    } else if (authProvider === "microsoft") {
+      if (!user.microsoftRefreshToken) {
+        return c.json({ error: "No refresh token available. Please log in again." }, 401);
+      }
+
+      // Exchange refresh token for new access token
+      const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: MICROSOFT_CLIENT_ID,
+          client_secret: MICROSOFT_CLIENT_SECRET,
+          refresh_token: user.microsoftRefreshToken,
+          grant_type: "refresh_token",
+          scope: "openid email profile User.Read offline_access",
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+
+      if (tokenData.error) {
+        console.error("Microsoft refresh error:", tokenData);
+        // Clear invalid refresh token
+        if (tokenData.error === "invalid_grant") {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { microsoftRefreshToken: null },
+          });
+        }
+        return c.json({ error: "Token refresh failed. Please log in again." }, 401);
+      }
+
+      // Store new refresh token if provided (Microsoft rotates them)
+      if (tokenData.refresh_token) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { microsoftRefreshToken: tokenData.refresh_token },
+        });
+      }
+
+      // Get updated user info
+      const organizations = await getUserOrganizations(user.id);
+
+      return c.json({
+        access_token: tokenData.access_token,
+        visitorId: user.id,
+        login: user.login,
+        name: user.name,
+        avatar_url: user.avatarUrl,
+        email: user.email,
+        auth_provider: "microsoft",
+        hasGithubLinked: !!user.githubId,
+        accountType: user.accountType,
+        onboardingCompletedAt: user.onboardingCompletedAt,
+        personalOrgId: user.personalOrgId,
+        organizations,
+        hasOrganizations: organizations.length > 0,
+      });
+    } else if (authProvider === "github") {
+      // GitHub tokens may or may not expire depending on app settings
+      // If we have a refresh token, try to use it
+      if (!user.githubRefreshToken) {
+        // No refresh token means either tokens don't expire or user needs to re-auth
+        return c.json({ error: "No refresh token available. Please log in again." }, 401);
+      }
+
+      // Exchange refresh token for new access token
+      const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: GITHUB_CLIENT_ID,
+          client_secret: GITHUB_CLIENT_SECRET,
+          refresh_token: user.githubRefreshToken,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+
+      if (tokenData.error) {
+        console.error("GitHub refresh error:", tokenData);
+        // Clear invalid refresh token
+        if (tokenData.error === "bad_refresh_token") {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { githubRefreshToken: null },
+          });
+        }
+        return c.json({ error: "Token refresh failed. Please log in again." }, 401);
+      }
+
+      // Store new refresh token if provided (GitHub rotates them)
+      if (tokenData.refresh_token) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { githubRefreshToken: tokenData.refresh_token },
+        });
+      }
+
+      // Get updated user info
+      const organizations = await getUserOrganizations(user.id);
+
+      return c.json({
+        access_token: tokenData.access_token,
+        visitorId: user.id,
+        login: user.login,
+        name: user.name,
+        avatar_url: user.avatarUrl,
+        email: user.email,
+        auth_provider: "github",
+        hasGithubLinked: true,
+        accountType: user.accountType,
+        onboardingCompletedAt: user.onboardingCompletedAt,
+        personalOrgId: user.personalOrgId,
+        organizations,
+        hasOrganizations: organizations.length > 0,
+      });
+    }
+
+    return c.json({ error: "Unknown auth provider" }, 400);
+  } catch (error) {
+    console.error("Token refresh error:", error);
+    return c.json({ error: "Token refresh failed" }, 500);
+  }
 });
 
 app.get("/auth/user", async (c) => {
@@ -586,11 +1058,14 @@ app.get("/api/repos", async (c) => {
 
     // Return simplified repo data
     return c.json(
-      filteredRepos.slice(0, 50).map((repo: { full_name: string; owner: { login: string }; name: string; private: boolean }) => ({
+      filteredRepos.slice(0, 50).map((repo: { full_name: string; owner: { login: string }; name: string; private: boolean; language: string | null; pushed_at: string | null; description: string | null }) => ({
         full_name: repo.full_name,
         owner: repo.owner.login,
         name: repo.name,
         private: repo.private,
+        language: repo.language,
+        pushed_at: repo.pushed_at,
+        description: repo.description,
       }))
     );
   } catch {
@@ -757,6 +1232,8 @@ app.put("/api/settings/:owner/:repo", async (c) => {
       avatarUrl?: string;
       defaultBranch?: string;
       htmlUrl?: string;
+      language?: string;
+      pushedAt?: string;
     };
   };
   let userId: string | undefined;
@@ -829,6 +1306,8 @@ app.put("/api/settings/:owner/:repo", async (c) => {
         avatarUrl: repoMetadata.avatarUrl ?? null,
         defaultBranch: repoMetadata.defaultBranch ?? null,
         htmlUrl: repoMetadata.htmlUrl ?? null,
+        language: repoMetadata.language ?? null,
+        pushedAt: repoMetadata.pushedAt ? new Date(repoMetadata.pushedAt) : null,
       }),
     },
     create: {
@@ -847,6 +1326,8 @@ app.put("/api/settings/:owner/:repo", async (c) => {
       avatarUrl: repoMetadata?.avatarUrl ?? null,
       defaultBranch: repoMetadata?.defaultBranch ?? null,
       htmlUrl: repoMetadata?.htmlUrl ?? null,
+      language: repoMetadata?.language ?? null,
+      pushedAt: repoMetadata?.pushedAt ? new Date(repoMetadata.pushedAt) : null,
     },
   });
 
@@ -880,6 +1361,7 @@ app.get("/api/org/repos", async (c) => {
 
   const token = authHeader.slice(7);
   const orgId = c.req.header("X-Organization-Id");
+  const searchQuery = c.req.query("q")?.toLowerCase() || "";
 
   if (!orgId) {
     return c.json({ error: "Organization ID required" }, 400);
@@ -914,10 +1396,16 @@ app.get("/api/org/repos", async (c) => {
     // Get all enabled repos for this organization
     const repos = await prisma.repositorySettings.findMany({
       where: {
-        organizationId: orgId,
-        OR: [
-          { enabled: true },
-          { triageEnabled: true },
+        AND: [
+          { organizationId: orgId },
+          { OR: [{ enabled: true }, { triageEnabled: true }] },
+          ...(searchQuery ? [{
+            OR: [
+              { fullName: { contains: searchQuery, mode: "insensitive" as const } },
+              { owner: { contains: searchQuery, mode: "insensitive" as const } },
+              { repo: { contains: searchQuery, mode: "insensitive" as const } },
+            ],
+          }] : []),
         ],
       },
       orderBy: { updatedAt: "desc" },
@@ -939,6 +1427,8 @@ app.get("/api/org/repos", async (c) => {
       avatarUrl: r.avatarUrl,
       defaultBranch: r.defaultBranch,
       htmlUrl: r.htmlUrl || `https://github.com/${r.owner}/${r.repo}`,
+      language: r.language,
+      pushedAt: r.pushedAt,
       enabled: r.enabled,
       triageEnabled: r.triageEnabled,
       customReviewRules: r.customReviewRules || "",
@@ -1243,8 +1733,8 @@ app.get("/api/subscription/status", async (c) => {
     return c.json({
       subscriptionTier: "FREE",
       subscriptionStatus: "INACTIVE",
-      polarSubscriptionId: null,
-      polarProductId: null,
+      subscriptionId: null,
+      productId: null,
       reviewsUsed: 0,
       reviewsQuota: 0,
     });
@@ -1253,12 +1743,12 @@ app.get("/api/subscription/status", async (c) => {
   return c.json({
     subscriptionTier: user.subscriptionTier ?? "FREE",
     subscriptionStatus: user.subscriptionStatus ?? "INACTIVE",
-    polarSubscriptionId: user.polarSubscriptionId,
-    polarProductId: user.polarProductId,
+    subscriptionId: user.subscriptionId,
+    productId: user.productId,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
     cancelAtPeriodEnd: user.cancelAtPeriodEnd,
     reviewsUsed: user.reviewsUsedThisCycle ?? 0,
-    reviewsQuota: getReviewQuotaPerSeat(user.subscriptionTier ?? "FREE", user.polarProductId),
+    reviewsQuota: getReviewQuotaPerSeat(user.subscriptionTier ?? "FREE", user.productId),
   });
 });
 
@@ -1315,8 +1805,8 @@ app.post("/api/subscription/sync", async (c) => {
         data: {
           subscriptionTier: tier as SubscriptionTier,
           subscriptionStatus: "ACTIVE",
-          polarSubscriptionId: activeSubscription.id,
-          polarProductId: activeSubscription.productId,
+          subscriptionId: activeSubscription.id,
+          productId: activeSubscription.productId,
           subscriptionExpiresAt: activeSubscription.currentPeriodEnd
             ? new Date(activeSubscription.currentPeriodEnd)
             : null,
@@ -1328,7 +1818,7 @@ app.post("/api/subscription/sync", async (c) => {
         synced: true,
         subscriptionTier: tier,
         subscriptionStatus: "ACTIVE",
-        polarProductId: activeSubscription.productId,
+        productId: activeSubscription.productId,
       });
     } else {
       return c.json({
@@ -1366,7 +1856,7 @@ app.get("/api/subscription/debug", async (c) => {
 
   const result: Record<string, unknown> = {
     database: {
-      polarSubscriptionId: user.polarSubscriptionId,
+      subscriptionId: user.subscriptionId,
       subscriptionTier: user.subscriptionTier,
       subscriptionStatus: user.subscriptionStatus,
       cancelAtPeriodEnd: user.cancelAtPeriodEnd,
@@ -1375,10 +1865,10 @@ app.get("/api/subscription/debug", async (c) => {
     polar: null as unknown,
   };
 
-  if (user.polarSubscriptionId) {
+  if (user.subscriptionId) {
     try {
       const subscription = await polar.subscriptions.get({
-        id: user.polarSubscriptionId,
+        id: user.subscriptionId,
       });
       result.polar = {
         id: subscription.id,
@@ -1419,9 +1909,9 @@ app.post("/api/subscription/create", async (c) => {
   }
 
   // If user has active subscription, handle upgrade/downgrade/billing switch
-  if (user?.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
+  if (user?.subscriptionId && user.subscriptionStatus === "ACTIVE") {
     // Check if trying to switch to the exact same product (same tier AND billing interval)
-    if (user.polarProductId === productId) {
+    if (user.productId === productId) {
       return c.json({ error: "Already on this plan" }, 400);
     }
 
@@ -1433,7 +1923,7 @@ app.post("/api/subscription/create", async (c) => {
       // If subscription is set to cancel, first uncancel it
       if (user.cancelAtPeriodEnd) {
         await polar.subscriptions.update({
-          id: user.polarSubscriptionId,
+          id: user.subscriptionId,
           subscriptionUpdate: {
             cancelAtPeriodEnd: false,
           },
@@ -1442,7 +1932,7 @@ app.post("/api/subscription/create", async (c) => {
 
       // Update existing subscription to new product
       await polar.subscriptions.update({
-        id: user.polarSubscriptionId,
+        id: user.subscriptionId,
         subscriptionUpdate: {
           productId: productId,
         },
@@ -1453,7 +1943,7 @@ app.post("/api/subscription/create", async (c) => {
         where: { id: user.id },
         data: {
           subscriptionTier: newTier as SubscriptionTier,
-          polarProductId: productId,
+          productId: productId,
           cancelAtPeriodEnd: false,
         },
       });
@@ -1469,7 +1959,7 @@ app.post("/api/subscription/create", async (c) => {
 
       return c.json({
         subscriptionUpdated: true,
-        polarProductId: productId,
+        productId: productId,
         type: changeType,
       });
     } catch (error: unknown) {
@@ -1481,7 +1971,7 @@ app.post("/api/subscription/create", async (c) => {
         await prisma.user.update({
           where: { id: user.id },
           data: {
-            polarSubscriptionId: null,
+            subscriptionId: null,
             subscriptionStatus: "CANCELLED",
             cancelAtPeriodEnd: false,
           },
@@ -1718,14 +2208,14 @@ app.post("/api/subscription/cancel", async (c) => {
 
   const user = await findDbUser(githubUser);
 
-  if (!user?.polarSubscriptionId) {
+  if (!user?.subscriptionId) {
     return c.json({ error: "No active subscription" }, 400);
   }
 
   try {
     // Cancel at period end
     await polar.subscriptions.update({
-      id: user.polarSubscriptionId,
+      id: user.subscriptionId,
       subscriptionUpdate: {
         cancelAtPeriodEnd: true,
       },
@@ -1778,7 +2268,7 @@ app.post("/api/subscription/resubscribe", async (c) => {
 
   const user = await findDbUser(githubUser);
 
-  if (!user?.polarSubscriptionId) {
+  if (!user?.subscriptionId) {
     return c.json({ error: "No subscription to reactivate" }, 400);
   }
 
@@ -1789,7 +2279,7 @@ app.post("/api/subscription/resubscribe", async (c) => {
   try {
     // Uncancel by setting cancelAtPeriodEnd to false
     await polar.subscriptions.update({
-      id: user.polarSubscriptionId,
+      id: user.subscriptionId,
       subscriptionUpdate: {
         cancelAtPeriodEnd: false,
       },
@@ -2321,9 +2811,9 @@ app.delete("/api/account", async (c) => {
     const org = membership.organization;
     ownedOrgIds.push(org.id);
 
-    if (org.polarSubscriptionId && org.subscriptionStatus === "ACTIVE") {
+    if (org.subscriptionId && org.subscriptionStatus === "ACTIVE") {
       try {
-        await paymentProvider.cancelSubscription(org.polarSubscriptionId);
+        await paymentProvider.cancelSubscription(org.subscriptionId);
         console.log(`Cancelled subscription for org ${org.slug} during account deletion`);
       } catch (error) {
         console.error(`Failed to cancel subscription for org ${org.slug}:`, error);
@@ -2333,9 +2823,9 @@ app.delete("/api/account", async (c) => {
   }
 
   // Legacy: Cancel user-level subscription if active (for older accounts)
-  if (user.polarSubscriptionId && user.subscriptionStatus === "ACTIVE") {
+  if (user.subscriptionId && user.subscriptionStatus === "ACTIVE") {
     try {
-      await paymentProvider.cancelSubscription(user.polarSubscriptionId);
+      await paymentProvider.cancelSubscription(user.subscriptionId);
     } catch (error) {
       console.error("Failed to cancel legacy user subscription:", error);
     }

@@ -62,8 +62,8 @@ async function migrateToOrganizations() {
         // Transfer subscription data to organization
         subscriptionTier: user.subscriptionTier && user.subscriptionTier !== "FREE" ? user.subscriptionTier : null,
         subscriptionStatus: user.subscriptionStatus && user.subscriptionStatus !== "INACTIVE" ? user.subscriptionStatus : null,
-        polarSubscriptionId: user.polarSubscriptionId,
-        polarProductId: user.polarProductId,
+        subscriptionId: user.subscriptionId,
+        productId: user.productId,
         subscriptionExpiresAt: user.subscriptionExpiresAt,
         cancelAtPeriodEnd: user.cancelAtPeriodEnd ?? false,
         seatCount: hasActiveSub ? 1 : 0,

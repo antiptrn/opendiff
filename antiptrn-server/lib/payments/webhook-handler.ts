@@ -33,11 +33,11 @@ async function handleCheckoutCompleted(checkout: NormalizedCheckout) {
     // with correct product/quantity info. Only update here if org doesn't have subscription yet.
     const org = await prisma.organization.findUnique({
       where: { id: metadata.orgId },
-      select: { polarSubscriptionId: true, subscriptionStatus: true },
+      select: { subscriptionId: true, subscriptionStatus: true },
     });
 
     // If subscription is already set up (by subscription.created event), skip to avoid overwriting
-    if (org?.polarSubscriptionId === subscriptionId && org?.subscriptionStatus === "ACTIVE") {
+    if (org?.subscriptionId === subscriptionId && org?.subscriptionStatus === "ACTIVE") {
       console.log(`[${getPaymentProviderName()}] Checkout completed for org ${metadata.orgId} - subscription already configured, skipping`);
       return;
     }
@@ -62,8 +62,8 @@ async function handleCheckoutCompleted(checkout: NormalizedCheckout) {
       data: {
         subscriptionTier: tier as SubscriptionTier,
         subscriptionStatus: "ACTIVE",
-        polarSubscriptionId: subscriptionId,
-        polarProductId: productId || undefined,
+        subscriptionId: subscriptionId,
+        productId: productId || undefined,
         seatCount,
         cancelAtPeriodEnd: false,
       },
@@ -86,8 +86,8 @@ async function handleCheckoutCompleted(checkout: NormalizedCheckout) {
         data: {
           subscriptionTier: tier as SubscriptionTier,
           subscriptionStatus: "ACTIVE",
-          polarSubscriptionId: subscriptionId,
-          polarProductId: productId,
+          subscriptionId: subscriptionId,
+          productId: productId,
           cancelAtPeriodEnd: false,
           reviewsUsedThisCycle: 0,
         },
@@ -111,17 +111,17 @@ async function handleSubscriptionUpdated(subscription: NormalizedSubscription) {
     // Check if this is a new subscription (org doesn't have one yet)
     const existingOrg = await prisma.organization.findUnique({
       where: { id: metadata.orgId },
-      select: { polarSubscriptionId: true },
+      select: { subscriptionId: true },
     });
-    const isNewSubscription = !existingOrg?.polarSubscriptionId;
+    const isNewSubscription = !existingOrg?.subscriptionId;
 
     await prisma.organization.update({
       where: { id: metadata.orgId },
       data: {
         subscriptionTier: mappedStatus === "ACTIVE" ? (tier as SubscriptionTier) : undefined,
         subscriptionStatus: mappedStatus,
-        polarSubscriptionId: subscriptionId,
-        polarProductId: productId,
+        subscriptionId: subscriptionId,
+        productId: productId,
         seatCount: quantity,
         cancelAtPeriodEnd,
         subscriptionExpiresAt: currentPeriodEnd,
@@ -162,7 +162,7 @@ async function handleSubscriptionUpdated(subscription: NormalizedSubscription) {
 
   // Lookup org by subscription ID
   const org = await prisma.organization.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (org) {
@@ -171,7 +171,7 @@ async function handleSubscriptionUpdated(subscription: NormalizedSubscription) {
       data: {
         subscriptionTier: mappedStatus === "ACTIVE" ? (tier as SubscriptionTier) : org.subscriptionTier,
         subscriptionStatus: mappedStatus,
-        polarProductId: productId,
+        productId: productId,
         seatCount: quantity,
         cancelAtPeriodEnd,
         subscriptionExpiresAt: currentPeriodEnd,
@@ -183,7 +183,7 @@ async function handleSubscriptionUpdated(subscription: NormalizedSubscription) {
 
   // Legacy user subscription
   let user = await prisma.user.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (user) {
@@ -192,8 +192,8 @@ async function handleSubscriptionUpdated(subscription: NormalizedSubscription) {
       data: {
         subscriptionTier: mappedStatus === "ACTIVE" ? (tier as SubscriptionTier) : user.subscriptionTier,
         subscriptionStatus: mappedStatus,
-        polarSubscriptionId: subscriptionId,
-        polarProductId: productId,
+        subscriptionId: subscriptionId,
+        productId: productId,
         cancelAtPeriodEnd,
         subscriptionExpiresAt: currentPeriodEnd,
       },
@@ -210,7 +210,7 @@ async function handleSubscriptionCanceled(subscription: NormalizedSubscription) 
 
   // Check if this is an org subscription
   const org = await prisma.organization.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (org) {
@@ -228,7 +228,7 @@ async function handleSubscriptionCanceled(subscription: NormalizedSubscription) 
 
   // Legacy user subscription
   const user = await prisma.user.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (user) {
@@ -252,7 +252,7 @@ async function handleSubscriptionRevoked(subscription: NormalizedSubscription) {
 
   // Check if this is an org subscription
   const org = await prisma.organization.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (org) {
@@ -263,8 +263,8 @@ async function handleSubscriptionRevoked(subscription: NormalizedSubscription) {
         data: {
           subscriptionTier: null,
           subscriptionStatus: null,
-          polarSubscriptionId: null,
-          polarProductId: null,
+          subscriptionId: null,
+          productId: null,
           seatCount: 0,
           subscriptionExpiresAt: null,
           cancelAtPeriodEnd: false,
@@ -281,7 +281,7 @@ async function handleSubscriptionRevoked(subscription: NormalizedSubscription) {
 
   // Legacy user subscription
   const user = await prisma.user.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (user) {
@@ -290,7 +290,7 @@ async function handleSubscriptionRevoked(subscription: NormalizedSubscription) {
       data: {
         subscriptionTier: "FREE",
         subscriptionStatus: "CANCELLED",
-        polarSubscriptionId: null,
+        subscriptionId: null,
         cancelAtPeriodEnd: false,
       },
     });
@@ -306,7 +306,7 @@ async function handleSubscriptionUncanceled(subscription: NormalizedSubscription
 
   // Check if this is an org subscription
   const org = await prisma.organization.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (org) {
@@ -323,7 +323,7 @@ async function handleSubscriptionUncanceled(subscription: NormalizedSubscription
 
   // Legacy user subscription
   const user = await prisma.user.findFirst({
-    where: { polarSubscriptionId: subscriptionId },
+    where: { subscriptionId: subscriptionId },
   });
 
   if (user) {
