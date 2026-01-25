@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
@@ -36,12 +36,12 @@ export default function CreateOrganizationPage() {
   const [showContinueButton, setShowContinueButton] = useState(false);
 
   // Cleanup function to revoke the current URL if it exists
-  const cleanupCurrentUrl = () => {
+  const cleanupCurrentUrl = useCallback(() => {
     if (currentAvatarUrlRef.current) {
       URL.revokeObjectURL(currentAvatarUrlRef.current);
       currentAvatarUrlRef.current = null;
     }
-  };
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
