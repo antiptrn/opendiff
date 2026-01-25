@@ -146,6 +146,15 @@ export default function CreateOrganizationPage() {
 
   return (
     <section className="min-h-screen flex items-center justify-center p-4">
+      <style>
+        {`
+          .avatar-remove-btn {
+            position: absolute;
+            top: -0.375rem;
+            right: -0.375rem;
+          }
+        `}
+      </style>
       <Card className="w-full max-w-md">
         {hasOrganizations && (
           <div className="px-4 pt-6">
@@ -189,7 +198,7 @@ export default function CreateOrganizationPage() {
                     <button
                       type="button"
                       onClick={removeAvatar}
-                      className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
+                      className="avatar-remove-btn size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
                     >
                       <X className="size-3" />
                     </button>
