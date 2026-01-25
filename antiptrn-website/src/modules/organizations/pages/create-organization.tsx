@@ -185,6 +185,7 @@ export default function CreateOrganizationPage() {
                   <button
                     type="button"
                     onClick={removeAvatar}
+                    aria-label="Remove logo"
                     className="absolute -top-1 -right-1 size-5 rounded-full bg-muted-foreground text-background flex items-center justify-center hover:bg-foreground transition-colors"
                   >
                     <X className="size-3" />
