@@ -36,19 +36,19 @@ export default function CreateOrganizationPage() {
   const [showContinueButton, setShowContinueButton] = useState(false);
 
   // Cleanup function to revoke the current URL if it exists
-  const cleanupCurrentUrl = useCallback(() => {
+  const cleanupCurrentUrl = () => {
     if (currentAvatarUrlRef.current) {
       URL.revokeObjectURL(currentAvatarUrlRef.current);
       currentAvatarUrlRef.current = null;
     }
-  }, []);
+  };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       cleanupCurrentUrl();
     };
-  }, [cleanupCurrentUrl]);
+  }, []);
 
   // Show loading while checking auth
   if (isAuthLoading) {
