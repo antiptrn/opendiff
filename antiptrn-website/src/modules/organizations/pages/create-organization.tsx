@@ -42,8 +42,8 @@ export default function CreateOrganizationPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (avatarPreview) {
-        URL.revokeObjectURL(avatarPreview);
+      if (prevPreviewRef.current) {
+        URL.revokeObjectURL(prevPreviewRef.current);
       }
     };
   }, []);
