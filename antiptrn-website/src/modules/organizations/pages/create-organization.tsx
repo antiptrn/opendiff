@@ -31,7 +31,7 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Cleanup avatarPreview URL when it changes or on unmount
+  // Cleanup avatarPreview URL on unmount
   useEffect(() => {
     return () => {
       if (avatarPreview) {
@@ -100,8 +100,9 @@ export default function CreateOrganizationPage() {
         URL.revokeObjectURL(avatarPreview);
       }
 
+      const newPreviewUrl = URL.createObjectURL(compressedFile);
       setAvatarFile(compressedFile);
-      setAvatarPreview(URL.createObjectURL(compressedFile));
+      setAvatarPreview(newPreviewUrl);
     } catch (error) {
       console.error('Image compression failed for file:', file.name, file.type, error);
       setError("Failed to process image");
