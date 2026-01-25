@@ -29,15 +29,24 @@ export default function CreateOrganizationPage() {
   const [error, setError] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const prevPreviewRef = useRef<string | null>(null);
 
-  // Cleanup object URL on unmount or when avatarPreview changes
+  // Revoke the previous URL when a new one is created
+  useEffect(() => {
+    if (prevPreviewRef.current && prevPreviewRef.current !== avatarPreview) {
+      URL.revokeObjectURL(prevPreviewRef.current);
+    }
+    prevPreviewRef.current = avatarPreview;
+  }, [avatarPreview]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (avatarPreview) {
         URL.revokeObjectURL(avatarPreview);
       }
     };
-  }, [avatarPreview]);
+  }, []);
 
   // Show loading while checking auth
   if (isAuthLoading) {
