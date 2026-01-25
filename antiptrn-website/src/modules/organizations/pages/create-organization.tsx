@@ -11,6 +11,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@shared/components/ui/card";
@@ -225,12 +226,14 @@ export default function CreateOrganizationPage() {
               />
               <p className="text-sm text-muted-foreground">You can always change this later.</p>
             </div>
-
-            <Button type="submit" disabled={isCreating || !name.trim()}>
+          </CardContent>
+          
+          <CardFooter>
+            <Button type="submit" disabled={isCreating || !name.trim()} className="w-full">
               {isCreating && <Loader2 className="size-4 animate-spin" />}
               {isCreating ? "Creating..." : "Create organization"}
             </Button>
-          </CardContent>
+          </CardFooter>
         </form>
       </Card>
     </section>
