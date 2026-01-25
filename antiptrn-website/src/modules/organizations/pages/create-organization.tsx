@@ -148,10 +148,14 @@ export default function CreateOrganizationPage() {
       setAvatarFile(compressedFile);
       setAvatarPreview(newPreviewUrl);
     } catch (error) {
-      logError('IMAGE_COMPRESSION_FAILED', error, {
-        fileName: file.name,
-        fileType: file.type
-      });
+      try {
+        logError('IMAGE_COMPRESSION_FAILED', error, {
+          fileName: file.name,
+          fileType: file.type
+        });
+      } catch {
+        // Silently fail if logging throws
+      }
       setError("Failed to process image");
     }
   };
