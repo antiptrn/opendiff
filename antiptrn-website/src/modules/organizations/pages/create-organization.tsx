@@ -70,6 +70,7 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [showContinueButton, setShowContinueButton] = useState(false);
 
   // Cleanup function to revoke the current URL if it exists
   const cleanupCurrentUrl = () => {
@@ -168,9 +169,19 @@ export default function CreateOrganizationPage() {
     }
   };
 
+  const handleContinue = () => {
+    navigate("/console");
+  };
+
+  const handleDismissError = () => {
+    setError("");
+    setShowContinueButton(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setShowContinueButton(false);
 
     if (name.trim().length < 2) {
       setError("Organization name must be at least 2 characters");
@@ -194,13 +205,9 @@ export default function CreateOrganizationPage() {
             organizationId: newOrg.id
           }).catch(() => {});
           
-          // Show user feedback about partial failure
+          // Show user feedback about partial failure with continue button
           setError("Organization created successfully, but logo upload failed. You can upload it later from organization settings.");
-          
-          // Wait a moment for user to see the message, then navigate
-          setTimeout(() => {
-            navigate("/console");
-          }, 3000);
+          setShowContinueButton(true);
           return;
         } finally {
           setIsUploadingAvatar(false);
@@ -242,8 +249,28 @@ export default function CreateOrganizationPage() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
             {error && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive space-y-3">
+                <div>{error}</div>
+                {showContinueButton && (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={handleContinue}
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Continue to Console
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleDismissError}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
