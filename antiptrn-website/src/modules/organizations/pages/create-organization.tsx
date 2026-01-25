@@ -18,28 +18,41 @@ import {
 import { Loader2, ArrowLeft, Upload, X } from "lucide-react";
 import imageCompression from "browser-image-compression";
 
-// Safe logging function that removes sensitive information in production
-const logError = (message: string, error: unknown, context?: Record<string, any>) => {
+// Safe error types that are allowed to be logged
+type SafeErrorType = 'IMAGE_COMPRESSION_FAILED' | 'ORGANIZATION_CREATION_FAILED' | 'AVATAR_UPLOAD_FAILED';
+
+// Safe logging function that prevents sensitive information leakage
+const logError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>) => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   
+  // Predefined safe error messages to prevent sensitive data leakage
+  const safeErrorMessages: Record<SafeErrorType, string> = {
+    IMAGE_COMPRESSION_FAILED: 'Image compression operation failed',
+    ORGANIZATION_CREATION_FAILED: 'Organization creation operation failed',
+    AVATAR_UPLOAD_FAILED: 'Avatar upload operation failed'
+  };
+  
+  const safeMessage = safeErrorMessages[errorType];
+  
   if (isDevelopment) {
-    console.error(message, error, context);
+    // In development, log more details for debugging
+    console.error(`[${errorType}] ${safeMessage}`, {
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      context
+    });
   } else {
-    // In production, log only safe information
-    const safeContext = context ? {
-      ...context,
-      // Remove potentially sensitive file information
-      fileName: '[REDACTED]',
-      fileType: '[REDACTED]'
-    } : undefined;
+    // In production, only log sanitized information
+    const sanitizedContext = {
+      timestamp: new Date().toISOString(),
+      errorType,
+      // Only include non-sensitive context information
+      hasFile: context?.fileName ? true : false
+    };
     
-    // Sanitize the error object to prevent logging sensitive data
-    const sanitizedError = error instanceof Error ? error.message : '[REDACTED]';
-    
-    console.error(message, { error: sanitizedError }, safeContext);
+    console.error(safeMessage, sanitizedContext);
     
     // Here you would typically send to a proper logging service
-    // Example: loggerService.error(message, { error: error?.message, context: safeContext });
+    // Example: loggerService.error(safeMessage, sanitizedContext);
   }
 };
 
@@ -135,7 +148,7 @@ export default function CreateOrganizationPage() {
       setAvatarFile(compressedFile);
       setAvatarPreview(newPreviewUrl);
     } catch (error) {
-      logError('Image compression failed', error, {
+      logError('IMAGE_COMPRESSION_FAILED', error, {
         fileName: file.name,
         fileType: file.type
       });
