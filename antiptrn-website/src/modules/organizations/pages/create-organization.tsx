@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
@@ -29,6 +29,15 @@ export default function CreateOrganizationPage() {
   const [error, setError] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  // Cleanup object URL on unmount or when avatarPreview changes
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+    };
+  }, [avatarPreview]);
 
   // Show loading while checking auth
   if (isAuthLoading) {
