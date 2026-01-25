@@ -174,7 +174,7 @@ export default function CreateOrganizationPage() {
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <Avatar className="size-16 rounded-xl overflow-hidden">
-                    <AvatarImage src={avatarPreview ?? undefined} alt="Organization logo" />
+                    <AvatarImage src={avatarPreview || undefined} alt="Organization logo" />
                     <AvatarFallback className="text-2xl rounded-xl">
                       {name.trim() ? name.charAt(0).toUpperCase() : "?"}
                     </AvatarFallback>
