@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
@@ -30,6 +30,11 @@ export default function CreateOrganizationPage() {
   const [error, setError] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  // Memoize fallback text to avoid recalculation on every render
+  const fallbackText = useMemo(() => {
+    return name.trim() ? name.charAt(0).toUpperCase() : "?";
+  }, [name]);
 
   // Cleanup avatarPreview URL when it changes or on unmount
   useEffect(() => {
@@ -177,7 +182,7 @@ export default function CreateOrganizationPage() {
                   <Avatar className="size-16 rounded-xl overflow-hidden">
                     <AvatarImage src={avatarPreview || undefined} alt="Organization logo" />
                     <AvatarFallback className="text-2xl rounded-xl">
-                      {name.trim() ? name.charAt(0).toUpperCase() : "?"}
+                      {fallbackText}
                     </AvatarFallback>
                   </Avatar>
                   {avatarPreview && (
