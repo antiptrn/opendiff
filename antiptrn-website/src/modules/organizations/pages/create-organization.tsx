@@ -132,7 +132,7 @@ export default function CreateOrganizationPage() {
   return (
     <section className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
+        <CardHeader className="text-center relative">
           {hasOrganizations && (
             <Button variant="ghost" size="sm" className="absolute left-4 top-4" asChild>
               <Link to="/console">
