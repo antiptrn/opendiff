@@ -3,8 +3,10 @@ export interface CodeIssue {
   severity: "critical" | "warning" | "suggestion";
   file: string;
   line: number;
+  endLine?: number; // For multi-line suggestions
   message: string;
-  suggestion?: string;
+  suggestion?: string; // Text explanation of how to fix
+  suggestedCode?: string; // Exact code replacement (for GitHub suggested changes)
 }
 
 export interface ReviewResult {

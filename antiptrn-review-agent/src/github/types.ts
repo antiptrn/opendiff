@@ -26,8 +26,10 @@ export interface PullRequestFile {
 export interface ReviewComment {
   path: string;
   line: number;
+  start_line?: number; // For multi-line comments/suggestions
   body: string;
   side?: "LEFT" | "RIGHT";
+  start_side?: "LEFT" | "RIGHT"; // For multi-line comments
 }
 
 export interface Review {

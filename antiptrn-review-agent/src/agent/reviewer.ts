@@ -108,12 +108,20 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
       "severity": "critical|warning|suggestion",
       "file": "path/to/file.ts",
       "line": 42,
+      "endLine": 45,
       "message": "Description of the issue",
-      "suggestion": "How to fix it (optional)"
+      "suggestion": "How to fix it (text explanation)",
+      "suggestedCode": "const fixed = 'replacement code';"
     }
   ],
   "verdict": "approve|request_changes|comment"
 }
+
+### Field Explanations:
+- **line**: The starting line number of the issue
+- **endLine**: (optional) The ending line number if the issue spans multiple lines
+- **suggestion**: (optional) Text explanation of how to fix
+- **suggestedCode**: (optional but PREFERRED) The exact replacement code. This creates a GitHub "suggested change" that the author can accept with one click. The code should replace lines from \`line\` to \`endLine\` (or just \`line\` if single line).
 
 ## Guidelines
 
@@ -121,7 +129,8 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
 - Be constructive, not harsh
 - Focus on the most important issues
 - Line numbers MUST be accurate
-- Include actionable suggestions with code examples when helpful
+- **ALWAYS provide suggestedCode when you can offer a concrete fix** - this is the most helpful feedback
+- The suggestedCode must be the EXACT replacement for the line(s), properly indented
 - Use "approve" if code is good (minor suggestions OK)
 - Use "request_changes" only for critical/security issues
 - Use "comment" for moderate issues that should be addressed`;
@@ -152,23 +161,48 @@ Now, read the changed files and provide your review as JSON.`;
     const prompt = this.getReviewPrompt(files, context, customRules);
 
     let result = "";
+    let lastAssistantText = "";
 
-    for await (const message of query({
-      prompt,
-      options: {
-        cwd: workingDir,
-        allowedTools: ["Read", "Glob", "Grep"],
-        permissionMode: "default",
-        maxTurns: 30,
-      },
-    })) {
-      if (message.type === "result") {
-        const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
-        if (resultMsg.subtype === "success") {
-          result = resultMsg.result || "";
-        } else {
-          throw new Error(resultMsg.errors?.join(", ") || "Review agent failed");
+    try {
+      for await (const message of query({
+        prompt,
+        options: {
+          cwd: workingDir,
+          allowedTools: ["Read", "Glob", "Grep"],
+          permissionMode: "default",
+          maxTurns: 30,
+          settingSources: ["user"],
+        },
+      })) {
+        // Capture text from assistant messages (the actual model output)
+        if (message.type === "assistant") {
+          const content = (message as any).message?.content || [];
+          for (const block of content) {
+            if (block.type === "text" && block.text) {
+              lastAssistantText = block.text;
+            }
+          }
         }
+
+        if (message.type === "result") {
+          const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
+          if (resultMsg.subtype === "success") {
+            // Prefer result.result, fall back to last assistant text
+            result = resultMsg.result || lastAssistantText || "";
+          } else {
+            throw new Error(resultMsg.errors?.join(", ") || "Review agent failed");
+          }
+        }
+      }
+    } catch (error) {
+      // SDK has a bug where stream cleanup fails with "line.trim" error
+      // If we already have a result, ignore the cleanup error
+      if ((result || lastAssistantText) && error instanceof TypeError && String(error).includes("trim")) {
+        console.warn("Ignoring SDK stream cleanup error");
+        // Use whatever we captured
+        if (!result) result = lastAssistantText;
+      } else {
+        throw error;
       }
     }
 
@@ -183,17 +217,47 @@ Now, read the changed files and provide your review as JSON.`;
     try {
       let jsonText = text.trim();
 
-      // Handle case where response might have markdown code blocks
-      const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[1].trim();
-      }
+      // Strategy 1: Find a JSON object by matching balanced braces
+      // This handles cases where code blocks appear inside JSON strings
+      const jsonStart = jsonText.indexOf("{");
+      if (jsonStart !== -1) {
+        let depth = 0;
+        let inString = false;
+        let escape = false;
+        let jsonEnd = -1;
 
-      // Try to find JSON object if there's other text around it
-      if (!jsonText.startsWith("{")) {
-        const objectMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (objectMatch) {
-          jsonText = objectMatch[0];
+        for (let i = jsonStart; i < jsonText.length; i++) {
+          const char = jsonText[i];
+
+          if (escape) {
+            escape = false;
+            continue;
+          }
+
+          if (char === "\\") {
+            escape = true;
+            continue;
+          }
+
+          if (char === '"' && !escape) {
+            inString = !inString;
+            continue;
+          }
+
+          if (!inString) {
+            if (char === "{") depth++;
+            else if (char === "}") {
+              depth--;
+              if (depth === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+          }
+        }
+
+        if (jsonEnd !== -1) {
+          jsonText = jsonText.slice(jsonStart, jsonEnd);
         }
       }
 
@@ -206,7 +270,9 @@ Now, read the changed files and provide your review as JSON.`;
 
       return result;
     } catch (error) {
-      console.error("Raw response:", text.slice(0, 500));
+      console.error("Raw response length:", text.length);
+      console.error("Raw response (first 2000 chars):", text.slice(0, 2000));
+      console.error("Raw response (last 500 chars):", text.slice(-500));
       throw new Error(`Failed to parse review response: ${(error as Error).message}`);
     }
   }
@@ -267,22 +333,33 @@ Please respond to the latest message.`;
 
     let result = "";
 
-    for await (const message of query({
-      prompt,
-      options: {
-        cwd: workingDir,
-        allowedTools: ["Read", "Glob", "Grep"],
-        permissionMode: "default",
-        maxTurns: 10,
-      },
-    })) {
-      if (message.type === "result") {
-        const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
-        if (resultMsg.subtype === "success") {
-          result = resultMsg.result || "";
-        } else {
-          throw new Error(resultMsg.errors?.join(", ") || "Comment response agent failed");
+    try {
+      for await (const message of query({
+        prompt,
+        options: {
+          cwd: workingDir,
+          allowedTools: ["Read", "Glob", "Grep"],
+          permissionMode: "default",
+          maxTurns: 10,
+          settingSources: ["user"],
+        },
+      })) {
+        if (message.type === "result") {
+          const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
+          if (resultMsg.subtype === "success") {
+            result = resultMsg.result || "";
+          } else {
+            throw new Error(resultMsg.errors?.join(", ") || "Comment response agent failed");
+          }
         }
+      }
+    } catch (error) {
+      // SDK has a bug where stream cleanup fails with "line.trim" error
+      // If we already have a result, ignore the cleanup error
+      if (result && error instanceof TypeError && String(error).includes("trim")) {
+        console.warn("Ignoring SDK stream cleanup error");
+      } else {
+        throw error;
       }
     }
 

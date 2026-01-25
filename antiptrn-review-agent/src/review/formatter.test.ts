@@ -189,5 +189,79 @@ describe("ReviewFormatter", () => {
       expect(comment.body).toContain("God object");
       expect(comment.body).toContain("Split into smaller");
     });
+
+    it("should format suggestedCode as GitHub suggestion block", () => {
+      const issue: CodeIssue = {
+        type: "bug-risk",
+        severity: "warning",
+        file: "src/utils.ts",
+        line: 10,
+        message: "Variable should be const since it is never reassigned",
+        suggestedCode: "const value = 42;",
+      };
+
+      const comment = formatter.formatComment(issue);
+
+      expect(comment.body).toContain("```suggestion");
+      expect(comment.body).toContain("const value = 42;");
+      expect(comment.body).toContain("```");
+      // Should NOT contain text suggestion format
+      expect(comment.body).not.toContain("**Suggestion:**");
+    });
+
+    it("should prefer suggestedCode over suggestion text", () => {
+      const issue: CodeIssue = {
+        type: "style",
+        severity: "suggestion",
+        file: "src/app.ts",
+        line: 5,
+        message: "Use const instead of let",
+        suggestion: "Change let to const",
+        suggestedCode: "const x = 1;",
+      };
+
+      const comment = formatter.formatComment(issue);
+
+      expect(comment.body).toContain("```suggestion");
+      expect(comment.body).toContain("const x = 1;");
+      // Text suggestion should not appear when suggestedCode is present
+      expect(comment.body).not.toContain("**Suggestion:**");
+    });
+
+    it("should handle multi-line suggestions with endLine", () => {
+      const issue: CodeIssue = {
+        type: "anti-pattern",
+        severity: "warning",
+        file: "src/handler.ts",
+        line: 20,
+        endLine: 25,
+        message: "This function can be simplified",
+        suggestedCode: "function simplified() {\n  return true;\n}",
+      };
+
+      const comment = formatter.formatComment(issue);
+
+      expect(comment.start_line).toBe(20);
+      expect(comment.line).toBe(25);
+      expect(comment.body).toContain("```suggestion");
+      expect(comment.body).toContain("function simplified()");
+    });
+
+    it("should handle empty suggestedCode (delete line)", () => {
+      const issue: CodeIssue = {
+        type: "style",
+        severity: "suggestion",
+        file: "src/app.ts",
+        line: 10,
+        message: "This line is unnecessary and can be removed",
+        suggestedCode: "",
+      };
+
+      const comment = formatter.formatComment(issue);
+
+      expect(comment.body).toContain("```suggestion");
+      // Empty suggestion = delete the line
+      expect(comment.body).toMatch(/```suggestion\n\n```/);
+    });
   });
 });

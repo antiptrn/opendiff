@@ -31,10 +31,10 @@ Focus on fixing THIS issue correctly. Make the minimal changes needed but don't 
 
 After making changes, respond with a brief summary of what you changed.`;
 
-    try {
-      let result = "";
-      let hasChanges = false;
+    let result = "";
+    let hasChanges = false;
 
+    try {
       for await (const message of query({
         prompt,
         options: {
@@ -42,13 +42,16 @@ After making changes, respond with a brief summary of what you changed.`;
           allowedTools: ["Read", "Edit", "Write", "Glob", "Grep"],
           permissionMode: "acceptEdits",
           maxTurns: 20,
+          settingSources: ["user"],
         },
       })) {
-        // Track if we made any edits
-        if (message.type === "tool_use_summary") {
-          const summary = (message as any).summary?.toLowerCase() || "";
-          if (summary.includes("edit") || summary.includes("write")) {
-            hasChanges = true;
+        // Track if assistant used edit/write tools
+        if (message.type === "assistant") {
+          const content = (message as any).message?.content || [];
+          for (const block of content) {
+            if (block.type === "tool_use" && (block.name === "Edit" || block.name === "Write")) {
+              hasChanges = true;
+            }
           }
         }
 
@@ -73,6 +76,15 @@ After making changes, respond with a brief summary of what you changed.`;
         explanation: result || "Changes applied",
       };
     } catch (error) {
+      // SDK has a bug where stream cleanup fails with "line.trim" error
+      // If we already have changes/result, ignore the cleanup error
+      if (hasChanges && error instanceof TypeError && String(error).includes("trim")) {
+        console.warn("Ignoring SDK stream cleanup error");
+        return {
+          fixed: true,
+          explanation: result || "Changes applied",
+        };
+      }
       console.error("Triage agent error:", error);
       return {
         fixed: false,

@@ -122,15 +122,33 @@ export class ReviewFormatter {
     let body = `${emoji} **${typeLabel}**\n\n`;
     body += issue.message;
 
-    if (issue.suggestion) {
+    // If there's exact replacement code, format as GitHub suggested change
+    if (issue.suggestedCode !== undefined) {
+      body += "\n\n```suggestion\n";
+      body += issue.suggestedCode;
+      // Ensure the suggestion ends with a newline for proper formatting
+      if (!issue.suggestedCode.endsWith("\n")) {
+        body += "\n";
+      }
+      body += "```";
+    } else if (issue.suggestion) {
+      // Fall back to text suggestion if no code replacement
       body += `\n\n**Suggestion:** ${issue.suggestion}`;
     }
 
-    return {
+    const comment: ReviewComment = {
       path: issue.file,
       line: issue.line,
       body,
     };
+
+    // Support multi-line suggestions
+    if (issue.endLine && issue.endLine > issue.line) {
+      comment.start_line = issue.line;
+      comment.line = issue.endLine;
+    }
+
+    return comment;
   }
 
   private mapVerdict(verdict: ReviewResult["verdict"]): Review["event"] {
