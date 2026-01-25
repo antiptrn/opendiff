@@ -1,3 +1,5 @@
+import { rm, mkdir } from "node:fs/promises";
+import { simpleGit } from "simple-git";
 import type { CodeReviewAgent } from "../agent/reviewer";
 import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue, FileToReview } from "../agent/types";
@@ -120,7 +122,7 @@ export class WebhookHandler {
       reviewResult.issues &&
       reviewResult.issues.length > 0
     ) {
-      console.log(`Triage enabled, processing ${reviewResult.issues.length} issues`);
+      console.log(`Triage enabled: ${reviewResult.issues.length} issues to process`);
 
       const triageResult = await handleTriageAfterReview(
         this.github,
@@ -135,11 +137,8 @@ export class WebhookHandler {
         triageOptions.botUsername
       );
 
-      if (triageResult.fixedIssues.length > 0) {
-        console.log(`Triage fixed ${triageResult.fixedIssues.length} issues`);
-      }
-      if (triageResult.skippedIssues.length > 0) {
-        console.log(`Triage skipped ${triageResult.skippedIssues.length} issues`);
+      if (triageResult.error) {
+        console.error(`Triage error: ${triageResult.error}`);
       }
     }
 
@@ -178,49 +177,53 @@ export class WebhookHandler {
     const repo = repository.name;
     const prNumber = pull_request.number;
 
+    // Clone the repo for the review agent to explore
+    const tempDir = `/tmp/review-${owner}-${repo}-${prNumber}-${Date.now()}`;
+
     try {
-      // Fetch PR files
+      // Get installation token for authenticated git clone
+      const token = await this.github.getInstallationToken();
+      if (!token) {
+        return { success: false, error: "Could not get installation token for git operations" };
+      }
+
+      // Clone the repository
+      await mkdir(tempDir, { recursive: true });
+      const cloneUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+      const git = simpleGit(tempDir);
+
+      console.log(`Cloning ${owner}/${repo} branch ${pull_request.head.ref} for review`);
+      await git.clone(cloneUrl, ".", {
+        "--branch": pull_request.head.ref,
+        "--depth": "1",
+        "--single-branch": null,
+      });
+
+      // Fetch PR files metadata
       const files = await this.github.getPullRequestFiles(owner, repo, prNumber);
 
       // Filter to reviewable code files
       const codeFiles = files.filter((file) => {
-        // Skip deleted files
         if (file.status === "removed") return false;
-
-        // Skip non-code files
         if (!this.isCodeFile(file.filename)) return false;
-
-        // Skip generated/lock files
         if (this.shouldSkipFile(file.filename)) return false;
-
         return true;
       });
 
-      // Get file contents
-      const filesToReview: FileToReview[] = await Promise.all(
-        codeFiles.map(async (file) => {
-          const content = await this.github.getFileContent(
-            owner,
-            repo,
-            file.filename,
-            pull_request.head.sha
-          );
+      // Build file list with patches for the reviewer (Agent SDK reads files itself)
+      const filesToReview: FileToReview[] = codeFiles.map((file) => ({
+        filename: file.filename,
+        patch: file.patch,
+      }));
 
-          return {
-            filename: file.filename,
-            content: content || "",
-            patch: file.patch,
-          };
-        })
-      );
-
-      // Run AI review
+      // Run AI review with Agent SDK (agent will read files itself)
       const reviewResult = await this.agent.reviewFiles(
         filesToReview,
         {
           prTitle: pull_request.title,
           prBody: pull_request.body,
         },
+        tempDir,
         customRules
       );
 
@@ -250,6 +253,13 @@ export class WebhookHandler {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      // Cleanup temp directory
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Failed to cleanup temp directory: ${tempDir}`);
+      }
     }
   }
 
@@ -273,6 +283,9 @@ export class WebhookHandler {
     const repo = repository.name;
     const prNumber = pull_request.number;
 
+    // Clone the repo for the agent to explore
+    const tempDir = `/tmp/comment-${owner}-${repo}-${prNumber}-${Date.now()}`;
+
     try {
       // Get the conversation thread
       const thread = await this.github.getReviewCommentThread(owner, repo, prNumber, comment.id);
@@ -285,22 +298,22 @@ export class WebhookHandler {
         return { success: true, skipped: true };
       }
 
-      // Get code context if available
-      let codeContext: { filename: string; content: string; diff?: string } | undefined;
-      if (comment.path) {
-        const content = await this.github.getFileContent(
-          owner,
-          repo,
-          comment.path,
-          pull_request.head.sha
-        );
-        if (content) {
-          codeContext = {
-            filename: comment.path,
-            content,
-          };
-        }
+      // Get installation token for authenticated git clone
+      const token = await this.github.getInstallationToken();
+      if (!token) {
+        return { success: false, error: "Could not get installation token for git operations" };
       }
+
+      // Clone the repository
+      await mkdir(tempDir, { recursive: true });
+      const cloneUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+      const git = simpleGit(tempDir);
+
+      await git.clone(cloneUrl, ".", {
+        "--branch": pull_request.head.ref,
+        "--depth": "1",
+        "--single-branch": null,
+      });
 
       // Build conversation from thread
       const conversation = thread.comments.map((c) => ({
@@ -308,8 +321,20 @@ export class WebhookHandler {
         body: c.body,
       }));
 
-      // Get AI response
-      const response = await this.agent.respondToComment(conversation, codeContext, customRules);
+      // Get code context if available (agent will read full content itself)
+      let codeContext: { filename: string; diff?: string } | undefined;
+      if (comment.path) {
+        // Get the diff for this file
+        const files = await this.github.getPullRequestFiles(owner, repo, prNumber);
+        const file = files.find((f) => f.filename === comment.path);
+        codeContext = {
+          filename: comment.path,
+          diff: file?.patch,
+        };
+      }
+
+      // Get AI response using Agent SDK
+      const response = await this.agent.respondToComment(conversation, tempDir, codeContext, customRules);
 
       // Reply to the comment
       const { id } = await this.github.replyToReviewComment(
@@ -326,6 +351,13 @@ export class WebhookHandler {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      // Cleanup temp directory
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Failed to cleanup temp directory: ${tempDir}`);
+      }
     }
   }
 
@@ -359,7 +391,30 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
+    // Clone the repo for the agent to explore
+    const tempDir = `/tmp/issue-comment-${owner}-${repo}-${prNumber}-${Date.now()}`;
+
     try {
+      // Get installation token for authenticated git clone
+      const token = await this.github.getInstallationToken();
+      if (!token) {
+        return { success: false, error: "Could not get installation token for git operations" };
+      }
+
+      // Get PR details to get the head branch
+      const pr = await this.github.getPullRequest(owner, repo, prNumber);
+
+      // Clone the repository
+      await mkdir(tempDir, { recursive: true });
+      const cloneUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+      const git = simpleGit(tempDir);
+
+      await git.clone(cloneUrl, ".", {
+        "--branch": pr.head.ref,
+        "--depth": "1",
+        "--single-branch": null,
+      });
+
       // Get all comments on the PR for context
       const allComments = await this.github.getIssueComments(owner, repo, prNumber);
 
@@ -369,8 +424,8 @@ export class WebhookHandler {
         body: c.body,
       }));
 
-      // Get AI response
-      const response = await this.agent.respondToComment(conversation, undefined, customRules);
+      // Get AI response using Agent SDK
+      const response = await this.agent.respondToComment(conversation, tempDir, undefined, customRules);
 
       // Post reply
       const { id } = await this.github.createIssueComment(owner, repo, prNumber, response);
@@ -381,6 +436,13 @@ export class WebhookHandler {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      // Cleanup temp directory
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Failed to cleanup temp directory: ${tempDir}`);
+      }
     }
   }
 

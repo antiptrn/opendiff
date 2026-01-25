@@ -15,6 +15,6 @@ export interface ReviewResult {
 
 export interface FileToReview {
   filename: string;
-  content: string;
+  content?: string; // Optional - Agent SDK will read files itself
   patch?: string;
 }

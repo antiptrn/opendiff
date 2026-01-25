@@ -1,7 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mock } from "bun:test";
 import type { CodeReviewAgent } from "../agent/reviewer";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
+
+// Mock simple-git before importing handler
+mock.module("simple-git", () => ({
+  simpleGit: () => ({
+    clone: async () => undefined,
+  }),
+}));
+
+// Mock fs/promises before importing handler
+mock.module("node:fs/promises", () => ({
+  mkdir: async () => undefined,
+  rm: async () => undefined,
+}));
+
+// Now import handler after mocks are set up
 import { WebhookHandler } from "./handler";
 
 type MockGitHubClient = Partial<GitHubClient>;
@@ -164,6 +180,7 @@ describe("WebhookHandler", () => {
       getPullRequestFiles: vi.fn(),
       getFileContent: vi.fn(),
       submitReview: vi.fn(),
+      getInstallationToken: vi.fn().mockResolvedValue("fake-token"),
     };
 
     mockAgent = {
@@ -363,12 +380,11 @@ describe("WebhookHandler", () => {
       expect(reviewedFiles).toHaveLength(0);
     });
 
-    it("should handle file with null content from GitHub", async () => {
+    it("should pass files without content (Agent SDK reads files itself)", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "missing.ts", status: "added", patch: "+code" },
+        { filename: "file.ts", status: "added", patch: "+code" },
       ]);
-      mockGitHubClient.getFileContent.mockResolvedValue(null); // File not found
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "OK",
         issues: [],
@@ -383,9 +399,11 @@ describe("WebhookHandler", () => {
       const result = await handler.handlePullRequestReviewRequested(basePayload, "antiptrn-bot");
 
       expect(result.success).toBe(true);
-      // Should use empty string when content is null
+      // Content is undefined - Agent SDK reads files itself
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
-      expect(reviewedFiles[0].content).toBe("");
+      expect(reviewedFiles[0].content).toBeUndefined();
+      expect(reviewedFiles[0].filename).toBe("file.ts");
+      expect(reviewedFiles[0].patch).toBe("+code");
     });
 
     it("should pass both reviewer and team check correctly", async () => {

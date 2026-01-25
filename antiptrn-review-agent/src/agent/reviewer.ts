@@ -1,8 +1,5 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { FileToReview, ReviewResult } from "./types";
-
-const MAX_FILE_CONTENT_LENGTH = 50000; // ~50KB per file to stay within token limits
-const MAX_TOTAL_CONTENT_LENGTH = 150000; // ~150KB total
 
 interface PRContext {
   prTitle: string;
@@ -10,12 +7,35 @@ interface PRContext {
 }
 
 export class CodeReviewAgent {
-  constructor(private anthropic: Anthropic) {}
-
-  getSystemPrompt(customRules?: string | null): string {
+  private getReviewPrompt(
+    files: FileToReview[],
+    context: PRContext,
+    customRules?: string | null
+  ): string {
     let prompt = `You are antiptrn, a code reviewer specializing in identifying issues in pull requests.
 
 Your job is to analyze code changes and provide constructive, actionable feedback.
+
+## Pull Request
+**Title:** ${context.prTitle}
+${context.prBody ? `**Description:** ${context.prBody}` : ""}
+
+## Files Changed
+${files.map((f) => `- ${f.filename}${f.patch ? " (has diff)" : ""}`).join("\n")}
+
+## Your Task
+
+1. **Read each file** using the Read tool to understand the full context
+2. **Analyze the diffs** provided below to understand what changed
+3. **Investigate thoroughly** before flagging any issue - check patterns, conventions, and context
+4. **Return your review** as valid JSON
+
+## Diffs
+
+${files
+  .filter((f) => f.patch)
+  .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
+  .join("\n\n")}
 
 ## What to look for:
 
@@ -55,9 +75,31 @@ Your job is to analyze code changes and provide constructive, actionable feedbac
 - Incorrect logic
 - Unhandled edge cases
 
+## Investigation Before Commenting
+
+IMPORTANT: Before flagging any issue, you MUST investigate thoroughly:
+
+1. **Understand the full context** - Use the Read tool to read the complete file, not just the diff. The change might make perfect sense when you see how it fits into the existing code.
+
+2. **Check for patterns** - If you see something that looks wrong, use Grep to check if the same pattern is used elsewhere in the codebase. It might be an established convention.
+
+3. **Consider the PR description** - The author may have explained why certain changes were made.
+
+4. **Assume competence** - The developer likely had a reason for their approach. Only flag something if you're confident it's actually a problem after considering the context.
+
+5. **Avoid false positives** - It's better to miss a minor issue than to flag something that's actually correct.
+
+## Line Number Accuracy
+
+CRITICAL: The line number you report MUST exactly match the code you're commenting on.
+
+1. **Verify before reporting** - Read the file and count lines to find the EXACT line number containing the problematic code.
+
+2. **When in doubt, omit** - If you cannot determine the exact line number, do NOT report the issue.
+
 ## Response Format
 
-You MUST respond with valid JSON in this exact format:
+After your investigation, respond with ONLY valid JSON in this exact format (no other text):
 {
   "summary": "Brief overall assessment of the PR",
   "issues": [
@@ -74,16 +116,16 @@ You MUST respond with valid JSON in this exact format:
 }
 
 ## Guidelines
-- Contextualize each change you review to understand more about the changes and the codebase
+
+- Only flag issues you're genuinely confident about after investigation
 - Be constructive, not harsh
 - Focus on the most important issues
-- Provide specific line numbers when possible
-- Include actionable suggestions
+- Line numbers MUST be accurate
+- Include actionable suggestions with code examples when helpful
 - Use "approve" if code is good (minor suggestions OK)
 - Use "request_changes" only for critical/security issues
 - Use "comment" for moderate issues that should be addressed`;
 
-    // Add custom rules if provided
     if (customRules?.trim()) {
       prompt += `
 
@@ -94,89 +136,65 @@ The repository owner has defined the following custom rules that you MUST follow
 ${customRules}`;
     }
 
+    prompt += `
+
+Now, read the changed files and provide your review as JSON.`;
+
     return prompt;
   }
 
   async reviewFiles(
     files: FileToReview[],
     context: PRContext,
+    workingDir: string,
     customRules?: string | null
   ): Promise<ReviewResult> {
-    const userPrompt = this.buildUserPrompt(files, context);
+    const prompt = this.getReviewPrompt(files, context, customRules);
 
-    const response = await this.anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: this.getSystemPrompt(customRules),
-      messages: [
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
-    });
+    let result = "";
 
-    return this.parseResponse(response);
-  }
-
-  private buildUserPrompt(files: FileToReview[], context: PRContext): string {
-    let prompt = "## Pull Request\n\n";
-    prompt += `**Title:** ${context.prTitle}\n`;
-
-    if (context.prBody) {
-      prompt += `**Description:** ${context.prBody}\n`;
+    for await (const message of query({
+      prompt,
+      options: {
+        cwd: workingDir,
+        allowedTools: ["Read", "Glob", "Grep"],
+        permissionMode: "default",
+        maxTurns: 30,
+      },
+    })) {
+      if (message.type === "result") {
+        const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
+        if (resultMsg.subtype === "success") {
+          result = resultMsg.result || "";
+        } else {
+          throw new Error(resultMsg.errors?.join(", ") || "Review agent failed");
+        }
+      }
     }
 
-    prompt += "\n## Files to Review\n\n";
-
-    let totalLength = prompt.length;
-
-    for (const file of files) {
-      let content = file.content;
-
-      // Truncate individual files if too large
-      if (content.length > MAX_FILE_CONTENT_LENGTH) {
-        content = `${content.slice(0, MAX_FILE_CONTENT_LENGTH)}\n... (truncated)`;
-      }
-
-      // Check total length
-      const fileSection = `### ${file.filename}\n\n\`\`\`\n${content}\n\`\`\`\n\n`;
-
-      if (totalLength + fileSection.length > MAX_TOTAL_CONTENT_LENGTH) {
-        prompt += "\n(Additional files omitted due to size limits)\n";
-        break;
-      }
-
-      if (file.patch) {
-        prompt += `### ${file.filename}\n\n**Diff:**\n\`\`\`diff\n${file.patch}\n\`\`\`\n\n`;
-        prompt += `**Full content:**\n\`\`\`\n${content}\n\`\`\`\n\n`;
-      } else {
-        prompt += fileSection;
-      }
-
-      totalLength += fileSection.length;
-    }
-
-    prompt += "\nPlease review these changes and respond with your analysis in JSON format.";
-
-    return prompt;
+    return this.parseResponse(result);
   }
 
-  private parseResponse(response: Anthropic.Message): ReviewResult {
-    const textContent = response.content.find((c) => c.type === "text");
-
-    if (!textContent || textContent.type !== "text") {
+  private parseResponse(text: string): ReviewResult {
+    if (!text) {
       throw new Error("Failed to parse review response: No text content");
     }
 
     try {
-      // Try to extract JSON from the response
-      let jsonText = textContent.text;
+      let jsonText = text.trim();
 
       // Handle case where response might have markdown code blocks
       const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
-        jsonText = jsonMatch[1];
+        jsonText = jsonMatch[1].trim();
+      }
+
+      // Try to find JSON object if there's other text around it
+      if (!jsonText.startsWith("{")) {
+        const objectMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (objectMatch) {
+          jsonText = objectMatch[0];
+        }
       }
 
       const result = JSON.parse(jsonText) as ReviewResult;
@@ -188,11 +206,17 @@ ${customRules}`;
 
       return result;
     } catch (error) {
+      console.error("Raw response:", text.slice(0, 500));
       throw new Error(`Failed to parse review response: ${(error as Error).message}`);
     }
   }
 
-  getConversationSystemPrompt(customRules?: string | null): string {
+  async respondToComment(
+    conversation: Array<{ user: string; body: string }>,
+    workingDir: string,
+    codeContext?: { filename: string; diff?: string },
+    customRules?: string | null
+  ): Promise<string> {
     let prompt = `You are antiptrn, a helpful code review assistant. You're having a conversation about code in a GitHub pull request.
 
 ## Your role:
@@ -208,10 +232,10 @@ ${customRules}`;
 - Stay focused on the code and the review
 - Be friendly and constructive
 - If you don't know something, say so
+- You can use the Read tool to read files and Grep to search the codebase
 
 Respond naturally in markdown format. Do NOT use JSON for conversation responses.`;
 
-    // Add custom rules if provided
     if (customRules?.trim()) {
       prompt += `
 
@@ -222,49 +246,50 @@ Keep these custom rules in mind during the conversation:
 ${customRules}`;
     }
 
-    return prompt;
-  }
-
-  async respondToComment(
-    conversation: Array<{ user: string; body: string }>,
-    codeContext?: { filename: string; content: string; diff?: string },
-    customRules?: string | null
-  ): Promise<string> {
-    let prompt = "";
-
     if (codeContext) {
-      prompt += "## Code Context\n\n";
-      prompt += `**File:** ${codeContext.filename}\n\n`;
-      if (codeContext.diff) {
-        prompt += `**Diff:**\n\`\`\`diff\n${codeContext.diff}\n\`\`\`\n\n`;
+      prompt += `
+
+## Code Context
+
+**File:** ${codeContext.filename}
+${codeContext.diff ? `**Diff:**\n\`\`\`diff\n${codeContext.diff}\n\`\`\`\n` : ""}
+
+You can use the Read tool to read the full file content if needed.`;
+    }
+
+    prompt += `
+
+## Conversation
+
+${conversation.map((msg) => `**${msg.user}:** ${msg.body}`).join("\n\n")}
+
+Please respond to the latest message.`;
+
+    let result = "";
+
+    for await (const message of query({
+      prompt,
+      options: {
+        cwd: workingDir,
+        allowedTools: ["Read", "Glob", "Grep"],
+        permissionMode: "default",
+        maxTurns: 10,
+      },
+    })) {
+      if (message.type === "result") {
+        const resultMsg = message as { type: "result"; subtype: string; result?: string; errors?: string[] };
+        if (resultMsg.subtype === "success") {
+          result = resultMsg.result || "";
+        } else {
+          throw new Error(resultMsg.errors?.join(", ") || "Comment response agent failed");
+        }
       }
-      prompt += `**Content:**\n\`\`\`\n${codeContext.content.slice(0, 10000)}\n\`\`\`\n\n`;
     }
 
-    prompt += "## Conversation\n\n";
-    for (const msg of conversation) {
-      prompt += `**${msg.user}:** ${msg.body}\n\n`;
-    }
-
-    prompt += "Please respond to the latest message.";
-
-    const response = await this.anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: this.getConversationSystemPrompt(customRules),
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
-
-    const textContent = response.content.find((c) => c.type === "text");
-    if (!textContent || textContent.type !== "text") {
+    if (!result) {
       throw new Error("Failed to get response");
     }
 
-    return textContent.text;
+    return result;
   }
 }

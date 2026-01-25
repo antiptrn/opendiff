@@ -76,27 +76,37 @@ export class ReviewFormatter {
   formatReview(result: ReviewResult, patches?: DiffPatches): Review {
     const event = this.mapVerdict(result.verdict);
 
-    // Filter issues to only include those with valid line numbers in the diff
-    const validIssues = patches
-      ? result.issues.filter((issue) => {
-          const patch = patches[issue.file];
-          if (!patch) {
-            // No patch means file wasn't in the diff - skip inline comment
-            return false;
-          }
-          const validLines = parseValidLinesFromPatch(patch);
-          return validLines.has(issue.line);
-        })
-      : result.issues;
+    // Separate issues into those that can be inline comments and those that can't
+    const inlineIssues: CodeIssue[] = [];
+    const bodyOnlyIssues: CodeIssue[] = [];
 
-    const body = this.formatSummary(
-      result,
-      validIssues.length < result.issues.length ? result.issues.length - validIssues.length : 0
-    );
+    for (const issue of result.issues) {
+      if (!patches) {
+        // No patches provided, all issues go inline
+        inlineIssues.push(issue);
+        continue;
+      }
+
+      const patch = patches[issue.file];
+      if (!patch) {
+        // No patch means file wasn't in the diff
+        bodyOnlyIssues.push(issue);
+        continue;
+      }
+
+      const validLines = parseValidLinesFromPatch(patch);
+      if (validLines.has(issue.line)) {
+        inlineIssues.push(issue);
+      } else {
+        bodyOnlyIssues.push(issue);
+      }
+    }
+
+    const body = this.formatSummary(result, bodyOnlyIssues);
 
     // Only include comments if there are valid issues
     const comments =
-      validIssues.length > 0 ? validIssues.map((issue) => this.formatComment(issue)) : undefined;
+      inlineIssues.length > 0 ? inlineIssues.map((issue) => this.formatComment(issue)) : undefined;
 
     return {
       body,
@@ -134,7 +144,7 @@ export class ReviewFormatter {
     }
   }
 
-  private formatSummary(result: ReviewResult, filteredCount = 0): string {
+  private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
     const counts = this.countBySeverity(result.issues);
     let summary = "## AI Code Review\n\n";
     summary += `${result.summary}\n\n`;
@@ -151,9 +161,21 @@ export class ReviewFormatter {
       if (counts.suggestion > 0) {
         summary += `- 💡 **${counts.suggestion} suggestion${counts.suggestion > 1 ? "s" : ""}**\n`;
       }
+    }
 
-      if (filteredCount > 0) {
-        summary += `\n*Note: ${filteredCount} issue${filteredCount > 1 ? "s" : ""} could not be shown as inline comment${filteredCount > 1 ? "s" : ""} (referenced lines not in diff).*\n`;
+    // Include full details for issues that couldn't be shown as inline comments
+    if (bodyOnlyIssues.length > 0) {
+      summary += "\n### Additional Issues (not in diff)\n\n";
+      summary += "The following issues were found in code outside the changed lines:\n\n";
+
+      for (const issue of bodyOnlyIssues) {
+        const emoji = SEVERITY_EMOJI[issue.severity];
+        const typeLabel = TYPE_LABELS[issue.type];
+        summary += `#### ${emoji} ${typeLabel} in \`${issue.file}:${issue.line}\`\n\n`;
+        summary += `${issue.message}\n\n`;
+        if (issue.suggestion) {
+          summary += `**Suggestion:** ${issue.suggestion}\n\n`;
+        }
       }
     }
 

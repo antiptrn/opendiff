@@ -44,20 +44,15 @@ export async function handleTriageAfterReview(
     skippedIssues: [],
   };
 
-  // Filter to only critical and warning issues (not suggestions)
-  const allFixableIssues = reviewIssues.filter(
-    (issue) => issue.severity === "critical" || issue.severity === "warning"
-  );
-
-  if (allFixableIssues.length === 0) {
-    console.log("No fixable issues found (only suggestions)");
+  if (reviewIssues.length === 0) {
+    console.log("No issues to fix");
     return result;
   }
 
   // Limit issues per cycle to prevent runaway loops
-  const fixableIssues = allFixableIssues.slice(0, MAX_ISSUES_PER_CYCLE);
-  if (allFixableIssues.length > MAX_ISSUES_PER_CYCLE) {
-    console.log(`Limiting to ${MAX_ISSUES_PER_CYCLE} issues this cycle (${allFixableIssues.length} total)`);
+  const fixableIssues = reviewIssues.slice(0, MAX_ISSUES_PER_CYCLE);
+  if (reviewIssues.length > MAX_ISSUES_PER_CYCLE) {
+    console.log(`Limiting to ${MAX_ISSUES_PER_CYCLE} issues this cycle (${reviewIssues.length} total)`);
   }
 
   const tempDir = `/tmp/triage-${owner}-${repo}-${pullRequest.number}-${Date.now()}`;
@@ -93,45 +88,15 @@ export async function handleTriageAfterReview(
     await git.addConfig("user.email", `${botUsername}[bot]@users.noreply.github.com`);
     await git.addConfig("user.name", `${botUsername}[bot]`);
 
-    // Track files that have been modified to read updated content
-    const modifiedFiles = new Map<string, string>();
-
-    // Process each issue one by one
+    // Process each issue one by one using the Claude Agent SDK
     for (const issue of fixableIssues) {
       console.log(`Processing issue: ${issue.type} in ${issue.file}:${issue.line}`);
 
       try {
-        // Read the current file content (may have been modified by previous fixes)
-        let fileContent: string;
-        if (modifiedFiles.has(issue.file)) {
-          fileContent = modifiedFiles.get(issue.file)!;
-        } else {
-          const filePath = `${tempDir}/${issue.file}`;
-          const file = Bun.file(filePath);
-          if (!(await file.exists())) {
-            result.skippedIssues.push({
-              issue,
-              reason: `File not found: ${issue.file}`,
-            });
-            continue;
-          }
-          fileContent = await file.text();
-        }
+        // Use Claude Agent SDK to fix the issue - it has full access to read/write files
+        const fix = await triageAgent.fixIssue(issue, tempDir);
 
-        // Validate if the issue should be fixed
-        const validation = await triageAgent.validateIssue(issue, fileContent);
-        if (!validation.valid) {
-          console.log(`Issue skipped: ${validation.reason}`);
-          result.skippedIssues.push({
-            issue,
-            reason: validation.reason,
-          });
-          continue;
-        }
-
-        // Generate the fix
-        const fix = await triageAgent.fixIssue(issue, fileContent);
-        if (!fix.fixed || !fix.newContent) {
+        if (!fix.fixed) {
           console.log(`Could not fix issue: ${fix.explanation}`);
           result.skippedIssues.push({
             issue,
@@ -140,10 +105,7 @@ export async function handleTriageAfterReview(
           continue;
         }
 
-        // Write the fixed file
-        const filePath = `${tempDir}/${issue.file}`;
-        await Bun.write(filePath, fix.newContent);
-        modifiedFiles.set(issue.file, fix.newContent);
+        console.log(`Agent fixed issue: ${fix.explanation}`);
 
         // Commit the fix
         const shortMessage = issue.message.slice(0, 50);
@@ -153,7 +115,8 @@ Auto-fix for ${issue.severity} issue at ${issue.file}:${issue.line}
 
 ${fix.explanation}`;
 
-        await git.add(issue.file);
+        // Add all modified/created files
+        await git.add(".");
         const commitResult = await git.commit(commitMessage);
 
         console.log(`Committed fix: ${commitResult.commit}`);
@@ -171,18 +134,31 @@ ${fix.explanation}`;
       }
     }
 
+    console.log(`Triage complete: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped`);
+
     // Push all commits if any fixes were made
     if (result.fixedIssues.length > 0) {
       console.log(`Pushing ${result.fixedIssues.length} commits to ${pullRequest.head.ref}`);
       await git.push("origin", pullRequest.head.ref);
+    }
 
-      // Reply to individual review comments with fix explanations
-      await replyToFixedComments(github, owner, repo, pullRequest.number, result.fixedIssues, botUsername);
+    // Reply to inline comments and collect body-only issues
+    if (result.fixedIssues.length > 0 || result.skippedIssues.length > 0) {
+      const bodyOnly = await replyToInlineComments(
+        github,
+        owner,
+        repo,
+        pullRequest.number,
+        result.fixedIssues,
+        result.skippedIssues,
+        botUsername
+      );
 
-      // Post a summary comment only if there were skipped issues (so user knows what couldn't be fixed)
-      if (result.skippedIssues.length > 0) {
-        const summaryBody = formatSkippedSummary(result.skippedIssues, botUsername);
+      // Post a summary comment for issues that were in the review body (not inline comments)
+      if (bodyOnly.fixed.length > 0 || bodyOnly.skipped.length > 0) {
+        const summaryBody = formatBodyOnlySummary(bodyOnly);
         await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
+        console.log(`Posted summary for ${bodyOnly.fixed.length} fixed and ${bodyOnly.skipped.length} skipped body-only issues`);
       }
 
       // Note: The push will trigger a new review cycle via the 'synchronize' event.
@@ -205,14 +181,65 @@ ${fix.explanation}`;
   return result;
 }
 
-async function replyToFixedComments(
+interface BodyOnlyResult {
+  fixed: TriageResult["fixedIssues"];
+  skipped: TriageResult["skippedIssues"];
+}
+
+interface BotComment {
+  id: number;
+  nodeId: string;
+  path: string;
+  line: number | null;
+  body: string;
+  user: string;
+}
+
+// Find matching comment using flexible matching:
+// 1. Exact match: file + line
+// 2. Fuzzy match: file + issue message appears in comment body
+function findMatchingComment(
+  botComments: BotComment[],
+  issue: CodeIssue,
+  usedCommentIds: Set<number>
+): BotComment | undefined {
+  // First try exact match by file and line
+  let match = botComments.find(
+    (c) => c.path === issue.file && c.line === issue.line && !usedCommentIds.has(c.id)
+  );
+
+  if (match) return match;
+
+  // Fuzzy match: same file and comment contains key words from the issue message
+  // Extract key words from issue message (first 30 chars, split by spaces)
+  const issueKeywords = issue.message
+    .slice(0, 50)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 4); // Only words longer than 4 chars
+
+  match = botComments.find((c) => {
+    if (c.path !== issue.file || usedCommentIds.has(c.id)) return false;
+    const bodyLower = c.body.toLowerCase();
+    // Match if at least 2 keywords appear in the comment body
+    const matchCount = issueKeywords.filter((kw) => bodyLower.includes(kw)).length;
+    return matchCount >= 2;
+  });
+
+  return match;
+}
+
+async function replyToInlineComments(
   github: GitHubClient,
   owner: string,
   repo: string,
   pullNumber: number,
   fixedIssues: TriageResult["fixedIssues"],
+  skippedIssues: TriageResult["skippedIssues"],
   botUsername: string
-): Promise<void> {
+): Promise<BodyOnlyResult> {
+  const bodyOnly: BodyOnlyResult = { fixed: [], skipped: [] };
+
   try {
     // Fetch all review comments on the PR
     const reviewComments = await github.getReviewComments(owner, repo, pullNumber);
@@ -222,44 +249,88 @@ async function replyToFixedComments(
       c.user === botUsername || c.user === `${botUsername}[bot]`
     );
 
-    // For each fixed issue, find the matching comment and reply
-    for (const { issue, commitSha, explanation } of fixedIssues) {
-      // Find comment matching this issue by file and line
-      const matchingComment = botComments.find(
-        (c) => c.path === issue.file && c.line === issue.line
-      );
+    // Track which comments we've already replied to (avoid duplicates)
+    const usedCommentIds = new Set<number>();
+
+    // Process fixed issues
+    for (const fixedItem of fixedIssues) {
+      const { issue, commitSha, explanation } = fixedItem;
+      const matchingComment = findMatchingComment(botComments, issue, usedCommentIds);
 
       if (matchingComment) {
         const replyBody = `✅ **Fixed in ${commitSha.slice(0, 7)}**\n\n${explanation}`;
         try {
           await github.replyToReviewComment(owner, repo, pullNumber, matchingComment.id, replyBody);
           console.log(`Replied to comment ${matchingComment.id} for ${issue.file}:${issue.line}`);
+
+          const threadId = await github.getReviewThreadId(owner, repo, pullNumber, matchingComment.nodeId);
+          if (threadId) {
+            await github.resolveReviewThread(threadId);
+            console.log(`Resolved thread for ${issue.file}:${issue.line}`);
+          }
         } catch (error) {
-          console.warn(`Failed to reply to comment ${matchingComment.id}:`, error);
+          console.warn(`Failed to reply/resolve comment ${matchingComment.id}:`, error);
         }
       } else {
-        console.log(`No matching comment found for ${issue.file}:${issue.line}`);
+        // No inline comment - this was a body-only issue
+        bodyOnly.fixed.push(fixedItem);
+      }
+    }
+
+    // Process skipped issues
+    for (const skippedItem of skippedIssues) {
+      const { issue, reason } = skippedItem;
+      const matchingComment = botComments.find(
+        (c) => c.path === issue.file && c.line === issue.line
+      );
+
+      if (matchingComment) {
+        const replyBody = `⏭️ **Skipped auto-fix**\n\n${reason}`;
+        try {
+          await github.replyToReviewComment(owner, repo, pullNumber, matchingComment.id, replyBody);
+          console.log(`Replied to skipped comment ${matchingComment.id} for ${issue.file}:${issue.line}`);
+
+          const threadId = await github.getReviewThreadId(owner, repo, pullNumber, matchingComment.nodeId);
+          if (threadId) {
+            await github.resolveReviewThread(threadId);
+            console.log(`Resolved skipped thread for ${issue.file}:${issue.line}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to reply/resolve skipped comment ${matchingComment.id}:`, error);
+        }
+      } else {
+        // No inline comment - this was a body-only issue
+        bodyOnly.skipped.push(skippedItem);
       }
     }
   } catch (error) {
-    console.error("Error replying to fixed comments:", error);
+    console.error("Error replying to comments:", error);
   }
+
+  return bodyOnly;
 }
 
-function formatSkippedSummary(
-  skippedIssues: TriageResult["skippedIssues"],
-  botUsername: string
-): string {
-  let body = `## ⏭️ Auto-Fix Skipped Issues\n\n`;
-  body += `The following issues could not be automatically fixed:\n\n`;
+function formatBodyOnlySummary(bodyOnly: BodyOnlyResult): string {
+  let body = "## 🔧 Auto-Fix Results (Additional Issues)\n\n";
+  body += "The following issues from the review body have been processed:\n\n";
 
-  for (const { issue, reason } of skippedIssues) {
-    body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
-    body += `  - ${issue.message}\n`;
-    body += `  - Reason: ${reason}\n`;
+  if (bodyOnly.fixed.length > 0) {
+    body += "### ✅ Fixed\n\n";
+    for (const { issue, commitSha, explanation } of bodyOnly.fixed) {
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — Fixed in ${commitSha.slice(0, 7)}\n`;
+      body += `  - ${explanation}\n`;
+    }
+    body += "\n";
   }
 
-  body += `\n---\n*@${botUsername}*`;
+  if (bodyOnly.skipped.length > 0) {
+    body += "### ⏭️ Skipped\n\n";
+    for (const { issue, reason } of bodyOnly.skipped) {
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
+      body += `  - ${reason}\n`;
+    }
+  }
 
   return body;
 }
+

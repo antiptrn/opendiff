@@ -111,7 +111,7 @@ export class GitHubClient {
     pullNumber: number,
     commentId: number,
     body: string
-  ): Promise<{ id: number }> {
+  ): Promise<{ id: number; nodeId: string }> {
     const { data } = await this.octokit.rest.pulls.createReplyForReviewComment({
       owner,
       repo,
@@ -120,7 +120,7 @@ export class GitHubClient {
       body,
     });
 
-    return { id: data.id };
+    return { id: data.id, nodeId: data.node_id };
   }
 
   async getReviewCommentThread(
@@ -248,11 +248,12 @@ export class GitHubClient {
 
   async getInstallationToken(): Promise<string | null> {
     try {
-      // The octokit instance is already authenticated with installation auth
-      // We can get the token from the auth object
-      const auth = await this.octokit.auth() as { token?: string };
+      // The octokit instance is authenticated with installation auth
+      // We need to explicitly request an installation token
+      const auth = await this.octokit.auth({ type: "installation" }) as { token?: string };
       return auth.token || null;
-    } catch {
+    } catch (error) {
+      console.error("Failed to get installation token:", error);
       return null;
     }
   }
@@ -263,6 +264,7 @@ export class GitHubClient {
     pullNumber: number
   ): Promise<Array<{
     id: number;
+    nodeId: string;
     path: string;
     line: number | null;
     body: string;
@@ -277,10 +279,82 @@ export class GitHubClient {
 
     return data.map((c) => ({
       id: c.id,
+      nodeId: c.node_id,
       path: c.path,
       line: c.line ?? c.original_line ?? null,
       body: c.body,
       user: c.user?.login || "unknown",
     }));
+  }
+
+  async resolveReviewThread(threadId: string): Promise<void> {
+    try {
+      await this.octokit.graphql(
+        `mutation($threadId: ID!) {
+          resolveReviewThread(input: { threadId: $threadId }) {
+            thread {
+              isResolved
+            }
+          }
+        }`,
+        { threadId }
+      );
+    } catch (error) {
+      console.warn("Failed to resolve review thread:", error);
+    }
+  }
+
+  async getReviewThreadId(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    commentNodeId: string
+  ): Promise<string | null> {
+    try {
+      const result = await this.octokit.graphql<{
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: Array<{
+                id: string;
+                comments: {
+                  nodes: Array<{ id: string }>;
+                };
+              }>;
+            };
+          };
+        };
+      }>(
+        `query($owner: String!, $repo: String!, $pullNumber: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $pullNumber) {
+              reviewThreads(first: 100) {
+                nodes {
+                  id
+                  comments(first: 10) {
+                    nodes {
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { owner, repo, pullNumber }
+      );
+
+      // Find the thread that contains this comment
+      const threads = result.repository.pullRequest.reviewThreads.nodes;
+      for (const thread of threads) {
+        if (thread.comments.nodes.some((c) => c.id === commentNodeId)) {
+          return thread.id;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn("Failed to get review thread ID:", error);
+      return null;
+    }
   }
 }

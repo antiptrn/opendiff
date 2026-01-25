@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import Anthropic from "@anthropic-ai/sdk";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { Hono } from "hono";
@@ -267,9 +266,8 @@ app.post("/webhook", async (c) => {
         const installationId = payload.installation?.id;
         const octokit = createOctokit(installationId);
         const githubClient = new GitHubClient(octokit);
-        const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-        const agent = new CodeReviewAgent(anthropic);
-        const triageAgent = new TriageAgent(anthropic);
+        const agent = new CodeReviewAgent();
+        const triageAgent = new TriageAgent();
         const formatter = new ReviewFormatter();
         const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
 
@@ -348,8 +346,7 @@ app.post("/webhook", async (c) => {
       const installationId = payload.installation?.id;
       const octokit = createOctokit(installationId);
       const githubClient = new GitHubClient(octokit);
-      const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-      const agent = new CodeReviewAgent(anthropic);
+      const agent = new CodeReviewAgent();
       const formatter = new ReviewFormatter();
       const handler = new WebhookHandler(githubClient, agent, formatter);
 
@@ -403,8 +400,7 @@ app.post("/webhook", async (c) => {
       const installationId = payload.installation?.id;
       const octokit = createOctokit(installationId);
       const githubClient = new GitHubClient(octokit);
-      const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-      const agent = new CodeReviewAgent(anthropic);
+      const agent = new CodeReviewAgent();
       const formatter = new ReviewFormatter();
       const handler = new WebhookHandler(githubClient, agent, formatter);
 
