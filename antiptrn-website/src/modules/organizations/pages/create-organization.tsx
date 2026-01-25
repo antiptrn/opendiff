@@ -190,13 +190,15 @@ export default function CreateOrganizationPage() {
                     </AvatarFallback>
                   </Avatar>
                   {avatarPreview && (
-                    <button
+                    <Button
                       type="button"
                       onClick={removeAvatar}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center border-none cursor-pointer transition-colors hover:bg-destructive/90"
+                      size="sm"
+                      variant="destructive"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 p-0 rounded-full transition-colors hover:bg-destructive/90"
                     >
                       <X className="size-3" />
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <div className="flex flex-col gap-1">
