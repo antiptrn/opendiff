@@ -131,81 +131,71 @@ export default function CreateOrganizationPage() {
 
   return (
     <section className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        {hasOrganizations && (
-          <div className="px-6 pt-6">
-            <Button variant="ghost" size="sm" className="-ml-2" asChild>
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          {hasOrganizations && (
+            <Button variant="ghost" size="sm" className="absolute left-4 top-4" asChild>
               <Link to="/console">
                 <ArrowLeft className="size-4" />
-                Back to console
               </Link>
             </Button>
-          </div>
-        )}
-        <CardHeader>
-          <CardTitle>
-            {hasOrganizations ? "Create another organization" : "Create your organization"}
+          )}
+          <CardTitle className="text-xl">
+            {hasOrganizations ? "New organization" : "Create your organization"}
           </CardTitle>
           <CardDescription>
-            Organizations help you manage your team and billing in one place.
+            Manage your team and billing in one place.
           </CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-5">
             {error && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
 
             {/* Avatar upload */}
-            <div className="space-y-2">
-              <Label>Logo</Label>
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <Avatar className="size-16 rounded-xl overflow-hidden">
-                    <AvatarImage src={avatarPreview ?? undefined} alt="Organization logo" />
-                    <AvatarFallback className="text-2xl rounded-xl">
-                      {name.trim() ? name.charAt(0).toUpperCase() : "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  {avatarPreview && (
-                    <button
-                      type="button"
-                      onClick={removeAvatar}
-                      className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={handleAvatarChange}
-                    className="hidden"
-                  />
-                  <Button
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative group">
+                <Avatar className="size-20 rounded-xl">
+                  <AvatarImage src={avatarPreview ?? undefined} alt="Organization logo" />
+                  <AvatarFallback className="text-2xl rounded-xl bg-muted">
+                    {name.trim() ? name.charAt(0).toUpperCase() : "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isCreating}
+                  className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Upload className="size-5 text-white" />
+                </button>
+                {avatarPreview && (
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isCreating}
+                    onClick={removeAvatar}
+                    className="absolute -top-1 -right-1 size-5 rounded-full bg-muted-foreground text-background flex items-center justify-center hover:bg-foreground transition-colors"
                   >
-                    <Upload className="size-4" />
-                    {avatarPreview ? "Change" : "Upload"}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">Square, at least 128px</p>
-                </div>
+                    <X className="size-3" />
+                  </button>
+                )}
               </div>
+              <p className="text-xs text-muted-foreground">Click to upload logo</p>
             </div>
 
             {/* Name */}
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">Organization name</Label>
               <Input
                 id="name"
                 placeholder="Acme Inc."
@@ -214,10 +204,9 @@ export default function CreateOrganizationPage() {
                 disabled={isCreating}
                 autoFocus
               />
-              <p className="text-sm text-muted-foreground">You can always change this later.</p>
             </div>
 
-            <Button type="submit" disabled={isCreating || !name.trim()}>
+            <Button type="submit" className="w-full" disabled={isCreating || !name.trim()}>
               {isCreating && <Loader2 className="size-4 animate-spin" />}
               {isCreating ? "Creating..." : "Create organization"}
             </Button>
