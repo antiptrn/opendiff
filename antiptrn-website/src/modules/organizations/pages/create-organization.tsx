@@ -135,7 +135,7 @@ export default function CreateOrganizationPage() {
         <CardHeader className="text-center relative">
           {hasOrganizations && (
             <Button variant="ghost" size="sm" className="absolute left-4 top-4" asChild>
-              <Link to="/console">
+              <Link to="/console" aria-label="Back to console">
                 <ArrowLeft className="size-4" />
               </Link>
             </Button>
