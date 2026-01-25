@@ -243,7 +243,7 @@ export default function CreateOrganizationPage() {
                   <Avatar className="size-16 rounded-xl overflow-hidden">
                     <AvatarImage src={avatarPreview || undefined} alt="Organization logo" />
                     <AvatarFallback className="text-2xl rounded-xl">
-                      {name.trim() ? name.charAt(0).toUpperCase() : "?"}
+                      {name.trim().charAt(0)?.toUpperCase() || '?'}
                     </AvatarFallback>
                   </Avatar>
                   {avatarPreview && (
