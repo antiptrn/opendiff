@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
@@ -31,10 +31,8 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Memoize fallback text to avoid recalculation on every render
-  const fallbackText = useMemo(() => {
-    return name.trim() ? name.charAt(0).toUpperCase() : "?";
-  }, [name]);
+  // Simple string operation - no need for memoization
+  const fallbackText = name.trim() ? name.charAt(0).toUpperCase() : "?";
 
   // Cleanup avatarPreview URL when it changes or on unmount
   useEffect(() => {
