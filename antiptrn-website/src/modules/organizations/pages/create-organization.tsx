@@ -142,8 +142,8 @@ export default function CreateOrganizationPage() {
     <section className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         {hasOrganizations && (
-          <div className="px-6 pt-6">
-            <Button variant="ghost" size="sm" className="-ml-2" asChild>
+          <div className="px-4 pt-6">
+            <Button variant="ghost" size="sm" asChild>
               <Link to="/console">
                 <ArrowLeft className="size-4" />
                 Back to console
