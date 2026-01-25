@@ -33,9 +33,6 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Memoize string operation to avoid recalculation on every render
-  const fallbackText = useMemo(() => name.trim() ? name.charAt(0).toUpperCase() : "?", [name]);
-
   // Cleanup avatarPreview URL on unmount
   useEffect(() => {
     return () => {
@@ -190,7 +187,7 @@ export default function CreateOrganizationPage() {
                   <Avatar className="size-16 rounded-xl overflow-hidden">
                     <AvatarImage src={avatarPreview || undefined} alt="Organization logo" />
                     <AvatarFallback className="text-2xl rounded-xl">
-                      {fallbackText}
+                      {name.trim() ? name.charAt(0).toUpperCase() : "?"}
                     </AvatarFallback>
                   </Avatar>
                   {avatarPreview && (
