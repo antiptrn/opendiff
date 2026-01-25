@@ -31,11 +31,14 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Cleanup avatarPreview URL on unmount or when avatarPreview changes
+  // Cleanup avatarPreview URL when it changes or on unmount
   useEffect(() => {
+    // Store the current preview URL to clean up when it changes
+    const currentPreview = avatarPreview;
+    
     return () => {
-      if (avatarPreview) {
-        URL.revokeObjectURL(avatarPreview);
+      if (currentPreview) {
+        URL.revokeObjectURL(currentPreview);
       }
     };
   }, [avatarPreview]);
@@ -104,10 +107,7 @@ export default function CreateOrganizationPage() {
 
   const removeAvatar = () => {
     setAvatarFile(null);
-    if (avatarPreview) {
-      URL.revokeObjectURL(avatarPreview);
-      setAvatarPreview(null);
-    }
+    setAvatarPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
