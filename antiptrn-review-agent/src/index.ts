@@ -4,6 +4,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { Hono } from "hono";
 import { CodeReviewAgent } from "./agent/reviewer";
+import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
 import { ReviewFormatter } from "./review/formatter";
 import { WebhookHandler } from "./webhook/handler";
@@ -268,8 +269,9 @@ app.post("/webhook", async (c) => {
         const githubClient = new GitHubClient(octokit);
         const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
         const agent = new CodeReviewAgent(anthropic);
+        const triageAgent = new TriageAgent(anthropic);
         const formatter = new ReviewFormatter();
-        const handler = new WebhookHandler(githubClient, agent, formatter);
+        const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
 
         // Skip draft PRs
         if (payload.pull_request?.draft) {
@@ -283,8 +285,22 @@ app.post("/webhook", async (c) => {
           console.log(`Using custom review rules for ${owner}/${repo}`);
         }
 
+        // Configure triage options
+        const triageOptions = settings.effectiveTriageEnabled
+          ? {
+              enabled: true,
+              triageAgent,
+              botUsername: BOT_USERNAME,
+            }
+          : undefined;
+
         // Process the PR
-        const result = await handler.handlePullRequestOpened(payload, BOT_USERNAME, customRules);
+        const result = await handler.handlePullRequestOpened(
+          payload,
+          BOT_USERNAME,
+          customRules,
+          triageOptions
+        );
 
         if (result.skipped) {
           console.log("PR skipped (opened by bot)");
@@ -320,13 +336,13 @@ app.post("/webhook", async (c) => {
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
 
-      // Check repository settings - triage must be enabled for comment responses (uses effective state for subscription checking)
+      // Check repository settings - comment responses work on CODE_REVIEW tier (uses effective state for subscription checking)
       const settings = await getRepositorySettings(owner, repo);
-      if (!settings.effectiveEnabled || !settings.effectiveTriageEnabled) {
+      if (!settings.effectiveEnabled) {
         console.log(
-          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`
+          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled})`
         );
-        return c.json({ status: "skipped", reason: "triage_disabled" });
+        return c.json({ status: "skipped", reason: "disabled" });
       }
 
       const installationId = payload.installation?.id;
@@ -375,13 +391,13 @@ app.post("/webhook", async (c) => {
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
 
-      // Check repository settings - triage must be enabled for comment responses (uses effective state for subscription checking)
+      // Check repository settings - comment responses work on CODE_REVIEW tier (uses effective state for subscription checking)
       const settings = await getRepositorySettings(owner, repo);
-      if (!settings.effectiveEnabled || !settings.effectiveTriageEnabled) {
+      if (!settings.effectiveEnabled) {
         console.log(
-          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled}, effectiveTriage: ${settings.effectiveTriageEnabled})`
+          `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled})`
         );
-        return c.json({ status: "skipped", reason: "triage_disabled" });
+        return c.json({ status: "skipped", reason: "disabled" });
       }
 
       const installationId = payload.installation?.id;

@@ -1,7 +1,9 @@
 import type { CodeReviewAgent } from "../agent/reviewer";
-import type { FileToReview } from "../agent/types";
+import type { TriageAgent } from "../agent/triage";
+import type { CodeIssue, FileToReview } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import type { DiffPatches, ReviewFormatter } from "../review/formatter";
+import { handleTriageAfterReview } from "./triage-handler";
 
 // File extensions to review
 const CODE_EXTENSIONS = new Set([
@@ -76,19 +78,28 @@ interface HandlerResult {
   skipped?: boolean;
   error?: string;
   reviewId?: number;
+  issues?: CodeIssue[];
+}
+
+interface TriageOptions {
+  enabled: boolean;
+  triageAgent: TriageAgent;
+  botUsername: string;
 }
 
 export class WebhookHandler {
   constructor(
     private github: GitHubClient,
     private agent: CodeReviewAgent,
-    private formatter: ReviewFormatter
+    private formatter: ReviewFormatter,
+    private triageAgent?: TriageAgent
   ) {}
 
   async handlePullRequestOpened(
     payload: WebhookPayload,
     botUsername: string,
-    customRules?: string | null
+    customRules?: string | null,
+    triageOptions?: TriageOptions
   ): Promise<HandlerResult> {
     if (!payload.pull_request) {
       return { success: true, skipped: true };
@@ -99,7 +110,40 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload, customRules);
+    const reviewResult = await this.performReview(payload, customRules);
+
+    // If review succeeded and triage is enabled, run auto-fix
+    if (
+      reviewResult.success &&
+      !reviewResult.skipped &&
+      triageOptions?.enabled &&
+      reviewResult.issues &&
+      reviewResult.issues.length > 0
+    ) {
+      console.log(`Triage enabled, processing ${reviewResult.issues.length} issues`);
+
+      const triageResult = await handleTriageAfterReview(
+        this.github,
+        triageOptions.triageAgent,
+        {
+          number: payload.pull_request.number,
+          head: payload.pull_request.head,
+        },
+        reviewResult.issues,
+        payload.repository.owner.login,
+        payload.repository.name,
+        triageOptions.botUsername
+      );
+
+      if (triageResult.fixedIssues.length > 0) {
+        console.log(`Triage fixed ${triageResult.fixedIssues.length} issues`);
+      }
+      if (triageResult.skippedIssues.length > 0) {
+        console.log(`Triage skipped ${triageResult.skippedIssues.length} issues`);
+      }
+    }
+
+    return reviewResult;
   }
 
   async handlePullRequestReviewRequested(
@@ -200,7 +244,7 @@ export class WebhookHandler {
         review
       );
 
-      return { success: true, reviewId: id };
+      return { success: true, reviewId: id, issues: reviewResult.issues };
     } catch (error) {
       return {
         success: false,

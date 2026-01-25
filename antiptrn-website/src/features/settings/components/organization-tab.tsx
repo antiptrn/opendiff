@@ -1,32 +1,15 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/shared/components/ui/avatar";
-import type { OrganizationRole, SubscriptionTier, useAuth } from "@features/auth";
-import { PlanCard, plans } from "@features/billing";
-import type { OrgSubscription } from "@modules/organizations";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@shared/components/ui/alert-dialog";
+import type { OrganizationRole, useAuth } from "@features/auth";
 import {
   useAssignSeat,
-  useCancelOrgSubscription,
-  useManageSubscription,
   useOrganization,
   useOrganizationInvites,
   useOrganizationMembers,
-  useReactivateSubscription,
   useReassignSeat,
   useRemoveMember,
   useUnassignSeat,
   useUpdateMemberRole,
 } from "@modules/organizations";
-import { Badge } from "@shared/components/ui/badge";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import {
@@ -57,28 +40,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@shared/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@shared/components/ui/tabs";
 import { Skeleton } from "@shared/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Copy,
   EllipsisVertical,
-  Link as LinkIcon,
   Loader2,
-  Mail,
-  Minus,
-  Plus,
   Trash2
 } from "lucide-react";
-import NumberFlow from "@number-flow/react";
 import { useState, useRef, useMemo } from "react";
-import { formatDate, formatRoleName, tierLabels } from "../lib/utils";
-import { Separator } from "@shared/components/ui/separator";
-import { BillingHistoryCard } from "./billing-history-card";
+import { formatRoleName } from "../lib/utils";
 import { LeaveOrganizationCard } from "./leave-organization-card";
 import { OrganizationCard } from "./organization-card";
-import { SeatManagementCard } from "./seat-management-card";
 
 function SeatBadge({ hasSeat }: { hasSeat: boolean }) {
   if (!hasSeat) {
@@ -90,39 +64,6 @@ function SeatBadge({ hasSeat }: { hasSeat: boolean }) {
     >
       Assigned
     </p>
-  );
-}
-
-function SubscriptionBadge({ subscription }: { subscription: OrgSubscription | null }) {
-  if (!subscription || !subscription.tier) {
-    return <span className="text-sm text-muted-foreground">No subscription</span>;
-  }
-
-  const tierLabel = tierLabels[subscription.tier] || subscription.tier;
-
-  if (subscription.cancelAtPeriodEnd) {
-    return (
-      <Badge
-        variant="secondary"
-        className="bg-orange-600/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-400"
-      >
-        Cancelling
-      </Badge>
-    );
-  }
-
-  if (subscription.status !== "ACTIVE") {
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        {tierLabel} - {subscription.status}
-      </Badge>
-    );
-  }
-
-  return (
-    <Badge variant="secondary">
-      {tierLabel} ({subscription.seatCount} seats)
-    </Badge>
   );
 }
 
@@ -140,14 +81,12 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
     canManageMembers,
     canManageBilling,
     canUpdateOrg,
-    subscription,
     seats,
     currentOrg,
   } = useOrganization();
   const queryClient = useQueryClient();
   const { data: membersData, isLoading: isLoadingMembers } = useOrganizationMembers(orgId);
   const members = membersData?.members || [];
-  const quotaPool = membersData?.quotaPool || orgDetails?.quotaPool;
   const seatsInfo = membersData?.seats || seats;
 
   const {
@@ -159,9 +98,6 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
   } = useOrganizationInvites(orgId);
   const updateRoleMutation = useUpdateMemberRole(orgId);
   const removeMemberMutation = useRemoveMember(orgId);
-  const manageSubscriptionMutation = useManageSubscription(orgId);
-  const cancelSubscriptionMutation = useCancelOrgSubscription(orgId);
-  const reactivateSubscriptionMutation = useReactivateSubscription(orgId);
   const assignSeatMutation = useAssignSeat(orgId);
   const unassignSeatMutation = useUnassignSeat(orgId);
   const reassignSeatMutation = useReassignSeat(orgId);
@@ -173,11 +109,6 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
-  const [initialSeatCount, setInitialSeatCount] = useState(1);
-  const [isYearly, setIsYearly] = useState(true);
-  const [selectedTier, setSelectedTier] = useState<SubscriptionTier | null>(null);
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const handleCreateInvite = async (withEmail: boolean) => {
     try {
@@ -267,41 +198,6 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
     return [...emailInvites.values(), ...linkInvites];
   }, [invites]);
 
-  const handleManageSubscription = async (
-    tier: "BYOK" | "CODE_REVIEW" | "TRIAGE",
-    billing: "monthly" | "yearly",
-    seatCount: number
-  ) => {
-    setSubscriptionError(null);
-    try {
-      const result = await manageSubscriptionMutation.mutateAsync({ tier, billing, seatCount });
-      if (result.checkoutUrl) {
-        window.location.href = result.checkoutUrl;
-      }
-    } catch (error) {
-      setSubscriptionError(
-        error instanceof Error ? error.message : "Failed to manage subscription"
-      );
-    }
-  };
-
-  const handleCancelSubscription = async () => {
-    try {
-      await cancelSubscriptionMutation.mutateAsync();
-      setShowCancelDialog(false);
-    } catch (error) {
-      console.error("Failed to cancel subscription:", error);
-    }
-  };
-
-  const handleReactivateSubscription = async () => {
-    try {
-      await reactivateSubscriptionMutation.mutateAsync();
-    } catch (error) {
-      console.error("Failed to reactivate subscription:", error);
-    }
-  };
-
   const handleAssignSeat = async (userId: string) => {
     try {
       await assignSeatMutation.mutateAsync(userId);
@@ -376,192 +272,6 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* Subscription & Quota Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Subscription</CardTitle>
-          <CardDescription>Manage your team's subscription and seats</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {subscription?.status === "ACTIVE" ? (
-            <>
-              <dl className="text-sm">
-                <div className="flex justify-between items-center">
-                  <dt className="text-muted-foreground text-base">Status</dt>
-                  <dd>
-                    {subscription.cancelAtPeriodEnd ? (
-                      <span className="text-orange-600 dark:text-orange-400">Cancelling</span>
-                    ) : (
-                      <span className="text-green-600 dark:text-green-400">Active</span>
-                    )}
-                  </dd>
-                </div>
-                <Separator className="my-4" />
-                <div className="flex justify-between items-center">
-                  <dt className="text-muted-foreground text-base">Plan</dt>
-                  <dd>{tierLabels[subscription.tier]}</dd>
-                </div>
-                <Separator className="my-4" />
-                <div className="flex justify-between items-center">
-                  <dt className="text-muted-foreground text-base">Seats</dt>
-                  <dd>
-                    {assignedSeats} of {subscription.seatCount} assigned
-                    {availableSeats > 0 && ` (${availableSeats} available)`}
-                  </dd>
-                </div>
-                {subscription.expiresAt && (
-                  <>
-                    <Separator className="my-4" />
-                    <div className="flex justify-between items-center">
-                      <dt className="text-muted-foreground text-base">
-                        {subscription.cancelAtPeriodEnd ? "Access Until" : "Next Billing Date"}
-                      </dt>
-                      <dd>{formatDate(subscription.expiresAt)}</dd>
-                    </div>
-                  </>
-                )}
-              </dl>
-              {quotaPool && (
-                <div className="pt-4 border-t">
-                  {quotaPool.hasUnlimited || quotaPool.total === -1 ? (
-                    <p className="text-base">Unlimited reviews (BYOK)</p>
-                  ) : (
-                    <>
-                      <p className="text-sm">
-                        {quotaPool.used} / {quotaPool.total} reviews used this cycle
-                      </p>
-                      <div className="w-full bg-muted rounded-full h-2 mt-2">
-                        <div
-                          className="bg-primary h-2 rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              {canManageBilling && (
-                <div className="flex gap-2 mt-6">
-                  {subscription.cancelAtPeriodEnd ? (
-                    <Button onClick={handleReactivateSubscription}>Reactivate</Button>
-                  ) : (
-                    <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline">Cancel subscription</Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            All members will lose access at the end of the current billing period. You can reactivate anytime before then.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogAction variant="outline" onClick={handleCancelSubscription}>
-                            Cancel Subscription
-                          </AlertDialogAction>
-                          <AlertDialogCancel variant="default">Keep Subscription</AlertDialogCancel>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <div>
-              <p className="text-base text-muted-foreground pb-4">
-                No active subscription
-              </p>
-              {canManageBilling && (
-                <div className="flex flex-col gap-6">
-                  {/* Billing cycle and seat count */}
-                  <div className="flex items-center justify-between">
-                    <Tabs
-                      value={isYearly ? "yearly" : "monthly"}
-                      onValueChange={(value) => setIsYearly(value === "yearly")}
-                    >
-                      <TabsList>
-                        <TabsTrigger value="monthly">Monthly</TabsTrigger>
-                        <TabsTrigger value="yearly">Yearly</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-
-                    {/* Seat count selector */}
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => setInitialSeatCount(Math.max(1, initialSeatCount - 1))}
-                        disabled={initialSeatCount <= 1}
-                      >
-                        <Minus className="size-3.5" />
-                      </Button>
-                      <div className="flex items-baseline gap-1.5 min-w-[60px] justify-center">
-                        <NumberFlow
-                          value={initialSeatCount}
-                          className="text-xl font-semibold"
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {initialSeatCount === 1 ? "seat" : "seats"}
-                        </span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => setInitialSeatCount(Math.min(100, initialSeatCount + 1))}
-                        disabled={initialSeatCount >= 100}
-                      >
-                        <Plus className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Plan cards */}
-                  <div className="grid md:grid-cols-3 gap-4">
-                    {plans.map((plan) => (
-                      <PlanCard
-                        key={plan.tier}
-                        plan={plan}
-                        isYearly={isYearly}
-                        seatCount={initialSeatCount}
-                        buttonText="Checkout"
-                        roundedButton={false}
-                        onGetStarted={(tier) => {
-                          setSelectedTier(tier);
-                          handleManageSubscription(
-                            tier as "BYOK" | "CODE_REVIEW" | "TRIAGE",
-                            isYearly ? "yearly" : "monthly",
-                            initialSeatCount
-                          );
-                        }}
-                        isLoading={manageSubscriptionMutation.isPending && selectedTier === plan.tier}
-                        disabled={manageSubscriptionMutation.isPending}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {subscriptionError && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
-          {subscriptionError}
-        </div>
-      )}
-
-      {/* Seat Management - show when subscription is active */}
-      {canManageBilling && subscription?.status === "ACTIVE" && (
-        <SeatManagementCard orgId={orgId} subscription={subscription} seats={seatsInfo} />
       )}
 
       <Card>
@@ -911,9 +621,6 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
           </CardContent>
         </Card>
       )}
-
-      {/* Billing History - shown for owners and admins */}
-      {(canManageBilling || canManageMembers) && <BillingHistoryCard user={user} orgId={orgId} />}
 
       {/* Leave Organization - shown for non-owners */}
       {currentOrg?.role !== "OWNER" && (

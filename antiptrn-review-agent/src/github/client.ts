@@ -1,6 +1,11 @@
 import type { Octokit } from "@octokit/rest";
 import type { PullRequest, PullRequestFile, Review } from "./types";
 
+interface FileWithSha {
+  content: string;
+  sha: string;
+}
+
 export class GitHubClient {
   constructor(private octokit: Octokit) {}
 
@@ -182,6 +187,100 @@ export class GitHubClient {
       user: c.user?.login || "unknown",
       body: c.body || "",
       id: c.id,
+    }));
+  }
+
+  async getFileWithSha(
+    owner: string,
+    repo: string,
+    path: string,
+    ref: string
+  ): Promise<FileWithSha | null> {
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref,
+      });
+
+      if (Array.isArray(data) || data.type !== "file") {
+        return null;
+      }
+
+      if (data.encoding === "base64" && data.content) {
+        return {
+          content: Buffer.from(data.content, "base64").toString("utf-8"),
+          sha: data.sha,
+        };
+      }
+
+      return null;
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "status" in error && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async createOrUpdateFile(
+    owner: string,
+    repo: string,
+    path: string,
+    content: string,
+    message: string,
+    branch: string,
+    fileSha?: string
+  ): Promise<{ sha: string }> {
+    const { data } = await this.octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path,
+      message,
+      content: Buffer.from(content).toString("base64"),
+      branch,
+      sha: fileSha,
+    });
+
+    return { sha: data.commit.sha ?? "" };
+  }
+
+  async getInstallationToken(): Promise<string | null> {
+    try {
+      // The octokit instance is already authenticated with installation auth
+      // We can get the token from the auth object
+      const auth = await this.octokit.auth() as { token?: string };
+      return auth.token || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getReviewComments(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<Array<{
+    id: number;
+    path: string;
+    line: number | null;
+    body: string;
+    user: string;
+  }>> {
+    const { data } = await this.octokit.rest.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      per_page: 100,
+    });
+
+    return data.map((c) => ({
+      id: c.id,
+      path: c.path,
+      line: c.line ?? c.original_line ?? null,
+      body: c.body,
+      user: c.user?.login || "unknown",
     }));
   }
 }

@@ -15,14 +15,17 @@ export function SettingsPage() {
   const { tab: tabParam } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
 
-  // Show Organization tab for team orgs, Billing tab for personal orgs
+  // Show Organization tab for team orgs, Billing tab for personal orgs and team org owners
   const isPersonalOrg = currentOrg?.isPersonal ?? false;
+  const isTeamOrgOwner = !isPersonalOrg && currentOrg?.role === "OWNER";
   const showOrganizationTab = !isPersonalOrg;
-  const showBillingTab = isPersonalOrg;
+  const showBillingTab = isPersonalOrg || isTeamOrgOwner;
 
   // Build valid tabs based on account type
   const validTabs: TabType[] = showOrganizationTab
-    ? ["account", "code-review", "organization"]
+    ? showBillingTab
+      ? ["account", "code-review", "organization", "billing"]
+      : ["account", "code-review", "organization"]
     : ["account", "code-review", "billing"];
 
   const activeTab: TabType =

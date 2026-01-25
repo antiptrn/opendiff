@@ -33,9 +33,14 @@ export const plans: Plan[] = [
       { name: "Unlimited repositories", included: true },
       { name: "Community support", included: true },
       {
-        name: "Triage mode",
+        name: "Comment responses",
         included: true,
-        tooltip: "Enables back-and-forth conversations on review comments.",
+        tooltip: "AI responds to your questions and discussions on review comments.",
+      },
+      {
+        name: "Auto-fix",
+        included: true,
+        tooltip: "Automatically fix validated issues, commit to PR branch, and resolve comments.",
       },
       {
         name: "Requires your API key",
@@ -57,9 +62,14 @@ export const plans: Plan[] = [
       { name: "10 repositories", included: true },
       { name: "Email support", included: true },
       {
-        name: "Triage mode",
+        name: "Comment responses",
+        included: true,
+        tooltip: "AI responds to your questions and discussions on review comments.",
+      },
+      {
+        name: "Auto-fix",
         included: false,
-        tooltip: "Enables back-and-forth conversations on review comments.",
+        tooltip: "Automatically fix validated issues, commit to PR branch, and resolve comments.",
       },
       { name: "Priority reviews", included: true },
       { name: "Custom review rules", included: true },
@@ -70,16 +80,21 @@ export const plans: Plan[] = [
     tier: "TRIAGE",
     monthlyPrice: 49,
     yearlyPrice: 490,
-    description: "For power users",
+    description: "Auto-fix issues directly in your PRs",
     monthlyReviewQuota: 250,
     popular: true,
     features: [
       { name: "Unlimited repositories", included: true },
       { name: "Priority support", included: true },
       {
-        name: "Triage mode",
+        name: "Comment responses",
         included: true,
-        tooltip: "Enables back-and-forth conversations on review comments.",
+        tooltip: "AI responds to your questions and discussions on review comments.",
+      },
+      {
+        name: "Auto-fix",
+        included: true,
+        tooltip: "Validates issues, applies fixes, commits to your PR branch, and resolves comments automatically.",
       },
       { name: "Priority reviews", included: true },
       { name: "Custom review rules", included: true },

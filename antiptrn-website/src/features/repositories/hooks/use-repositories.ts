@@ -129,9 +129,10 @@ export function useDeleteRepoSettings(token?: string, orgId?: string | null) {
     onSuccess: ({ owner, repo }) => {
       // Remove from cache
       queryClient.removeQueries({ queryKey: queryKeys.settings(owner, repo) });
-      // Invalidate stats and activated repos
+      // Invalidate stats, activated repos, and org repos
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       queryClient.invalidateQueries({ queryKey: ["activatedRepos"] });
+      queryClient.invalidateQueries({ queryKey: ["orgRepos"] });
     },
   });
 }
