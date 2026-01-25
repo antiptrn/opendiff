@@ -164,11 +164,11 @@ export class ReviewFormatter {
 
   private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
     const counts = this.countBySeverity(result.issues);
-    let summary = "## AI Code Review\n\n";
+    let summary = "## Review Summary\n\n";
     summary += `${result.summary}\n\n`;
 
     if (result.issues.length > 0) {
-      summary += "### Issues Found\n\n";
+      summary += "### Issues\n\n";
 
       if (counts.critical > 0) {
         summary += `- 🚨 **${counts.critical} critical** issue${counts.critical > 1 ? "s" : ""}\n`;
@@ -183,7 +183,7 @@ export class ReviewFormatter {
 
     // Include full details for issues that couldn't be shown as inline comments
     if (bodyOnlyIssues.length > 0) {
-      summary += "\n### Additional Issues (not in diff)\n\n";
+      summary += "\n### Not in diff\n\n";
       summary += "The following issues were found in code outside the changed lines:\n\n";
 
       for (const issue of bodyOnlyIssues) {
@@ -198,7 +198,7 @@ export class ReviewFormatter {
     }
 
     summary +=
-      "\n---\n*Reviewed by [antiptrn-review-agent](https://github.com/JuliusWallblom/antiptrn-review-agent)*";
+      "\n---\n*Reviewed by [antiptrn](https://antiptrn.com)*";
 
     return summary;
   }

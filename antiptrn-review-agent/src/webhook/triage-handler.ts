@@ -154,12 +154,10 @@ ${fix.explanation}`;
         botUsername
       );
 
-      // Post a summary comment for issues that were in the review body (not inline comments)
-      if (bodyOnly.fixed.length > 0 || bodyOnly.skipped.length > 0) {
-        const summaryBody = formatBodyOnlySummary(bodyOnly);
-        await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
-        console.log(`Posted summary for ${bodyOnly.fixed.length} fixed and ${bodyOnly.skipped.length} skipped body-only issues`);
-      }
+      // Always post a summary comment with triage results
+      const summaryBody = formatTriageSummary(result.fixedIssues, result.skippedIssues, bodyOnly);
+      await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
+      console.log(`Posted triage summary: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped`);
 
       // Note: The push will trigger a new review cycle via the 'synchronize' event.
       // If there are remaining issues, the next cycle will fix them.
@@ -310,25 +308,51 @@ async function replyToInlineComments(
   return bodyOnly;
 }
 
-function formatBodyOnlySummary(bodyOnly: BodyOnlyResult): string {
-  let body = "## 🔧 Auto-Fix Results (Additional Issues)\n\n";
-  body += "The following issues from the review body have been processed:\n\n";
+function formatTriageSummary(
+  fixedIssues: TriageResult["fixedIssues"],
+  skippedIssues: TriageResult["skippedIssues"],
+  bodyOnly: BodyOnlyResult
+): string {
+  let body = "## Remediation Summary\n\n";
 
-  if (bodyOnly.fixed.length > 0) {
+  // Summary counts
+  const totalFixed = fixedIssues.length;
+  const totalSkipped = skippedIssues.length;
+
+  if (totalFixed > 0 && totalSkipped === 0) {
+    body += `✅ **${totalFixed} issue${totalFixed > 1 ? "s" : ""} fixed automatically**\n\n`;
+  } else if (totalFixed === 0 && totalSkipped > 0) {
+    body += `⏭️ **${totalSkipped} issue${totalSkipped > 1 ? "s" : ""} could not be auto-fixed**\n\n`;
+  } else {
+    body += `✅ **${totalFixed} fixed** · ⏭️ **${totalSkipped} skipped**\n\n`;
+  }
+
+  // Fixed issues
+  if (totalFixed > 0) {
     body += "### ✅ Fixed\n\n";
-    for (const { issue, commitSha, explanation } of bodyOnly.fixed) {
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — Fixed in ${commitSha.slice(0, 7)}\n`;
-      body += `  - ${explanation}\n`;
+    for (const { issue, commitSha, explanation } of fixedIssues) {
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — \`${commitSha.slice(0, 7)}\`\n`;
+      if (explanation) {
+        body += `  > ${explanation}\n`;
+      }
     }
     body += "\n";
   }
 
-  if (bodyOnly.skipped.length > 0) {
+  // Skipped issues
+  if (totalSkipped > 0) {
     body += "### ⏭️ Skipped\n\n";
-    for (const { issue, reason } of bodyOnly.skipped) {
+    for (const { issue, reason } of skippedIssues) {
       body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
-      body += `  - ${reason}\n`;
+      body += `  > ${reason}\n`;
     }
+    body += "\n";
+  }
+
+  // Note about body-only issues if any
+  if (bodyOnly.fixed.length > 0 || bodyOnly.skipped.length > 0) {
+    const bodyOnlyCount = bodyOnly.fixed.length + bodyOnly.skipped.length;
+    body += `---\n*${bodyOnlyCount} issue${bodyOnlyCount > 1 ? "s were" : " was"} found outside the diff (see above for details)*\n`;
   }
 
   return body;
