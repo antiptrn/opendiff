@@ -48,7 +48,7 @@ export default function CreateOrganizationPage() {
     return () => {
       cleanupCurrentUrl();
     };
-  }, []);
+  }, [cleanupCurrentUrl]);
 
   // Show loading while checking auth
   if (isAuthLoading) {
