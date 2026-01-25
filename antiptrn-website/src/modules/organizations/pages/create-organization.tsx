@@ -221,6 +221,7 @@ export default function CreateOrganizationPage() {
                       size="sm"
                       variant="destructive"
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 p-0 rounded-full transition-colors hover:bg-destructive/90"
+                      aria-label="Remove logo"
                     >
                       <X className="size-3" />
                     </Button>
