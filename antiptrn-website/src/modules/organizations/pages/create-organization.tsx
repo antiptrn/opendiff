@@ -56,6 +56,19 @@ const logError = (errorType: SafeErrorType, error: unknown, context?: Record<str
   }
 };
 
+// Safe logging wrapper that provides fallback logging if the main logger fails
+const safeLogError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): void => {
+  try {
+    logError(errorType, error, context);
+  } catch (loggingError) {
+    // Fallback logging if the main logger fails - prevents silent failures
+    console.error(`[LOGGING_ERROR] Failed to log ${errorType}:`, {
+      originalError: error instanceof Error ? error.message : 'Unknown error',
+      loggingError: loggingError instanceof Error ? loggingError.message : 'Unknown logging error'
+    });
+  }
+};
+
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
@@ -150,7 +163,7 @@ export default function CreateOrganizationPage() {
       setAvatarFile(compressedFile);
       setAvatarPreview(newPreviewUrl);
     } catch (error) {
-      logError('IMAGE_COMPRESSION_FAILED', error, {
+      safeLogError('IMAGE_COMPRESSION_FAILED', error, {
         fileName: file.name,
         fileType: file.type
       });
@@ -201,7 +214,7 @@ export default function CreateOrganizationPage() {
           await api.upload(`/api/organizations/${newOrg.id}/avatar`, formData);
         } catch (avatarError) {
           // Log the avatar upload error
-          logError('AVATAR_UPLOAD_FAILED', avatarError);
+          safeLogError('AVATAR_UPLOAD_FAILED', avatarError);
           
           // Show user feedback about partial failure with continue button
           setError("Organization created successfully, but logo upload failed. You can upload it later from organization settings.");
@@ -215,7 +228,7 @@ export default function CreateOrganizationPage() {
       // Navigate to console - the query will be invalidated and refetched
       navigate("/console");
     } catch (err) {
-      logError('ORGANIZATION_CREATION_FAILED', err);
+      safeLogError('ORGANIZATION_CREATION_FAILED', err);
       setError(err instanceof Error ? err.message : "Failed to create organization");
     }
   };
