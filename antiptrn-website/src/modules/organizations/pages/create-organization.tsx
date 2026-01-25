@@ -33,14 +33,14 @@ export default function CreateOrganizationPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Cleanup avatarPreview URL on unmount
+  // Cleanup avatarPreview URL when it changes or on unmount
   useEffect(() => {
     return () => {
       if (avatarPreview) {
         URL.revokeObjectURL(avatarPreview);
       }
     };
-  }, []);
+  }, [avatarPreview]);
 
   // Show loading while checking auth
   if (isAuthLoading) {
