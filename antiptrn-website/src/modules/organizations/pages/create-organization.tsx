@@ -69,6 +69,7 @@ export default function CreateOrganizationPage() {
   const [error, setError] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Cleanup function to revoke the current URL if it exists
   const cleanupCurrentUrl = () => {
@@ -177,21 +178,44 @@ export default function CreateOrganizationPage() {
     }
 
     try {
+      // Create the organization first
       const newOrg = await createOrg({ name: name.trim() });
 
-      // Upload avatar if selected
+      // Upload avatar if selected - handle this separately
       if (avatarFile) {
-        const formData = new FormData();
-        formData.append("file", avatarFile);
-        await api.upload(`/api/organizations/${newOrg.id}/avatar`, formData);
+        setIsUploadingAvatar(true);
+        try {
+          const formData = new FormData();
+          formData.append("file", avatarFile);
+          await api.upload(`/api/organizations/${newOrg.id}/avatar`, formData);
+        } catch (avatarError) {
+          // Log the avatar upload error
+          logError('AVATAR_UPLOAD_FAILED', avatarError, {
+            organizationId: newOrg.id
+          }).catch(() => {});
+          
+          // Show user feedback about partial failure
+          setError("Organization created successfully, but logo upload failed. You can upload it later from organization settings.");
+          
+          // Wait a moment for user to see the message, then navigate
+          setTimeout(() => {
+            navigate("/console");
+          }, 3000);
+          return;
+        } finally {
+          setIsUploadingAvatar(false);
+        }
       }
 
       // Navigate to console - the query will be invalidated and refetched
       navigate("/console");
     } catch (err) {
+      logError('ORGANIZATION_CREATION_FAILED', err).catch(() => {});
       setError(err instanceof Error ? err.message : "Failed to create organization");
     }
   };
+
+  const isSubmitting = isCreating || isUploadingAvatar;
 
   return (
     <section className="min-h-screen flex items-center justify-center p-4">
@@ -260,7 +284,7 @@ export default function CreateOrganizationPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isCreating}
+                    disabled={isSubmitting}
                   >
                     <Upload className="size-4" />
                     {avatarPreview ? "Change" : "Upload"}
@@ -278,7 +302,7 @@ export default function CreateOrganizationPage() {
                 placeholder="Acme Inc."
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={isCreating}
+                disabled={isSubmitting}
                 autoFocus
               />
               <p className="text-sm text-muted-foreground">You can always change this later.</p>
@@ -286,9 +310,9 @@ export default function CreateOrganizationPage() {
           </CardContent>
           
           <CardFooter>
-            <Button type="submit" disabled={isCreating || !name.trim()} className="w-full">
-              {isCreating && <Loader2 className="size-4 animate-spin" />}
-              {isCreating ? "Creating..." : "Create organization"}
+            <Button type="submit" disabled={isSubmitting || !name.trim()} className="w-full">
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+              {isCreating ? "Creating..." : isUploadingAvatar ? "Uploading logo..." : "Create organization"}
             </Button>
           </CardFooter>
         </form>
