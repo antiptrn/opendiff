@@ -41,16 +41,17 @@ interface BillingTabProps {
  * Billing tab - shows subscription details, seat management (for teams), and billing history
  */
 export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
-  // Solo user billing hooks
-  const { currentSeat, hasSeat, subscription, seats, orgDetails } = useOrganization();
-  const { isLoading } = useBilling(user?.access_token, orgId);
+  // Organization data (subscription, quota, seats)
+  const { currentSeat, hasSeat, subscription, seats, orgDetails, quotaPool, isLoadingDetails } = useOrganization();
+  // Billing history (separate query, only used by BillingHistoryCard)
+  useBilling(user?.access_token, orgId);
   const cancelSubscription = useCancelSubscription(user?.access_token, orgId);
   const resubscribe = useResubscribe(user?.access_token, orgId);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   // Team billing hooks
   const { data: membersData } = useOrganizationMembers(orgId);
-  const quotaPool = membersData?.quotaPool || orgDetails?.quotaPool;
+  const teamQuotaPool = membersData?.quotaPool || orgDetails?.quotaPool;
   const seatsInfo = membersData?.seats || seats;
   const manageSubscriptionMutation = useManageSubscription(orgId);
   const cancelOrgSubscriptionMutation = useCancelOrgSubscription(orgId);
@@ -132,7 +133,29 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
             <CardDescription>Manage your team's subscription and seats</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {subscription?.status === "ACTIVE" ? (
+            {isLoadingDetails ? (
+              <dl className="text-sm">
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+                <Separator className="my-4" />
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+                <Separator className="my-4" />
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+                <Separator className="my-4" />
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              </dl>
+            ) : subscription?.status === "ACTIVE" ? (
               <>
                 <dl className="text-sm">
                   <div className="flex justify-between items-center">
@@ -170,20 +193,20 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
                     </>
                   )}
                 </dl>
-                {quotaPool && (
+                {teamQuotaPool && (
                   <div className="pt-4 border-t">
-                    {quotaPool.hasUnlimited || quotaPool.total === -1 ? (
+                    {teamQuotaPool.hasUnlimited || teamQuotaPool.total === -1 ? (
                       <p className="text-base">Unlimited reviews (BYOK)</p>
                     ) : (
                       <>
                         <p className="text-sm">
-                          {quotaPool.used} / {quotaPool.total} reviews used this cycle
+                          {teamQuotaPool.used} / {teamQuotaPool.total} reviews used this cycle
                         </p>
                         <div className="w-full bg-muted rounded-full h-2 mt-2">
                           <div
                             className="bg-primary h-2 rounded-full transition-all"
                             style={{
-                              width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%`,
+                              width: `${Math.min(100, (teamQuotaPool.used / teamQuotaPool.total) * 100)}%`,
                             }}
                           />
                         </div>
@@ -321,15 +344,12 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
       <Card>
         <CardHeader>
           <CardTitle>Subscription</CardTitle>
-          {!hasSubscription && (
-            <CardDescription
-            >
-              No subscription found
-            </CardDescription>
+          {!hasSubscription && !isLoadingDetails && (
+            <CardDescription>No subscription found</CardDescription>
           )}
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoadingDetails ? (
             <dl className="text-sm">
               <div className="flex justify-between">
                 <Skeleton className="h-4 w-16" />
@@ -392,7 +412,28 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
               )}
             </dl>
           )}
-          {!hasSubscription && !isLoading ? (
+          {hasSubscription && quotaPool && (
+            <div className="pt-4 border-t mt-4">
+              {quotaPool.hasUnlimited || quotaPool.total === -1 ? (
+                <p className="text-base">Unlimited reviews (BYOK)</p>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    {quotaPool.used} / {quotaPool.total} reviews used this cycle
+                  </p>
+                  <div className="w-full bg-muted rounded-full h-2 mt-2">
+                    <div
+                      className="bg-primary h-2 rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {!hasSubscription && !isLoadingDetails ? (
             <Button asChild>
               <Link to="/pricing">Upgrade</Link>
             </Button>

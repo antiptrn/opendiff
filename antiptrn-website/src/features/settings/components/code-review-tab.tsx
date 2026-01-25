@@ -1,5 +1,6 @@
 import { Button } from "@shared/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@shared/components/ui/card";
+import { Skeleton } from "@shared/components/ui/skeleton";
 import { ExternalLink } from "lucide-react";
 import type { useAuth } from "@features/auth";
 import { useOrganization } from "@modules/organizations";
@@ -14,7 +15,7 @@ interface CodeReviewTabProps {
  * Code Review settings tab - GitHub app, custom review rules
  */
 export function CodeReviewTab({ user, orgId }: CodeReviewTabProps) {
-  const { currentSeat, hasSeat } = useOrganization();
+  const { currentSeat, hasSeat, isLoadingDetails } = useOrganization();
   const tier = hasSeat ? currentSeat?.tier : null;
 
   // User has GitHub access if signed in with GitHub or linked their GitHub account
@@ -48,9 +49,18 @@ export function CodeReviewTab({ user, orgId }: CodeReviewTabProps) {
       )}
 
       {/* Custom Review Rules - available for all paid plans */}
-      {tier && <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />}
-
-      {!tier && (
+      {isLoadingDetails ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Custom Review Rules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-32 w-full" />
+          </CardContent>
+        </Card>
+      ) : tier ? (
+        <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />
+      ) : (
         <p className="text-sm text-muted-foreground">
           Custom review rules are available on paid plans.
         </p>
