@@ -22,7 +22,7 @@ import imageCompression from "browser-image-compression";
 type SafeErrorType = 'IMAGE_COMPRESSION_FAILED' | 'ORGANIZATION_CREATION_FAILED' | 'AVATAR_UPLOAD_FAILED';
 
 // Safe logging function that prevents sensitive information leakage
-const logError = async (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): Promise<void> => {
+const logError = (errorType: SafeErrorType, error: unknown, context?: Record<string, any>): void => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   
   // Predefined safe error messages to prevent sensitive data leakage
@@ -153,7 +153,7 @@ export default function CreateOrganizationPage() {
       logError('IMAGE_COMPRESSION_FAILED', error, {
         fileName: file.name,
         fileType: file.type
-      }).catch(() => {});
+      });
       setError("Failed to process image");
     }
   };
@@ -201,7 +201,7 @@ export default function CreateOrganizationPage() {
           await api.upload(`/api/organizations/${newOrg.id}/avatar`, formData);
         } catch (avatarError) {
           // Log the avatar upload error
-          logError('AVATAR_UPLOAD_FAILED', avatarError).catch(() => {});
+          logError('AVATAR_UPLOAD_FAILED', avatarError);
           
           // Show user feedback about partial failure with continue button
           setError("Organization created successfully, but logo upload failed. You can upload it later from organization settings.");
@@ -215,7 +215,7 @@ export default function CreateOrganizationPage() {
       // Navigate to console - the query will be invalidated and refetched
       navigate("/console");
     } catch (err) {
-      logError('ORGANIZATION_CREATION_FAILED', err).catch(() => {});
+      logError('ORGANIZATION_CREATION_FAILED', err);
       setError(err instanceof Error ? err.message : "Failed to create organization");
     }
   };
