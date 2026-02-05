@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "opendiff-assets": "workspace:*",
     "opendiff-components": "workspace:*",
     "opendiff-shared": "workspace:*",
     "@base-ui/react": "^1.1.0",

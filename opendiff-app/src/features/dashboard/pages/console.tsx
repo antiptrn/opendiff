@@ -90,7 +90,7 @@ export function ConsolePage() {
           )}
         </div>
         <Select value={chartMetric} onValueChange={(v) => setChartMetric(v as ChartMetric)}>
-          <SelectTrigger variant="ghost" className="w-fit -ml-4 -mb-2.5 text-lg !bg-transparent !ring-0 hover:text-muted-foreground">
+          <SelectTrigger size="lg" variant="ghost" className="w-fit -ml-4 -mb-2.5 !bg-transparent !ring-0 hover:text-muted-foreground">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -27,7 +27,7 @@ const selectTriggerVariants = cva(
         default: "h-12 gap-1.5 px-4.5 text-base",
         xs: "h-6 gap-1 px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
         sm: "h-9 gap-1.5 px-3 text-sm [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-12 gap-1.5 px-4.5 text-base",
+        lg: "h-12 gap-1.5 px-4.5 text-lg [&_svg:not([class*='size-'])]:size-4.5",
       },
     },
     defaultVariants: {

@@ -118,7 +118,7 @@ export function SoloSubscriptionCard({
             hasSubscription && (
               <div className="flex gap-2 mt-6">
                 <Button asChild>
-                  <Link to="/pricing">Change Plan</Link>
+                  <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Change Plan</Link>
                 </Button>
                 {cancelAtPeriodEnd ? (
                   <Button variant="outline" onClick={onReactivate}>
