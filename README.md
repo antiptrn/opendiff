@@ -24,7 +24,7 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 
 | Package | Description | Tech Stack |
 |---------|-------------|------------|
-| [`opendiff-bff`](./opendiff-bff) | Backend API with auth, billing, and data management | Hono, Prisma, PostgreSQL, S3, Resend |
+| [`opendiff-bff`](./opendiff-bff) | Backend API with auth, billing, and data management | Hono, Prisma, PostgreSQL, Cloudflare R2 |
 | [`opendiff-app`](./opendiff-app) | Main console dashboard and management UI | React 19, Vite, Tailwind CSS v4 |
 | [`opendiff-website`](./opendiff-website) | Marketing website and landing pages | React 19, Vite, Tailwind CSS v4 |
 | [`opendiff-review-agent`](./opendiff-review-agent) | GitHub webhook handler and AI code reviewer | Hono, Claude Agent SDK, Octokit |
@@ -70,7 +70,7 @@ cp opendiff-website/.env.example opendiff-website/.env
 cp opendiff-review-agent/.env.example opendiff-review-agent/.env
 ```
 
-#### Server Configuration
+#### Server Configuration (`opendiff-bff/.env`)
 
 ```env
 # Database
@@ -84,48 +84,103 @@ GOOGLE_CLIENT_SECRET=xxx
 MICROSOFT_CLIENT_ID=xxx
 MICROSOFT_CLIENT_SECRET=xxx
 
-# Payment Provider (polar or stripe)
-PAYMENT_PROVIDER=polar
-POLAR_ACCESS_TOKEN=xxx
-POLAR_WEBHOOK_SECRET=xxx
-
-# S3 Storage (for avatars, etc.)
-S3_BUCKET=xxx
-S3_REGION=xxx
-AWS_ACCESS_KEY_ID=xxx
-AWS_SECRET_ACCESS_KEY=xxx
-
-# Email (Resend)
-RESEND_API_KEY=xxx
-
-# URLs
-FRONTEND_URL=http://localhost:5173
-APP_URL=http://localhost:5174
-PORT=3001
-```
-
-#### App Configuration
-
-```env
-VITE_API_URL=http://localhost:3001
-```
-
-#### Website Configuration
-
-```env
-VITE_API_URL=http://localhost:3001
-```
-
-#### Review Agent Configuration
-
-```env
-# GitHub App Authentication
+# GitHub App credentials (same values as review agent — used for fetching PR metadata)
 GITHUB_APP_ID=xxx
 GITHUB_PRIVATE_KEY_PATH=/path/to/private-key.pem
+
+# URLs
+FRONTEND_URL=http://localhost:5174
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+PORT=3001
+
+# Payment Provider ("polar" or "stripe")
+PAYMENT_PROVIDER=polar
+
+# Polar (when PAYMENT_PROVIDER=polar)
+POLAR_ACCESS_TOKEN=polar_oat_xxx
+POLAR_WEBHOOK_SECRET=polar_whs_xxx
+POLAR_SERVER=sandbox
+POLAR_ORGANIZATION_ID=xxx
+POLAR_CODE_REVIEW_MONTHLY_PRODUCT_ID=xxx
+POLAR_CODE_REVIEW_YEARLY_PRODUCT_ID=xxx
+POLAR_TRIAGE_MONTHLY_PRODUCT_ID=xxx
+POLAR_TRIAGE_YEARLY_PRODUCT_ID=xxx
+POLAR_BYOK_MONTHLY_PRODUCT_ID=xxx
+POLAR_BYOK_YEARLY_PRODUCT_ID=xxx
+
+# Stripe (when PAYMENT_PROVIDER=stripe)
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_CODE_REVIEW_MONTHLY_PRICE_ID=price_xxx
+STRIPE_CODE_REVIEW_YEARLY_PRICE_ID=price_xxx
+STRIPE_TRIAGE_MONTHLY_PRICE_ID=price_xxx
+STRIPE_TRIAGE_YEARLY_PRICE_ID=price_xxx
+STRIPE_BYOK_MONTHLY_PRICE_ID=price_xxx
+STRIPE_BYOK_YEARLY_PRICE_ID=price_xxx
+
+# Review Agent Integration
+REVIEW_AGENT_API_KEY=xxx
+REVIEW_AGENT_WEBHOOK_URL=http://localhost:3000
+
+# Anthropic (AI summary generation)
+ANTHROPIC_API_KEY=sk-ant-xxx
+
+# Cloudflare R2 Storage
+R2_ACCOUNT_ID=xxx
+R2_ACCESS_KEY_ID=xxx
+R2_SECRET_ACCESS_KEY=xxx
+R2_BUCKET_NAME=opendiff
+R2_PUBLIC_URL=https://cdn.example.com
+```
+
+#### App Configuration (`opendiff-app/.env`)
+
+```env
+VITE_WEBSITE_URL=http://localhost:5173
+
+# Product/Price IDs (from Polar or Stripe dashboard)
+VITE_CODE_REVIEW_MONTHLY_PRODUCT_ID=xxx
+VITE_CODE_REVIEW_YEARLY_PRODUCT_ID=xxx
+VITE_TRIAGE_MONTHLY_PRODUCT_ID=xxx
+VITE_TRIAGE_YEARLY_PRODUCT_ID=xxx
+VITE_BYOK_MONTHLY_PRODUCT_ID=xxx
+VITE_BYOK_YEARLY_PRODUCT_ID=xxx
+```
+
+#### Website Configuration (`opendiff-website/.env`)
+
+```env
+VITE_API_URL=http://localhost:3001
+VITE_APP_URL=http://localhost:5174
+
+# Product/Price IDs (from Polar or Stripe dashboard)
+VITE_BYOK_MONTHLY_PRICE_ID=xxx
+VITE_BYOK_YEARLY_PRICE_ID=xxx
+VITE_CODE_REVIEW_MONTHLY_PRICE_ID=xxx
+VITE_CODE_REVIEW_YEARLY_PRICE_ID=xxx
+VITE_TRIAGE_MONTHLY_PRICE_ID=xxx
+VITE_TRIAGE_YEARLY_PRICE_ID=xxx
+```
+
+#### Review Agent Configuration (`opendiff-review-agent/.env`)
+
+```env
+# GitHub Webhook Secret
 GITHUB_WEBHOOK_SECRET=xxx
+
+# GitHub App Authentication (recommended)
+GITHUB_APP_ID=xxx
+GITHUB_PRIVATE_KEY_PATH=/path/to/private-key.pem
+
+# Or: Personal Access Token (alternative)
+# GITHUB_TOKEN=ghp_xxx
 
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-xxx
+
+# Bot configuration
+BOT_USERNAME=opendiff-bot
+BOT_TEAMS=
 
 # Server Integration
 SETTINGS_API_URL=http://localhost:3001
@@ -177,6 +232,7 @@ bun run start:dev      # Start all services concurrently
 bun run build          # Build website for production
 bun run build:app      # Build console app for production
 bun run build:agent    # Build review agent for production
+bun run start:prod     # Build all and start in production mode
 
 # Code Quality
 bun run lint           # Lint all packages
@@ -220,8 +276,6 @@ cd opendiff-website && bun run test
 cd opendiff-components && bun run test
 cd opendiff-shared && bun run test
 
-# With coverage
-bun run test:coverage
 ```
 
 ## Features
@@ -343,12 +397,18 @@ opendiff/
 │   │   ├── index.ts          # Main server entry
 │   │   ├── routes/           # API route handlers
 │   │   │   ├── account.ts
-│   │   │   ├── billing.ts
+│   │   │   ├── auth.ts
+│   │   │   ├── feedback.ts
 │   │   │   ├── internal.ts
+│   │   │   ├── notifications.ts
 │   │   │   ├── organizations.ts
 │   │   │   ├── repos.ts
 │   │   │   ├── reviews.ts
-│   │   │   └── skills.ts
+│   │   │   ├── settings.ts
+│   │   │   ├── skills.ts
+│   │   │   ├── stats.ts
+│   │   │   ├── subscriptions.ts
+│   │   │   └── webhooks.ts
 │   │   ├── auth.ts           # OAuth authentication
 │   │   ├── db.ts             # Prisma client
 │   │   └── payments/         # Polar/Stripe integration
@@ -362,8 +422,8 @@ opendiff/
 │       │   ├── billing/
 │       │   ├── dashboard/
 │       │   ├── notifications/
+│       │   ├── pull-requests/
 │       │   ├── repositories/
-│       │   ├── reviews/
 │       │   └── settings/
 │       ├── components/       # App-specific components
 │       └── main.tsx          # App entry point
@@ -401,11 +461,14 @@ opendiff/
 │
 ├── opendiff-assets/          # Shared Static Assets
 │   └── public/
-│       ├── typefaces/        # Font files (Saans, Interphases, etc.)
+│       ├── typefaces/        # Font files (Saans)
 │       ├── icons/            # OAuth provider icons
 │       └── icon.svg          # Favicon
 │
-├── scripts/                  # Build and deployment scripts
+├── scripts/                  # Operations scripts
+│   ├── start.sh                 # Start all services (dev or prod mode)
+│   ├── stop.sh                  # Stop all running services by port
+│   └── deploy-webhook.ts        # Webhook listener for auto-deploy
 ├── biome.json                # Linting configuration
 └── package.json              # Workspace configuration
 ```
@@ -424,6 +487,8 @@ opendiff/
 - **ReviewFix** - Automated fix tracking
 - **Skill** - User-defined review instructions
 - **SkillResource** - Additional resources attached to skills
+- **Feedback** - User feedback submissions
+- **Notification** - In-app notifications
 - **AuditLog** - Security audit trail
 
 See [`opendiff-bff/prisma/schema.prisma`](./opendiff-bff/prisma/schema.prisma) for the complete schema.
