@@ -15,7 +15,7 @@ export function ChartTooltip({ active, payload, label, labelFormatter }: ChartTo
       <p className="text-sm font-medium text-foreground">{displayLabel}</p>
       <div className="mt-1 space-y-1.5">
         {payload.map((entry) => (
-          <div key={entry.dataKey} className="flex items-center gap-2 text-sm">
+          <div key={entry.dataKey} className="flex items-center gap-1.5 text-sm">
             <span className="size-3 rounded-full border-2" style={{ borderColor: entry.color }} />
             <span className="text-foreground text-xs">{entry.name}</span>
             <span className="ml-auto text-xs pl-6 font-medium text-foreground tabular-nums">{entry.value}</span>

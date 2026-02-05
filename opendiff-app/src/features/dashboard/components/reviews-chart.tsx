@@ -9,12 +9,13 @@ import {
 import { Skeleton } from "opendiff-components/components/ui/skeleton";
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import { useReviewsOverTime, type TimeInterval } from "../hooks/use-reviews-over-time";
+import { useReviewsOverTime, type ChartMetric, type TimeInterval } from "../hooks/use-reviews-over-time";
 import { ChartTooltip } from "./chart-tooltip";
 
 interface ReviewsChartProps {
   token?: string;
   orgId?: string | null;
+  metric?: ChartMetric;
 }
 
 function formatRangeLabel(startIso: string, endIso: string): string {
@@ -29,9 +30,9 @@ function formatRangeLabel(startIso: string, endIso: string): string {
   return `${fmt(start, !sameYear)} – ${fmt(end, true)}`;
 }
 
-export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
+export function ReviewsChart({ token, orgId, metric = "reviews" }: ReviewsChartProps) {
   const [timeInterval, setTimeInterval] = useState<TimeInterval>("day");
-  const { data, isLoading } = useReviewsOverTime(token, orgId, timeInterval);
+  const { data, isLoading } = useReviewsOverTime(token, orgId, timeInterval, metric);
 
   const currentLabel = data ? formatRangeLabel(data.currentStart, data.currentEnd) : "";
   const previousLabel = data ? formatRangeLabel(data.previousStart, data.previousEnd) : "";
@@ -80,8 +81,8 @@ export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
       <CardContent className="px-2">
         {isLoading ? (
           <>
-            <Skeleton muted className="mb-6 ml-4 h-4 w-64 rounded-lg" />
-            <Skeleton muted className="h-[300px] w-full rounded-xl" />
+            <Skeleton muted className="mb-6 ml-4 h-5 w-64 rounded-lg" />
+            <Skeleton muted className="h-[300px] w-full rounded-3xl" />
           </>
         ) : (
           <>
@@ -91,7 +92,7 @@ export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
                 <span className="text-muted-foreground">{currentLabel}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="size-3.5 rounded-full border-2 border-muted" />
+                <span className="size-3.5 rounded-full border-2 border-[var(--chart-grid)]" />
                 <span className="text-muted-foreground">{previousLabel}</span>
               </div>
             </div>
@@ -107,7 +108,7 @@ export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
                   <CartesianGrid
                     strokeDasharray="3 8"
                     horizontal={false}
-                    stroke="var(--color-border)"
+                    stroke="var(--chart-grid)"
                   />
                   <XAxis
                     dataKey="index"
@@ -124,7 +125,7 @@ export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
                   />
 
                   <Tooltip
-                    cursor={{ stroke: "var(--color-border)", strokeWidth: 1 }}
+                    cursor={{ stroke: "var(--chart-grid)", strokeWidth: 1 }}
                     content={
                       <ChartTooltip
                         labelFormatter={(index) => chartData[Number(index)]?.label || ""}
@@ -135,7 +136,7 @@ export function ReviewsChart({ token, orgId }: ReviewsChartProps) {
                     type="monotone"
                     dataKey="previous"
                     name={previousLabel}
-                    stroke="var(--muted)"
+                    stroke="var(--chart-grid)"
                     strokeWidth={1.5}
                     strokeDasharray="4 3"
                     fillOpacity={0}

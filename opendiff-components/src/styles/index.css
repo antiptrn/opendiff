@@ -117,6 +117,7 @@
 	--chart-3: oklch(0.546 0.245 262.881);
 	--chart-4: oklch(0.488 0.243 264.376);
 	--chart-5: oklch(0.424 0.199 265.638);
+	--chart-grid: oklch(0.708 0 0);
 	--radius: 0.65rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -146,12 +147,13 @@
 	--destructive: oklch(0.704 0.191 22.216);
 	--border: oklch(0.3446 0 0);
 	--input: oklch(0.1913 0 0);
-	--ring: oklch(0.556 0 0);
+	--ring: oklch(0.3446 0 0);
 	--chart-1: oklch(0.809 0.105 251.813);
 	--chart-2: oklch(0.623 0.214 259.815);
 	--chart-3: oklch(0.546 0.245 262.881);
 	--chart-4: oklch(0.488 0.243 264.376);
 	--chart-5: oklch(0.424 0.199 265.638);
+	--chart-grid: var(--border);
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);
@@ -205,6 +207,15 @@
 	--radius-2xl: calc(var(--radius) + 8px);
 	--radius-3xl: calc(var(--radius) + 12px);
 	--radius-4xl: calc(var(--radius) + 16px);
+}
+
+@keyframes shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+@utility animate-shimmer {
+	animation: shimmer 2s ease-in-out infinite;
 }
 
 @layer base {

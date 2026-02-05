@@ -1,6 +1,6 @@
 // Types
 export type { Stats } from "./types";
-export type { TimeInterval, ReviewsOverTimeData } from "./hooks/use-reviews-over-time";
+export type { TimeInterval, ChartMetric, ReviewsOverTimeData } from "./hooks/use-reviews-over-time";
 
 // Hooks
 export { useStats } from "./hooks/use-stats";

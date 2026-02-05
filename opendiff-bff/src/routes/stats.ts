@@ -216,6 +216,7 @@ statsRoutes.get("/reviews-over-time", async (c) => {
   const token = authHeader.slice(7);
   const orgId = getOrgIdFromHeader(c);
   const interval = c.req.query("interval") || "day"; // hour, day, week, month, year
+  const metric = c.req.query("metric") || "reviews"; // reviews, issues, fixes
   const providerUser = await getUserFromToken(token);
 
   if (!providerUser) {
@@ -317,22 +318,40 @@ statsRoutes.get("/reviews-over-time", async (c) => {
       ? { organizationId: repoFilter.organizationId }
       : undefined;
 
-    // Fetch reviews for current and previous periods in parallel
+    // Fetch records for current and previous periods in parallel
+    const fetchPeriodData = (gte: Date, lt: Date) => {
+      switch (metric) {
+        case "issues":
+          return prisma.reviewComment.findMany({
+            where: {
+              createdAt: { gte, lt },
+              review: { repositorySettings: repoRelationFilter },
+            },
+            select: { createdAt: true },
+          });
+        case "fixes":
+          return prisma.reviewFix.findMany({
+            where: {
+              status: "ACCEPTED",
+              createdAt: { gte, lt },
+              comment: { review: { repositorySettings: repoRelationFilter } },
+            },
+            select: { createdAt: true },
+          });
+        default: // reviews
+          return prisma.review.findMany({
+            where: {
+              createdAt: { gte, lt },
+              repositorySettings: repoRelationFilter,
+            },
+            select: { createdAt: true },
+          });
+      }
+    };
+
     const [currentReviews, previousReviews] = await Promise.all([
-      prisma.review.findMany({
-        where: {
-          createdAt: { gte: currentStart, lte: now },
-          repositorySettings: repoRelationFilter,
-        },
-        select: { createdAt: true },
-      }),
-      prisma.review.findMany({
-        where: {
-          createdAt: { gte: previousStart, lt: previousEnd },
-          repositorySettings: repoRelationFilter,
-        },
-        select: { createdAt: true },
-      }),
+      fetchPeriodData(currentStart, now),
+      fetchPeriodData(previousStart, previousEnd),
     ]);
 
     // Group by sub-interval

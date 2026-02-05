@@ -8,8 +8,10 @@ function Skeleton({
   return (
     <div
       className={cn(
-        "animate-pulse rounded-md",
-        muted ? "bg-background dark:bg-muted" : "bg-input dark:bg-card",
+        "animate-shimmer rounded-md bg-[length:200%_100%]",
+        muted
+          ? "bg-[linear-gradient(90deg,var(--color-background)_0%,var(--color-muted)_50%,var(--color-background)_100%)] dark:bg-[linear-gradient(90deg,var(--color-muted)_0%,var(--color-accent)_50%,var(--color-muted)_100%)]"
+          : "bg-[linear-gradient(90deg,var(--color-input)_0%,var(--color-muted)_50%,var(--color-input)_100%)] dark:bg-[linear-gradient(90deg,var(--color-card)_0%,var(--color-accent)_50%,var(--color-card)_100%)]",
         className
       )}
       {...props}
