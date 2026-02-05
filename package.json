@@ -1,0 +1,32 @@
+{
+  "name": "opendiff",
+  "private": true,
+  "workspaces": [
+    "opendiff-*"
+  ],
+  "scripts": {
+    "dev:server": "bun run --cwd opendiff-bff dev",
+    "dev:website": "bun run --cwd opendiff-website dev",
+    "dev:agent": "bun run --cwd opendiff-review-agent dev",
+    "dev:app": "bun run --cwd opendiff-app dev",
+    "start:dev": "concurrently \"bun run dev:server\" \"bun run dev:website\" \"bun run dev:app\" \"bun run dev:agent\"",
+    "start:prod": "bun run build && bun run build:app && bun run build:agent && concurrently \"bun run --cwd opendiff-bff start\" \"bun run --cwd opendiff-website preview\" \"bun run --cwd opendiff-app preview\" \"bun run --cwd opendiff-review-agent start\"",
+    "start:dev:nohup": "bash scripts/start.sh dev",
+    "start:prod:nohup": "bash scripts/start.sh prod",
+    "stop": "bash scripts/stop.sh",
+    "build": "bun run --cwd opendiff-website build",
+    "build:app": "bun run --cwd opendiff-app build",
+    "build:agent": "bun run --cwd opendiff-review-agent build",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --fix .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "test": "bun run --cwd opendiff-components test:run && bun run --cwd opendiff-shared test:run && bun run --cwd opendiff-app test:run && bun run --cwd opendiff-website test:run"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "hamburger-react": "^2.5.2"
+  }
+}

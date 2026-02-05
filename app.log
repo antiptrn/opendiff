@@ -1,0 +1,13 @@
+nohup: ignoring input
+$ bun run --cwd opendiff-app dev
+$ vite
+
+  VITE v7.3.1  ready in 435 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: http://192.168.0.208:5174/
+  ➜  Network: http://100.99.22.76:5174/
+6:25:51 PM [vite] .env changed, restarting server...
+6:25:51 PM [vite] server restarted.
+error: script "dev" exited with code 143
+error: script "dev:app" exited with code 143
