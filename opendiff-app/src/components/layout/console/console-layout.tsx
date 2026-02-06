@@ -112,6 +112,14 @@ export function ConsoleLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  // If token is expired/invalid, log out and redirect to login
+  // Must check before the loading guard — a 401 leaves currentOrgId null,
+  // which makes waitingForOrgs true and traps us on the spinner forever.
+  if (isUnauthorized) {
+    logout();
+    return <Navigate to="/login" replace />;
+  }
+
   // Wait for org data - check both loading states AND if we need data we don't have yet
   // The gap between query enabled and isLoading=true causes a brief flash without this
   // Also wait if we have no currentOrgId yet (orgs still loading/computing)
@@ -123,12 +131,6 @@ export function ConsoleLayout() {
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
       </div>
     );
-  }
-
-  // If token is expired/invalid, log out and redirect to login
-  if (isUnauthorized) {
-    logout();
-    return <Navigate to="/login" replace />;
   }
 
   // Check onboarding from user object (stored in database)

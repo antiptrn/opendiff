@@ -8,86 +8,17 @@
 
 @font-face {
 	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-Light.ttf") format("truetype");
-	font-weight: 300;
-	font-style: normal;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-LightItalic.ttf") format("truetype");
-	font-weight: 300;
-	font-style: italic;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-Regular.ttf") format("truetype");
+	src: url("/typefaces/saans/Saans-Regular.woff2") format("woff2");
 	font-weight: 400;
 	font-style: normal;
 	font-display: swap;
 }
+
 @font-face {
 	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-RegularItalic.ttf") format("truetype");
-	font-weight: 400;
-	font-style: italic;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-Medium.ttf") format("truetype");
+	src: url("/typefaces/saans/Saans-Medium.woff2") format("woff2");
 	font-weight: 500;
 	font-style: normal;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-MediumItalic.ttf") format("truetype");
-	font-weight: 500;
-	font-style: italic;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-SemiBold.ttf") format("truetype");
-	font-weight: 600;
-	font-style: normal;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-SemiBoldItalic.ttf") format("truetype");
-	font-weight: 600;
-	font-style: italic;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-Bold.ttf") format("truetype");
-	font-weight: 700;
-	font-style: normal;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-BoldItalic.ttf") format("truetype");
-	font-weight: 700;
-	font-style: italic;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-Heavy.ttf") format("truetype");
-	font-weight: 900;
-	font-style: normal;
-	font-display: swap;
-}
-@font-face {
-	font-family: "Saans";
-	src: url("/typefaces/saans/Saans-TRIAL-HeavyItalic.ttf") format("truetype");
-	font-weight: 900;
-	font-style: italic;
 	font-display: swap;
 }
 
@@ -145,7 +76,7 @@
 	--accent: oklch(0.371 0 0);
 	--accent-foreground: oklch(0.985 0 0);
 	--destructive: oklch(0.704 0.191 22.216);
-	--border: oklch(0.3446 0 0);
+	--border: oklch(0.2465 0 0);
 	--input: oklch(0.1913 0 0);
 	--ring: oklch(0.3446 0 0);
 	--chart-1: oklch(0.809 0.105 251.813);

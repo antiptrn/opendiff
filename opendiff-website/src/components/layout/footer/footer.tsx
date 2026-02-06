@@ -9,8 +9,8 @@ const footerLinks = [
 
 export function Footer() {
   return (
-    <footer className="relative z-10 py-16 w-full">
-      <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4 px-4 w-full">
+    <footer className="relative z-10 py-8 w-full">
+      <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-5.5 px-4 w-full">
         {footerLinks.map((link) => (
           <div key={link.href}>
             <Link

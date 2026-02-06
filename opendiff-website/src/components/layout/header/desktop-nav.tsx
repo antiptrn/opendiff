@@ -11,15 +11,16 @@ export function DesktopNav() {
   return (
     <nav
       ref={navRef}
-      className="relative w-full hidden md:flex items-start px-3 gap-4"
+      className="pointer-events-none absolute left-0 right-0 w-full hidden md:flex items-center justify-center px-3 gap-4"
       onMouseLeave={handleMouseLeave}
     >
       {DESKTOP_NAV_LINKS.map((link) => (
         <Button
           key={link.href}
+          size="sm"
           onClick={() => navigate(link.href)}
           variant="ghost"
-          className="text-muted-foreground"
+          className="text-muted-foreground pointer-events-auto"
         >
           {link.label}
           {link.badge && <Badge variant="secondary">{link.badge}</Badge>}

@@ -34,7 +34,7 @@ export function ConsolePage() {
                     <div className="flex flex-col items-start gap-4">
                       <div className="flex flex-col gap-3 items-start">
                         <Skeleton muted className="h-6 mb-2 w-12 rounded-lg" />
-                        <p className="text-base font-medium text-foreground">{label}</p>
+                        <p className="text-base font-normal text-foreground">{label}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -48,7 +48,7 @@ export function ConsolePage() {
                   <div className="flex flex-col items-start gap-4">
                     <div className="flex flex-col gap-3 items-start">
                       <p className="text-2xl font-medium">{stats.connectedRepos}</p>
-                      <p className="text-base font-medium text-foreground">Repositories</p>
+                      <p className="text-base font-normal text-foreground">Repositories</p>
                     </div>
                   </div>
                 </CardContent>
@@ -59,7 +59,7 @@ export function ConsolePage() {
                   <div className="flex flex-col items-start gap-4">
                     <div className="flex flex-col gap-3 items-start">
                       <p className="text-2xl font-medium">{stats.reviewCount}</p>
-                      <p className="text-base font-medium text-foreground">Reviews Completed</p>
+                      <p className="text-base font-normal text-foreground">Reviews Completed</p>
                     </div>
                   </div>
                 </CardContent>
@@ -70,7 +70,7 @@ export function ConsolePage() {
                   <div className="flex flex-col items-start gap-4">
                     <div className="flex flex-col gap-3 items-start">
                       <p className="text-2xl font-medium">{stats.issuesFound}</p>
-                      <p className="text-base font-medium text-foreground">Issues Found</p>
+                      <p className="text-base font-normal text-foreground">Issues Found</p>
                     </div>
                   </div>
                 </CardContent>
@@ -81,7 +81,7 @@ export function ConsolePage() {
                   <div className="flex flex-col items-start gap-4">
                     <div className="flex flex-col gap-3 items-start">
                       <p className="text-2xl font-medium">{stats.issuesFixed}</p>
-                      <p className="text-base font-medium text-foreground">Issues Fixed</p>
+                      <p className="text-base font-normal text-foreground">Issues Fixed</p>
                     </div>
                   </div>
                 </CardContent>
