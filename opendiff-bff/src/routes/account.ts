@@ -197,7 +197,14 @@ accountRoutes.delete("/account", async (c) => {
       }
     }
 
-    // Delete all organizations the user owns (cascades to members, invites, repo settings, audit logs)
+    // Delete reviews linked to owned organizations (onDelete: SetNull would orphan them)
+    if (ownedOrgIds.length > 0) {
+      await prisma.review.deleteMany({
+        where: { organizationId: { in: ownedOrgIds } },
+      });
+    }
+
+    // Delete all organizations the user owns (cascades to members, invites, repo settings, notifications)
     if (ownedOrgIds.length > 0) {
       await prisma.organization.deleteMany({
         where: { id: { in: ownedOrgIds } },
@@ -208,6 +215,15 @@ accountRoutes.delete("/account", async (c) => {
     // Delete remaining user-specific data
     await prisma.auditLog.deleteMany({
       where: { userId: user.id },
+    });
+
+    await prisma.feedback.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Clear invites sent by this user to non-owned orgs (no onDelete on invitedById)
+    await prisma.organizationInvite.deleteMany({
+      where: { invitedById: user.id },
     });
 
     await prisma.repositorySettings.deleteMany({
