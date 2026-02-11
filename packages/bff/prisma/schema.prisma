@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ULTRA
+  SELF_SUFFICIENT
+}
+
+enum SubscriptionStatus {
+  INACTIVE
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum AccountType {
+  SOLO
+  TEAM
+}
+
+enum FixStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum NotificationType {
+  REVIEW_STARTED
+  REVIEW_COMPLETED
+  FIX_APPLIED
+  FIX_FAILED
+  REPO_ADDED
+}
+
+model User {
+  id          String  @id @default(cuid())
+  githubId    Int?    @unique
+  googleId    String? @unique
+  microsoftId String? @unique
+  login       String
+  name        String?
+  email       String? @unique
+  avatarUrl   String?
+
+  // GitHub token for repo access (stored for Google-auth users who link GitHub)
+  githubAccessToken    String?
+  githubRefreshToken   String?  // Only used if GitHub App has expiring tokens enabled
+
+  // OAuth refresh tokens for automatic token renewal
+  googleRefreshToken    String?
+  microsoftRefreshToken String?
+
+  // Onboarding
+  accountType          AccountType?
+  onboardingCompletedAt DateTime?
+  personalOrgId        String?      // The org created for solo users during onboarding
+
+  // Legacy subscription fields (kept for migration, will be removed later)
+  subscriptionTier      SubscriptionTier?
+  subscriptionStatus    SubscriptionStatus?
+  subscriptionId        String?            @unique @map("polarSubscriptionId")
+  productId             String?            @map("polarProductId")
+  customerId            String?            @map("polarCustomerId")
+  subscriptionExpiresAt DateTime?
+  cancelAtPeriodEnd     Boolean?
+  reviewsUsedThisCycle  Int?
+  tokensUsedThisCycle   BigInt?
+  anthropicApiKey       String?
+  customReviewRules     String?
+
+  // Relations
+  memberships OrganizationMember[]
+  invitesSent OrganizationInvite[]
+  auditLogs   AuditLog[]
+  feedback    Feedback[]
+  skills      Skill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organization {
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  avatarUrl String?
+  isPersonal Boolean @default(false)  // True for solo user's auto-created org
+
+  // Subscription (quantity-based, covers all seats)
+  subscriptionTier      SubscriptionTier?
+  subscriptionStatus    SubscriptionStatus?
+  subscriptionId        String?              @unique @map("polarSubscriptionId")
+  productId             String?              @map("polarProductId")
+  subscriptionExpiresAt DateTime?
+  cancelAtPeriodEnd     Boolean              @default(false)
+  seatCount             Int                  @default(0)
+
+  // Shared org settings
+  reviewsUsedThisCycle  Int                @default(0)
+  tokensUsedThisCycle   BigInt             @default(0)
+  anthropicApiKey       String?
+  customReviewRules     String?
+  // Business info (for invoicing)
+  isRegisteredBusiness  Boolean            @default(false)
+  businessName          String?
+  taxVatId              String?
+
+  // Relations
+  members            OrganizationMember[]
+  invites            OrganizationInvite[]
+  repositorySettings RepositorySettings[]
+  reviews            Review[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrganizationRole @default(MEMBER)
+
+  // Seat assignment (subscription is org-level, this just tracks who has a seat)
+  hasSeat Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model OrganizationInvite {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String?
+  token          String           @unique @default(cuid())
+  role           OrganizationRole @default(MEMBER)
+  status         InviteStatus     @default(PENDING)
+  invitedById    String
+  invitedBy      User             @relation(fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([token])
+  @@index([email])
+}
+
+model RepositorySettings {
+  id                String        @id @default(cuid())
+  githubRepoId      BigInt?       // Stable GitHub repo ID (survives renames)
+  owner             String        // Keep for lookups
+  repo              String        // Keep for lookups
+  enabled           Boolean        @default(true)
+  triageEnabled     Boolean        @default(true)
+  autofixEnabled    Boolean        @default(true)
+  sensitivity       Int            @default(50) // 0-100 scale for review strictness
+  customReviewRules String?
+  organizationId    String?
+  organization      Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enabledById       String?
+
+  reviews           Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([owner, repo])
+  @@index([organizationId])
+  @@index([githubRepoId])
+}
+
+model Review {
+  id                   String              @id @default(cuid())
+  repositorySettingsId String?
+  repositorySettings   RepositorySettings? @relation(fields: [repositorySettingsId], references: [id], onDelete: SetNull)
+  pullNumber           Int
+  reviewType           String
+  reviewId             BigInt?
+  commentId            BigInt?
+  organizationId       String?
+  organization         Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  tokensUsed           BigInt?
+  summary              String?
+  summaryStatus        Int                 @default(0) // 0 = not started, 1 = generating/done
+  fileTitles           Json?               // Record<string, string> mapping file path → AI title
+  fileTitlesStatus     Int                 @default(0) // 0 = not started, 1 = generating/done
+  comments             ReviewComment[]
+  notifications        Notification[]
+  createdAt            DateTime            @default(now())
+
+  @@index([repositorySettingsId])
+  @@index([organizationId])
+}
+
+model ReviewComment {
+  id              String      @id @default(cuid())
+  reviewId        String
+  review          Review      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  githubCommentId BigInt?
+  body            String
+  path            String?
+  line            Int?
+  side            String?
+  fix             ReviewFix?
+  createdAt       DateTime    @default(now())
+
+  @@index([reviewId])
+}
+
+model ReviewFix {
+  id         String      @id @default(cuid())
+  commentId  String      @unique
+  comment    ReviewComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  status     FixStatus   @default(PENDING)
+  diff       String?
+  commitSha  String?
+  summary    String?
+  acceptedAt DateTime?
+  rejectedAt DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  target         String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  message   String
+  page      String?  // The page the feedback was submitted from
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Skill {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String          @db.VarChar(100)
+  description String
+  content     String          // Full SKILL.md body (without frontmatter)
+  resources   SkillResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model SkillResource {
+  id       String @id @default(cuid())
+  skillId  String
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  path     String @db.VarChar(500) // Relative path, e.g. scripts/lint.sh
+  content  String                  // File content (text files only)
+
+  createdAt DateTime @default(now())
+
+  @@index([skillId])
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  title          String
+  body           String
+  reviewId       String?
+  review         Review?          @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, readAt])
+  @@index([organizationId, createdAt])
+}

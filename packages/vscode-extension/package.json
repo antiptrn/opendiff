@@ -1,0 +1,67 @@
+{
+  "name": "vscode-extension",
+  "displayName": "OpenDiff",
+  "description": "Review local code changes with AI before pushing",
+  "version": "0.1.0",
+  "publisher": "opendiff",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "opendiff.reviewChanges",
+        "title": "Review Local Changes",
+        "icon": "$(search-fuzzy)",
+        "category": "OpenDiff"
+      }
+    ],
+    "views": {
+      "scm": [
+        {
+          "id": "opendiff.reviewPanel",
+          "name": "OpenDiff",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OpenDiff",
+      "properties": {
+        "opendiff.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3001",
+          "description": "URL of the OpenDiff BFF server"
+        },
+        "opendiff.sensitivity": {
+          "type": "number",
+          "default": 50,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Review sensitivity (0 = lenient, 100 = strict)"
+        },
+        "opendiff.baseBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Base branch for branch diff comparison"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0"
+  }
+}

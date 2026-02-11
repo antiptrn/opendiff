@@ -1,0 +1,50 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      DEPLOY_DIR: /home/j/developer/opendiff
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install (for checks)
+        run: bun install
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Pull latest
+        run: cd $DEPLOY_DIR && git pull origin main
+
+      - name: Install dependencies
+        run: cd $DEPLOY_DIR && bun install
+
+      - name: Generate Prisma client
+        run: cd $DEPLOY_DIR/packages/bff && bunx prisma generate
+
+      - name: Run migrations
+        run: cd $DEPLOY_DIR/packages/bff && bunx prisma migrate deploy
+
+      - name: Build
+        run: |
+          cd $DEPLOY_DIR
+          bun run --cwd packages/website build
+          bun run --cwd packages/app build
+          bun run --cwd packages/review-agent build
+
+      - name: Restart services
+        env:
+          RUNNER_TRACKING_ID: ""
+        run: |
+          cd $DEPLOY_DIR
+          bash scripts/stop.sh
+          bash scripts/start.sh prod --skip-build

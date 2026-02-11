@@ -1,0 +1,21 @@
+nohup: ignoring input
+$ vite
+Port 5174 is in use, trying another one...
+
+  VITE v7.3.1  ready in 419 ms
+
+  ➜  Local:   http://localhost:5175/
+  ➜  Network: http://192.168.0.208:5175/
+  ➜  Network: http://100.99.22.76:5175/
+6:07:21 PM [vite] vite.config.ts changed, restarting server...
+6:07:21 PM [vite] server restarted.
+6:08:44 PM [vite] .env changed, restarting server...
+6:08:44 PM [vite] server restarted.
+6:08:45 PM [vite] vite.config.ts changed, restarting server...
+6:08:45 PM [vite] server restarted.
+6:25:51 PM [vite] .env changed, restarting server...
+6:25:51 PM [vite] server restarted.
+9:36:13 PM [vite] (client) page reload index.html
+9:45:18 PM [vite] vite.config.ts changed, restarting server...
+9:45:18 PM [vite] server restarted.
+error: script "dev" was terminated by signal SIGHUP (Terminal hung up)
