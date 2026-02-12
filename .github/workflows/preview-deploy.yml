@@ -121,6 +121,9 @@ jobs:
 
       - name: Notify Slack
         if: always()
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           if [ "${{ job.status }}" = "success" ]; then
             EMOJI=":white_check_mark:"
@@ -131,8 +134,11 @@ jobs:
             STATUS="failed"
             URLS=""
           fi
+          # Sanitize untrusted inputs for JSON embedding
+          SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
+          SAFE_ACTOR=$(printf '%s' "$GH_ACTOR" | jq -Rs .)
           curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"${EMOJI} *Preview PR #${PR_NUMBER} ${STATUS}*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\n• By: ${{ github.actor }}${URLS}\"
+            --data-raw "{
+              \"text\": \"${EMOJI} *Preview PR #${PR_NUMBER} ${STATUS}*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${SAFE_TITLE}>\n• By: ${SAFE_ACTOR}${URLS}\"
             }"

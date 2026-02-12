@@ -49,6 +49,8 @@ jobs:
 
       - name: Notify Slack
         if: always()
+        env:
+          GH_ACTOR: ${{ github.actor }}
         run: |
           if [ "${{ job.status }}" = "success" ]; then
             EMOJI=":white_check_mark:"
@@ -57,8 +59,10 @@ jobs:
             EMOJI=":x:"
             STATUS="failed"
           fi
+          SAFE_ACTOR=$(printf '%s' "$GH_ACTOR" | jq -Rs .)
+          SAFE_MSG=$(cd $DEPLOY_DIR && git log -1 --pretty=%s | jq -Rs .)
           curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"${EMOJI} *Production deploy ${STATUS}*\n• Commit: <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|$(echo '${{ github.sha }}' | cut -c1-7)>\n• By: ${{ github.actor }}\n• Message: $(git log -1 --pretty=%s | sed 's/\"/\\\"/g')\"
+            --data-raw "{
+              \"text\": \"${EMOJI} *Production deploy ${STATUS}*\n• Commit: <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|$(echo '${{ github.sha }}' | cut -c1-7)>\n• By: ${SAFE_ACTOR}\n• Message: ${SAFE_MSG}\"
             }"

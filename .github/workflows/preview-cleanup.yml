@@ -29,9 +29,12 @@ jobs:
         run: bash /home/j/developer/opendiff/scripts/preview-tunnel.sh
 
       - name: Notify Slack
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
+          SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
           curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \":broom: *Preview PR #${PR_NUMBER} cleaned up*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\"
+            --data-raw "{
+              \"text\": \":broom: *Preview PR #${PR_NUMBER} cleaned up*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${SAFE_TITLE}>\"
             }"
