@@ -14,6 +14,7 @@ export interface CodeIssue {
   line: number;
   endLine?: number;
   message: string;
+  description?: string;
   suggestion?: string;
   suggestedCode?: string;
 }

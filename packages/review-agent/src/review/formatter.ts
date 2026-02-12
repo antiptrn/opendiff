@@ -118,8 +118,8 @@ export class ReviewFormatter {
     const emoji = SEVERITY_EMOJI[issue.severity];
     const typeLabel = TYPE_LABELS[issue.type];
 
-    let body = `${emoji} **${typeLabel}**\n\n`;
-    body += issue.message;
+    let body = `${emoji} **${typeLabel}**: ${issue.message}\n\n`;
+    body += issue.description || issue.message;
 
     // If there's exact replacement code, format as GitHub suggested change
     if (issue.suggestedCode !== undefined) {

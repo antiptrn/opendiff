@@ -93,6 +93,7 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
       "line": 42,
       "endLine": 45,
       "message": "missing null check on user input",
+      "description": "The `processUser` function receives `req.body.user` which can be `undefined` when the request body is malformed or empty. Without a null check, this will throw a TypeError at runtime and crash the request handler. This is especially risky because this endpoint is publicly accessible without authentication.",
       "suggestion": "How to fix it (text explanation)",
       "suggestedCode": "const fixed = 'replacement code';"
     }
@@ -101,7 +102,8 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
 }
 
 ### Field Explanations:
-- **message**: A short, direct label for the issue (like a commit message subject line — e.g. "missing null check on user input", NOT a full sentence or paragraph). Max ~60 characters.
+- **message**: A short label for the issue (like a commit subject line — e.g. "missing null check on user input"). Max ~60 characters. Used for autofix commit messages.
+- **description**: A detailed, thorough explanation of the issue. Explain **why** this is a problem, **what** could go wrong, and **how** it affects the codebase. Be specific — reference variable names, function behavior, and edge cases. This is what appears as the inline comment on the PR, so make it genuinely helpful to the developer. Aim for 2-4 sentences minimum.
 - **line**: The starting line number of the issue
 - **endLine**: (optional) The ending line number if the issue spans multiple lines
 - **suggestion**: (optional) Text explanation of how to fix
