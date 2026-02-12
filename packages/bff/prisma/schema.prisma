@@ -119,6 +119,7 @@ model Organization {
   // Shared org settings
   reviewsUsedThisCycle  Int                @default(0)
   tokensUsedThisCycle   BigInt             @default(0)
+  grantedTokens         BigInt             @default(0)  // Manually allocated tokens (independent of subscription)
   anthropicApiKey       String?
   customReviewRules     String?
   // Business info (for invoicing)

@@ -65,11 +65,11 @@ export function useOrgRepoByName(
 }
 
 /** Fetches review and triage settings for a specific repository. */
-export function useRepositorySettings(owner: string, repo: string) {
+export function useRepositorySettings(owner: string, repo: string, token?: string, orgId?: string | null) {
   return useQuery<RepositorySettings>({
     queryKey: queryKeys.settings(owner, repo),
-    queryFn: () => fetch(`${API_URL}/api/settings/${owner}/${repo}`).then((r) => r.json()),
-    enabled: !!owner && !!repo,
+    queryFn: () => fetchWithAuth(`${API_URL}/api/settings/${owner}/${repo}`, token, orgId),
+    enabled: !!owner && !!repo && !!token,
   });
 }
 

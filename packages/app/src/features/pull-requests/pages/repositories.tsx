@@ -75,12 +75,16 @@ export function RepositoriesPage() {
 
   const { data: settings, isLoading: isLoadingSettings } = useRepositorySettings(
     selectedRepo?.owner || "",
-    selectedRepo?.name || ""
+    selectedRepo?.name || "",
+    user?.access_token,
+    currentOrgId
   );
 
   const { data: editSettings, isLoading: isLoadingEditSettings } = useRepositorySettings(
     editingRepo?.owner || "",
-    editingRepo?.repo || ""
+    editingRepo?.repo || "",
+    user?.access_token,
+    currentOrgId
   );
 
   const updateSettings = useUpdateSettings(user?.access_token, currentOrgId);
