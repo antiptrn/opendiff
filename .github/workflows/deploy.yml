@@ -23,7 +23,7 @@ jobs:
         run: bun run lint
 
       - name: Pull latest
-        run: cd $DEPLOY_DIR && git pull origin main
+        run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
 
       - name: Install dependencies
         run: cd $DEPLOY_DIR && bun install
