@@ -80,13 +80,14 @@ export async function recordReview(data: {
   }
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/reviews`, {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (REVIEW_AGENT_API_KEY) {
+      headers["X-API-Key"] = REVIEW_AGENT_API_KEY;
+    }
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...data,
-        apiKey: REVIEW_AGENT_API_KEY,
-      }),
+      headers,
+      body: JSON.stringify(data),
     });
 
     if (!response.ok) {
@@ -143,7 +144,7 @@ export async function recordReviewComments(
   });
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/reviews/${reviewId}/comments`, {
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/reviews/${reviewId}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
