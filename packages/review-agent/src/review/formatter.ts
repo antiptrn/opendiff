@@ -189,7 +189,7 @@ export class ReviewFormatter {
         const emoji = SEVERITY_EMOJI[issue.severity];
         const typeLabel = TYPE_LABELS[issue.type];
         summary += `#### ${emoji} ${typeLabel} in \`${issue.file}:${issue.line}\`\n\n`;
-        summary += `${issue.message}\n\n`;
+        summary += `${issue.description || issue.message}\n\n`;
         if (issue.suggestion) {
           summary += `**Suggestion:** ${issue.suggestion}\n\n`;
         }
