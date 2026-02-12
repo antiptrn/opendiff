@@ -1,0 +1,312 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { type OrganizationRole, type UserOrganization, useAuth } from "../../auth";
+import { useOrganizationContext } from "../context";
+import type {
+  MembersResponse,
+  OrganizationDetails,
+  OrganizationInvite,
+} from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+/** Provides the current organization, its details, subscription, permissions, and org management methods. */
+export function useOrganization() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Use shared context for selected org ID
+  const { selectedOrgId, setSelectedOrgId } = useOrganizationContext();
+
+  // Fetch organizations from API
+  // Include user ID in query key so each account has its own cache
+  const {
+    data: orgsData,
+    isLoading: isLoadingOrgs,
+    isFetched: hasFetchedOrgs,
+    error: orgsError,
+  } = useQuery({
+    queryKey: ["organizations", user?.visitorId],
+    queryFn: async (): Promise<UserOrganization[]> => {
+      if (!user?.access_token) return [];
+
+      const response = await fetch(`${API_URL}/api/organizations`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Token expired or invalid - throw to trigger error state
+          throw new Error("UNAUTHORIZED");
+        }
+        throw new Error("Failed to fetch organizations");
+      }
+
+      const data = await response.json();
+      // Ensure we always return an array
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!user?.access_token,
+    retry: (failureCount, error) => {
+      // Don't retry on auth errors
+      if (error instanceof Error && error.message === "UNAUTHORIZED") {
+        return false;
+      }
+      return failureCount < 3;
+    },
+  });
+
+  // Ensure allOrganizations is always an array (defensive against race conditions)
+  const allOrganizations = Array.isArray(orgsData) ? orgsData : [];
+
+  // Filter out personal orgs from the visible list (for org switcher)
+  // but keep allOrganizations for finding the current org
+  const visibleOrganizations = allOrganizations.filter((org) => !org.isPersonal);
+
+  // Find current org - prefer visible orgs, but fall back to personal org for solo users with no team orgs
+  // If selected org is visible, use it. Otherwise, prefer first visible org, then fall back to any org.
+  const selectedOrgIsVisible =
+    selectedOrgId && visibleOrganizations.find((o) => o.id === selectedOrgId);
+  const selectedOrgExists = selectedOrgId && allOrganizations.find((o) => o.id === selectedOrgId);
+
+  let currentOrgId: string | null;
+  if (selectedOrgIsVisible) {
+    // Selected org is visible - use it
+    currentOrgId = selectedOrgId;
+  } else if (visibleOrganizations.length > 0) {
+    // Selected org is hidden (personal) but user has visible orgs - switch to first visible
+    currentOrgId = visibleOrganizations[0].id;
+  } else if (selectedOrgExists) {
+    // No visible orgs but selected org exists (solo user with only personal org) - use it
+    currentOrgId = selectedOrgId;
+  } else {
+    // Fall back to first org available
+    currentOrgId = allOrganizations[0]?.id || null;
+  }
+
+  // Sync state if currentOrgId differs (e.g., selected org was deleted)
+  useEffect(() => {
+    if (currentOrgId && currentOrgId !== selectedOrgId) {
+      setSelectedOrgId(currentOrgId);
+    }
+  }, [currentOrgId, selectedOrgId, setSelectedOrgId]);
+
+  const currentOrg = allOrganizations.find((o) => o.id === currentOrgId) || null;
+
+  // Fetch detailed organization info
+  const { data: orgDetails, isLoading: isLoadingDetails } = useQuery({
+    queryKey: ["organization", user?.visitorId, currentOrgId],
+    queryFn: async (): Promise<OrganizationDetails | null> => {
+      if (!currentOrgId || !user?.access_token) return null;
+
+      const response = await fetch(`${API_URL}/api/organizations/${currentOrgId}`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch organization");
+      }
+
+      return response.json();
+    },
+    enabled: !!currentOrgId && !!user?.access_token,
+  });
+
+  // Switch organization - context handles query removal and localStorage
+  const switchOrg = (orgId: string) => {
+    setSelectedOrgId(orgId);
+  };
+
+  // Create organization mutation
+  const createOrgMutation = useMutation({
+    mutationFn: async ({ name, isPersonal }: { name: string; isPersonal?: boolean }) => {
+      const response = await fetch(`${API_URL}/api/organizations`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user?.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, isPersonal }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create organization");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data, variables) => {
+      // Immediately add the new org to the cache so hasOrganizations is true
+      // NOTE: Query key must match the one used in useQuery (includes user?.visitorId)
+      queryClient.setQueryData<UserOrganization[]>(["organizations", user?.visitorId], (old) => {
+        const newOrg: UserOrganization = {
+          id: data.id,
+          name: data.name,
+          slug: data.slug,
+          avatarUrl: data.avatarUrl || null,
+          role: "OWNER",
+          isPersonal: variables.isPersonal,
+          seat: null, // New org starts with no seat assigned
+        };
+        return old ? [...old, newOrg] : [newOrg];
+      });
+      setSelectedOrgId(data.id);
+      // Also invalidate to ensure we have fresh data
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
+  });
+
+  // Helper to check permissions
+  const canManageMembers = currentOrg?.role === "OWNER" || currentOrg?.role === "ADMIN";
+  const canManageBilling = currentOrg?.role === "OWNER";
+  const canUpdateOrg = currentOrg?.role === "OWNER" || currentOrg?.role === "ADMIN";
+  const canDeleteOrg = currentOrg?.role === "OWNER";
+
+  // Get current user's seat status
+  const hasSeat = orgDetails?.hasSeat ?? false;
+  const subscription = orgDetails?.subscription ?? null;
+
+  // Create currentSeat object for user's seat (if they have one)
+  const currentSeat =
+    hasSeat && subscription
+      ? {
+          tier: subscription.tier,
+          status: subscription.status,
+          expiresAt: subscription.expiresAt,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        }
+      : null;
+
+  // Check if we got an unauthorized error (token expired)
+  const isUnauthorized = orgsError instanceof Error && orgsError.message === "UNAUTHORIZED";
+
+  return {
+    // visibleOrganizations is for the org switcher (excludes personal org)
+    organizations: visibleOrganizations,
+    currentOrg,
+    currentOrgId,
+    orgDetails,
+    isLoadingOrgs,
+    isLoadingDetails,
+    hasFetchedOrgs,
+    switchOrg,
+    createOrg: createOrgMutation.mutateAsync,
+    isCreating: createOrgMutation.isPending,
+    // hasOrganizations uses allOrganizations (includes personal org for redirect logic)
+    hasOrganizations: allOrganizations.length > 0,
+    // Auth state
+    isUnauthorized,
+    // Subscription info (org-level)
+    subscription,
+    hasSeat,
+    currentSeat,
+    quotaPool: orgDetails?.quotaPool ?? null,
+    seats: orgDetails?.seats ?? null,
+    // Permissions
+    canManageMembers,
+    canManageBilling,
+    canUpdateOrg,
+    canDeleteOrg,
+  };
+}
+
+/** Fetches the list of members and seat info for a given organization. */
+export function useOrganizationMembers(orgId: string | null) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["organization", orgId, "members"],
+    queryFn: async (): Promise<MembersResponse> => {
+      if (!orgId || !user?.access_token)
+        return {
+          members: [],
+          quotaPool: { total: 0, used: 0, hasUnlimited: false },
+          seats: { total: 0, assigned: 0, available: 0 },
+        };
+
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/members`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch members");
+      }
+
+      return response.json();
+    },
+    enabled: !!orgId && !!user?.access_token,
+  });
+}
+
+/** Manages organization invites: fetching, creating, and revoking. */
+export function useOrganizationInvites(orgId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const invitesQuery = useQuery({
+    queryKey: ["organization", orgId, "invites"],
+    queryFn: async (): Promise<OrganizationInvite[]> => {
+      if (!orgId || !user?.access_token) return [];
+
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/invites`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch invites");
+      }
+
+      return response.json();
+    },
+    enabled: !!orgId && !!user?.access_token,
+  });
+
+  const createInvite = useMutation({
+    mutationFn: async ({ email, role }: { email?: string; role: OrganizationRole }) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/invites`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user?.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, role }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create invite");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "invites"] });
+    },
+  });
+
+  const revokeInvite = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const response = await fetch(`${API_URL}/api/organizations/${orgId}/invites/${inviteId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${user?.access_token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to revoke invite");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organization", orgId, "invites"] });
+    },
+  });
+
+  return {
+    invites: invitesQuery.data || [],
+    isLoading: invitesQuery.isLoading,
+    createInvite: createInvite.mutateAsync,
+    isCreatingInvite: createInvite.isPending,
+    revokeInvite: revokeInvite.mutateAsync,
+    isRevokingInvite: revokeInvite.isPending,
+  };
+}

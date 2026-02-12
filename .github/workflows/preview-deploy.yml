@@ -1,0 +1,180 @@
+name: Preview Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  deploy-preview:
+    runs-on: self-hosted
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PROD_DIR: /home/j/developer/opendiff
+      PREVIEW_DIR: /home/j/previews/pr-${{ github.event.pull_request.number }}
+      INGRESS_DIR: /home/j/.cloudflared/preview-ingress.d
+    steps:
+      - name: Compute ports and URLs
+        run: |
+          echo "BFF_PORT=$((10000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "WEBSITE_PORT=$((20000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "APP_PORT=$((30000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "AGENT_PORT=$((40000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "BFF_URL=https://pr-${PR_NUMBER}-api.opendiff.dev" >> $GITHUB_ENV
+          echo "APP_URL=https://pr-${PR_NUMBER}-app.opendiff.dev" >> $GITHUB_ENV
+          echo "WEBSITE_URL=https://pr-${PR_NUMBER}.opendiff.dev" >> $GITHUB_ENV
+          echo "AGENT_URL=https://pr-${PR_NUMBER}-agent.opendiff.dev" >> $GITHUB_ENV
+
+      - name: Create/update preview directory
+        run: |
+          if [ ! -d "$PREVIEW_DIR/.git" ]; then
+            git clone "$PROD_DIR" "$PREVIEW_DIR"
+            # Re-point origin to GitHub so we can fetch PR branches
+            REMOTE_URL=$(git -C "$PROD_DIR" remote get-url origin)
+            git -C "$PREVIEW_DIR" remote set-url origin "$REMOTE_URL"
+          fi
+          cd "$PREVIEW_DIR"
+          git fetch origin
+          git checkout "${{ github.event.pull_request.head.ref }}" 2>/dev/null || git checkout -b "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
+          git reset --hard "origin/${{ github.event.pull_request.head.ref }}"
+
+      - name: Copy production .env files
+        run: |
+          for pkg in bff app website review-agent; do
+            if [ -f "$PROD_DIR/packages/$pkg/.env" ]; then
+              cp "$PROD_DIR/packages/$pkg/.env" "$PREVIEW_DIR/packages/$pkg/.env"
+            fi
+          done
+
+      - name: Override BFF env vars
+        run: |
+          ENV_FILE="$PREVIEW_DIR/packages/bff/.env"
+          sed -i '/^PORT=/d; /^FRONTEND_URL=/d; /^ALLOWED_ORIGINS=/d; /^REVIEW_AGENT_WEBHOOK_URL=/d' "$ENV_FILE" 2>/dev/null || true
+          cat >> "$ENV_FILE" <<EOF
+          PORT=${{ env.BFF_PORT }}
+          FRONTEND_URL=${{ env.APP_URL }}
+          ALLOWED_ORIGINS=${{ env.APP_URL }},${{ env.WEBSITE_URL }}
+          REVIEW_AGENT_WEBHOOK_URL=http://localhost:${{ env.AGENT_PORT }}/webhook
+          EOF
+
+      - name: Override App env vars
+        run: |
+          ENV_FILE="$PREVIEW_DIR/packages/app/.env"
+          sed -i '/^VITE_API_URL=/d; /^VITE_APP_URL=/d; /^VITE_WEBSITE_URL=/d; /^VITE_PORT=/d; /^VITE_ALLOWED_HOST=/d' "$ENV_FILE" 2>/dev/null || true
+          cat >> "$ENV_FILE" <<EOF
+          VITE_API_URL=${{ env.BFF_URL }}
+          VITE_APP_URL=${{ env.APP_URL }}
+          VITE_WEBSITE_URL=${{ env.WEBSITE_URL }}
+          VITE_PORT=${{ env.APP_PORT }}
+          VITE_ALLOWED_HOST=pr-${PR_NUMBER}-app.opendiff.dev
+          EOF
+
+      - name: Override Website env vars
+        run: |
+          ENV_FILE="$PREVIEW_DIR/packages/website/.env"
+          sed -i '/^VITE_API_URL=/d; /^VITE_APP_URL=/d; /^VITE_WEBSITE_URL=/d; /^VITE_PORT=/d; /^VITE_ALLOWED_HOST=/d' "$ENV_FILE" 2>/dev/null || true
+          cat >> "$ENV_FILE" <<EOF
+          VITE_API_URL=${{ env.BFF_URL }}
+          VITE_APP_URL=${{ env.APP_URL }}
+          VITE_WEBSITE_URL=${{ env.WEBSITE_URL }}
+          VITE_PORT=${{ env.WEBSITE_PORT }}
+          VITE_ALLOWED_HOST=pr-${PR_NUMBER}.opendiff.dev
+          EOF
+
+      - name: Override Agent env vars
+        run: |
+          ENV_FILE="$PREVIEW_DIR/packages/review-agent/.env"
+          sed -i '/^PORT=/d; /^SETTINGS_API_URL=/d' "$ENV_FILE" 2>/dev/null || true
+          cat >> "$ENV_FILE" <<EOF
+          PORT=${{ env.AGENT_PORT }}
+          SETTINGS_API_URL=http://localhost:${{ env.BFF_PORT }}
+          EOF
+
+      - name: Install dependencies
+        run: cd "$PREVIEW_DIR" && bun install
+
+      - name: Generate Prisma client
+        run: cd "$PREVIEW_DIR/packages/bff" && bunx prisma generate
+
+      - name: Build frontends and agent
+        run: |
+          cd "$PREVIEW_DIR"
+          bun run --cwd packages/website build
+          bun run --cwd packages/app build
+          bun run --cwd packages/review-agent build
+
+      - name: Stop existing preview services
+        run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
+
+      - name: Start preview services
+        env:
+          RUNNER_TRACKING_ID: ""
+        run: bash "$PREVIEW_DIR/scripts/preview-start.sh" "$PR_NUMBER"
+
+      - name: Write cloudflared ingress fragment
+        run: |
+          mkdir -p "$INGRESS_DIR"
+          cat > "$INGRESS_DIR/pr-${PR_NUMBER}.yml" <<EOF
+            - hostname: pr-${PR_NUMBER}.opendiff.dev
+              service: http://localhost:${{ env.WEBSITE_PORT }}
+            - hostname: pr-${PR_NUMBER}-app.opendiff.dev
+              service: http://localhost:${{ env.APP_PORT }}
+            - hostname: pr-${PR_NUMBER}-api.opendiff.dev
+              service: http://localhost:${{ env.BFF_PORT }}
+            - hostname: pr-${PR_NUMBER}-agent.opendiff.dev
+              service: http://localhost:${{ env.AGENT_PORT }}
+          EOF
+
+      - name: Restart preview tunnel
+        env:
+          RUNNER_TRACKING_ID: ""
+        run: bash "$PREVIEW_DIR/scripts/preview-tunnel.sh"
+
+      - name: Comment on PR with preview URLs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMENT_BODY="## Preview Deployment
+
+          | Service | URL |
+          |---------|-----|
+          | Website | ${{ env.WEBSITE_URL }} |
+          | App | ${{ env.APP_URL }} |
+          | API | ${{ env.BFF_URL }} |
+          | Agent | ${{ env.AGENT_URL }} |
+
+          _Updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
+
+          # Check for existing preview comment via REST API
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | startswith("## Preview Deployment")) | .id' 2>/dev/null | head -n 1)
+
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING}" -X PATCH -f body="$COMMENT_BODY"
+          else
+            gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body "$COMMENT_BODY"
+          fi
+
+      - name: Notify Slack
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI=":white_check_mark:"
+            STATUS="deployed"
+            URLS="\n• Website: ${{ env.WEBSITE_URL }}\n• App: ${{ env.APP_URL }}\n• API: ${{ env.BFF_URL }}"
+          else
+            EMOJI=":x:"
+            STATUS="failed"
+            URLS=""
+          fi
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"${EMOJI} *Preview PR #${PR_NUMBER} ${STATUS}*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\n• By: ${{ github.actor }}${URLS}\"
+            }"

@@ -1,0 +1,177 @@
+import { Loader2, Minus, Plus, UserX } from "lucide-react";
+import { Button } from "components/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "components/components/ui/card";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "sonner";
+import { useManageSubscription, useOrganization } from "..";
+import { useAuth } from "../../auth";
+import { tierPrices } from "../../billing";
+import { useNavigationConfig } from "../../navigation";
+
+/** Page displayed when a user has no active subscription or assigned seat, offering plan options. */
+export function NoSeatPage() {
+  const { user } = useAuth();
+  const { orgSettingsUrl } = useNavigationConfig();
+  const { currentOrg, subscription, seats, canManageBilling } = useOrganization();
+  const manageSubscriptionMutation = useManageSubscription(currentOrg?.id || null);
+  const [seatCount, setSeatCount] = useState(1);
+
+  const isSoloUser = user?.accountType === "SOLO";
+  const hasActiveSubscription = subscription?.status === "ACTIVE";
+  const hasAvailableSeats = (seats?.available ?? 0) > 0;
+
+  const handleSubscribe = async (tier: "SELF_SUFFICIENT" | "PRO" | "ULTRA") => {
+    try {
+      const result = await manageSubscriptionMutation.mutateAsync({
+        tier,
+        billing: "monthly",
+        seatCount: isSoloUser ? 1 : seatCount,
+      });
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create checkout");
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <Card className="max-w-lg w-full">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 rounded-full bg-muted p-3 w-fit">
+            <UserX className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <CardTitle className="text-2xl">No Active Subscription</CardTitle>
+          <CardDescription>
+            {isSoloUser
+              ? "Subscribe to start using opendiff."
+              : "You need a seat assigned to access this organization's features."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {hasActiveSubscription && !isSoloUser ? (
+            // Org has subscription - user needs seat assignment (team mode only)
+            <div className="text-center space-y-4">
+              {hasAvailableSeats ? (
+                <p className="text-muted-foreground">
+                  Your organization has {seats?.available} available seat
+                  {seats?.available !== 1 ? "s" : ""}. Contact your organization admin to get a seat
+                  assigned.
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  Your organization has no available seats. Contact your organization admin to add
+                  more seats or reassign an existing one.
+                </p>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Organization: <span className="font-medium">{currentOrg?.name}</span>
+              </p>
+              {canManageBilling && (
+                <Button asChild variant="outline">
+                  <Link to={orgSettingsUrl}>Manage Seats</Link>
+                </Button>
+              )}
+            </div>
+          ) : canManageBilling ? (
+            // No subscription and user can manage billing - show subscribe options
+            <div className="space-y-4">
+              <p className="text-sm text-center text-muted-foreground">
+                {isSoloUser
+                  ? "Choose a plan to get started:"
+                  : "Your organization doesn't have an active subscription. Choose a plan to get started:"}
+              </p>
+
+              {/* Seat count selector - only show for team users */}
+              {!isSoloUser && (
+                <div className="flex items-center justify-center gap-4 py-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSeatCount(Math.max(1, seatCount - 1))}
+                    disabled={seatCount <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <div className="flex flex-col items-center min-w-[60px]">
+                    <span className="text-2xl font-semibold">{seatCount}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {seatCount === 1 ? "seat" : "seats"}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSeatCount(Math.min(100, seatCount + 1))}
+                    disabled={seatCount >= 100}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  className="w-full justify-between"
+                  onClick={() => handleSubscribe("SELF_SUFFICIENT")}
+                  disabled={manageSubscriptionMutation.isPending}
+                >
+                  <span>Self-sufficient - Bring your own API key</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.SELF_SUFFICIENT * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full justify-between"
+                  onClick={() => handleSubscribe("PRO")}
+                  disabled={manageSubscriptionMutation.isPending}
+                >
+                  <span>Pro - 2.5M tokens/month</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.PRO * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
+                </Button>
+
+                <Button
+                  className="w-full justify-between"
+                  onClick={() => handleSubscribe("ULTRA")}
+                  disabled={manageSubscriptionMutation.isPending}
+                >
+                  {manageSubscriptionMutation.isPending && (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  )}
+                  <span>Ultra - 8M tokens + autofix</span>
+                  <span className="text-muted-foreground">
+                    ${tierPrices.ULTRA * (isSoloUser ? 1 : seatCount)}/month
+                  </span>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            // No subscription and user can't manage billing
+            <div className="text-center">
+              <p className="text-muted-foreground mb-4">
+                Your organization doesn't have an active subscription. Contact your organization
+                admin to set one up.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Organization: <span className="font-medium">{currentOrg?.name}</span>
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.12/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "include": [
+      "packages/website/src/**/*.ts",
+      "packages/website/src/**/*.tsx",
+      "packages/review-agent/src/**/*.ts",
+      "packages/bff/src/**/*.ts",
+      "packages/components/src/**/*.ts",
+      "packages/components/src/**/*.tsx",
+      "packages/shared/src/**/*.ts",
+      "packages/shared/src/**/*.tsx",
+      "packages/app/src/**/*.ts",
+      "packages/app/src/**/*.tsx",
+      "packages/vscode/src/**/*.ts",
+      "packages/prompts/src/**/*.ts",
+      "packages/github/src/**/*.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "assists": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "noRedundantAlt": "warn",
+        "useSemanticElements": "warn",
+        "useKeyWithClickEvents": "warn"
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useConst": "error",
+        "useImportType": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noArrayIndexKey": "warn"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "es5"
+    }
+  }
+}
