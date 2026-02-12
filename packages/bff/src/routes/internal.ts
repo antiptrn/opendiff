@@ -88,6 +88,45 @@ internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
   }
 });
 
+// Get repository settings for review agent (internal use only)
+internalRoutes.get("/settings/:owner/:repo", async (c) => {
+  const { owner, repo } = c.req.param();
+  const apiKey = c.req.header("X-API-Key");
+
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const settings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+  });
+
+  if (!settings) {
+    return c.json({
+      owner,
+      repo,
+      enabled: false,
+      triageEnabled: false,
+      effectiveEnabled: false,
+      effectiveTriageEnabled: false,
+      autofixEnabled: false,
+      sensitivity: 50,
+    });
+  }
+
+  return c.json({
+    owner: settings.owner,
+    repo: settings.repo,
+    enabled: settings.enabled,
+    triageEnabled: settings.triageEnabled,
+    autofixEnabled: settings.autofixEnabled,
+    sensitivity: settings.sensitivity,
+    effectiveEnabled: settings.enabled,
+    effectiveTriageEnabled: settings.triageEnabled,
+  });
+});
+
 // Get custom review rules for review agent (internal use only)
 internalRoutes.get("/review-rules/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();

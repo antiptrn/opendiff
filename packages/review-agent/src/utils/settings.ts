@@ -26,9 +26,13 @@ export async function getRepositorySettings(
   }
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/settings/${owner}/${repo}`);
+    const headers: Record<string, string> = {};
+    if (REVIEW_AGENT_API_KEY) {
+      headers["X-API-Key"] = REVIEW_AGENT_API_KEY;
+    }
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/settings/${owner}/${repo}`, { headers });
     if (!response.ok) {
-      console.warn(`Failed to fetch settings for ${owner}/${repo}, features disabled`);
+      console.warn(`Failed to fetch settings for ${owner}/${repo} (${response.status}), features disabled`);
       return defaultSettings;
     }
     return (await response.json()) as RepositorySettings;
