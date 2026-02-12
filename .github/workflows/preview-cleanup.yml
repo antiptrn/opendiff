@@ -6,6 +6,7 @@ on:
 
 jobs:
   cleanup-preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -19,6 +20,9 @@ jobs:
 
       - name: Remove preview directory
         run: rm -rf "$PREVIEW_DIR"
+
+      - name: Drop preview database
+        run: psql -U j -d postgres -c "DROP DATABASE IF EXISTS antiptrn_preview_${PR_NUMBER};"
 
       - name: Remove ingress fragment
         run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"

@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   deploy-preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -45,63 +46,17 @@ jobs:
           git checkout "${{ github.event.pull_request.head.ref }}" 2>/dev/null || git checkout -b "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
           git reset --hard "origin/${{ github.event.pull_request.head.ref }}"
 
-      - name: Copy production .env files
-        run: |
-          for pkg in bff app website review-agent; do
-            if [ -f "$PROD_DIR/packages/$pkg/.env" ]; then
-              cp "$PROD_DIR/packages/$pkg/.env" "$PREVIEW_DIR/packages/$pkg/.env"
-            fi
-          done
-
-      - name: Override BFF env vars
-        run: |
-          ENV_FILE="$PREVIEW_DIR/packages/bff/.env"
-          sed -i '/^PORT=/d; /^FRONTEND_URL=/d; /^ALLOWED_ORIGINS=/d; /^REVIEW_AGENT_WEBHOOK_URL=/d' "$ENV_FILE" 2>/dev/null || true
-          cat >> "$ENV_FILE" <<EOF
-          PORT=${{ env.BFF_PORT }}
-          FRONTEND_URL=${{ env.APP_URL }}
-          ALLOWED_ORIGINS=${{ env.APP_URL }},${{ env.WEBSITE_URL }}
-          REVIEW_AGENT_WEBHOOK_URL=http://localhost:${{ env.AGENT_PORT }}/webhook
-          EOF
-
-      - name: Override App env vars
-        run: |
-          ENV_FILE="$PREVIEW_DIR/packages/app/.env"
-          sed -i '/^VITE_API_URL=/d; /^VITE_APP_URL=/d; /^VITE_WEBSITE_URL=/d; /^VITE_PORT=/d; /^VITE_ALLOWED_HOST=/d' "$ENV_FILE" 2>/dev/null || true
-          cat >> "$ENV_FILE" <<EOF
-          VITE_API_URL=${{ env.BFF_URL }}
-          VITE_APP_URL=${{ env.APP_URL }}
-          VITE_WEBSITE_URL=${{ env.WEBSITE_URL }}
-          VITE_PORT=${{ env.APP_PORT }}
-          VITE_ALLOWED_HOST=pr-${PR_NUMBER}-app.opendiff.dev
-          EOF
-
-      - name: Override Website env vars
-        run: |
-          ENV_FILE="$PREVIEW_DIR/packages/website/.env"
-          sed -i '/^VITE_API_URL=/d; /^VITE_APP_URL=/d; /^VITE_WEBSITE_URL=/d; /^VITE_PORT=/d; /^VITE_ALLOWED_HOST=/d' "$ENV_FILE" 2>/dev/null || true
-          cat >> "$ENV_FILE" <<EOF
-          VITE_API_URL=${{ env.BFF_URL }}
-          VITE_APP_URL=${{ env.APP_URL }}
-          VITE_WEBSITE_URL=${{ env.WEBSITE_URL }}
-          VITE_PORT=${{ env.WEBSITE_PORT }}
-          VITE_ALLOWED_HOST=pr-${PR_NUMBER}.opendiff.dev
-          EOF
-
-      - name: Override Agent env vars
-        run: |
-          ENV_FILE="$PREVIEW_DIR/packages/review-agent/.env"
-          sed -i '/^PORT=/d; /^SETTINGS_API_URL=/d' "$ENV_FILE" 2>/dev/null || true
-          cat >> "$ENV_FILE" <<EOF
-          PORT=${{ env.AGENT_PORT }}
-          SETTINGS_API_URL=http://localhost:${{ env.BFF_PORT }}
-          EOF
+      - name: Generate preview env files
+        run: bash "$PREVIEW_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
       - name: Install dependencies
         run: cd "$PREVIEW_DIR" && bun install
 
       - name: Generate Prisma client
         run: cd "$PREVIEW_DIR/packages/bff" && bunx prisma generate
+
+      - name: Run migrations on preview database
+        run: cd "$PREVIEW_DIR/packages/bff" && bunx prisma migrate deploy
 
       - name: Build frontends and agent
         run: |
