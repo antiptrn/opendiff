@@ -4,10 +4,7 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 const port = Number(process.env.VITE_PORT) || 5173
-const allowedHosts = [
-  "opendiff.dev",
-  ...(process.env.VITE_ALLOWED_HOST ? [process.env.VITE_ALLOWED_HOST] : []),
-]
+const allowedHosts = ["opendiff.dev", ".opendiff.dev"]
 
 // https://vite.dev/config/
 export default defineConfig({
