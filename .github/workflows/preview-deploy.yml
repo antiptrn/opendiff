@@ -160,3 +160,21 @@ jobs:
           else
             gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body "$COMMENT_BODY"
           fi
+
+      - name: Notify Slack
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI=":white_check_mark:"
+            STATUS="deployed"
+            URLS="\n• Website: ${{ env.WEBSITE_URL }}\n• App: ${{ env.APP_URL }}\n• API: ${{ env.BFF_URL }}"
+          else
+            EMOJI=":x:"
+            STATUS="failed"
+            URLS=""
+          fi
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"${EMOJI} *Preview PR #${PR_NUMBER} ${STATUS}*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\n• By: ${{ github.actor }}${URLS}\"
+            }"

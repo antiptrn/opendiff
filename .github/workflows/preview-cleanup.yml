@@ -25,3 +25,11 @@ jobs:
 
       - name: Reassemble tunnel config
         run: bash scripts/preview-tunnel.sh
+
+      - name: Notify Slack
+        run: |
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \":broom: *Preview PR #${PR_NUMBER} cleaned up*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\"
+            }"
