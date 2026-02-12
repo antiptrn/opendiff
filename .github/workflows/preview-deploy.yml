@@ -32,6 +32,9 @@ jobs:
         run: |
           if [ ! -d "$PREVIEW_DIR/.git" ]; then
             git clone "$PROD_DIR" "$PREVIEW_DIR"
+            # Re-point origin to GitHub so we can fetch PR branches
+            REMOTE_URL=$(git -C "$PROD_DIR" remote get-url origin)
+            git -C "$PREVIEW_DIR" remote set-url origin "$REMOTE_URL"
           fi
           cd "$PREVIEW_DIR"
           git fetch origin
