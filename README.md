@@ -31,6 +31,8 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 | [`prompts`](./packages/prompts) | Shared AI prompt templates with variable substitution | Bun |
 | [`components`](./packages/components) | Shared UI component library | Radix UI, shadcn, CVA |
 | [`shared`](./packages/shared) | Shared business logic, hooks, and services | React Query, React Router |
+| [`github`](./packages/github) | GitHub App auth and API utilities | Octokit |
+| [`vscode-extension`](./packages/vscode-extension) | VS Code extension for local code review | VS Code API |
 | [`assets`](./packages/assets) | Shared static assets (fonts, icons) | - |
 
 ## Getting Started
@@ -450,6 +452,10 @@ opendiff/
 │   │       ├── services/         # API services, query keys
 │   │       └── navigation/       # Navigation utilities
 │   │
+│   ├── github/               # GitHub App Auth & API Utilities
+│   │   └── src/
+│   │       └── index.ts          # JWT auth, installation tokens, types
+│   │
 │   ├── vscode-extension/     # VS Code Extension
 │   │   └── src/
 │   │       └── extension.ts
@@ -499,7 +505,7 @@ See [`packages/bff/prisma/schema.prisma`](./packages/bff/prisma/schema.prisma) f
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the AGPL-3.0 License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## Support
 
