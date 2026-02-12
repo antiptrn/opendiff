@@ -3,18 +3,21 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
+const port = Number(process.env.VITE_PORT) || 5174
+const allowedHosts = ["app.opendiff.dev", ".opendiff.dev"]
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
-    port: 5174,
-    allowedHosts: ["app.opendiff.dev"],
+    port,
+    allowedHosts,
   },
   preview: {
     host: true,
-    port: 5174,
-    allowedHosts: ["app.opendiff.dev"],
+    port,
+    allowedHosts,
   },
   publicDir: path.resolve(__dirname, "../assets/public"),
   resolve: {

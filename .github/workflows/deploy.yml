@@ -48,3 +48,19 @@ jobs:
           cd $DEPLOY_DIR
           bash scripts/stop.sh
           bash scripts/start.sh prod --skip-build
+
+      - name: Notify Slack
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI=":white_check_mark:"
+            STATUS="succeeded"
+          else
+            EMOJI=":x:"
+            STATUS="failed"
+          fi
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"${EMOJI} *Production deploy ${STATUS}*\n• Commit: <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|$(echo '${{ github.sha }}' | cut -c1-7)>\n• By: ${{ github.actor }}\n• Message: $(git log -1 --pretty=%s | sed 's/\"/\\\"/g')\"
+            }"

@@ -1,0 +1,35 @@
+name: Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup-preview:
+    runs-on: self-hosted
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PREVIEW_DIR: /home/j/previews/pr-${{ github.event.pull_request.number }}
+      INGRESS_DIR: /home/j/.cloudflared/preview-ingress.d
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stop preview services
+        run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
+
+      - name: Remove preview directory
+        run: rm -rf "$PREVIEW_DIR"
+
+      - name: Remove ingress fragment
+        run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"
+
+      - name: Reassemble tunnel config
+        run: bash scripts/preview-tunnel.sh
+
+      - name: Notify Slack
+        run: |
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \":broom: *Preview PR #${PR_NUMBER} cleaned up*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${{ github.event.pull_request.title }}>\"
+            }"
