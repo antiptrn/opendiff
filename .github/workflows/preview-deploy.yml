@@ -34,6 +34,8 @@ jobs:
           echo "AGENT_URL=https://pr-${PR_NUMBER}-agent.opendiff.dev" >> $GITHUB_ENV
 
       - name: Create/update preview directory
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           if [ ! -d "$PREVIEW_DIR/.git" ]; then
             git clone "$PROD_DIR" "$PREVIEW_DIR"
@@ -43,8 +45,8 @@ jobs:
           fi
           cd "$PREVIEW_DIR"
           git fetch origin
-          git checkout "${{ github.event.pull_request.head.ref }}" 2>/dev/null || git checkout -b "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
-          git reset --hard "origin/${{ github.event.pull_request.head.ref }}"
+          git checkout "$HEAD_REF" 2>/dev/null || git checkout -b "$HEAD_REF" "origin/$HEAD_REF"
+          git reset --hard "origin/$HEAD_REF"
 
       - name: Generate preview env files
         env:
