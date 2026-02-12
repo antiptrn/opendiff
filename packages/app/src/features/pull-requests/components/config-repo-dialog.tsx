@@ -18,7 +18,6 @@ interface ConfigRepoDialogProps {
   isRepoAlreadyActive: boolean;
   onSave: (settings: {
     enabled: boolean;
-    triageEnabled: boolean;
     autofixEnabled: boolean;
     sensitivity: number;
     customReviewRules: string;
@@ -63,10 +62,9 @@ export function ConfigRepoDialog({
 
         {selectedRepo && settings && !isLoadingSettings && !isRepoAlreadyActive && (
           <RepoSettingsForm
-            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.triageEnabled}-${settings.autofixEnabled}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
+            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.autofixEnabled}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
             initialSettings={{
               enabled: settings.enabled,
-              triageEnabled: settings.triageEnabled,
               autofixEnabled: settings.autofixEnabled ?? true,
               sensitivity: settings.sensitivity ?? 50,
               customReviewRules: settings.customReviewRules || "",

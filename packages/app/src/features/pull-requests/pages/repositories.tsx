@@ -106,7 +106,6 @@ export function RepositoriesPage() {
 
   const saveEditSettings = async (localSettings: {
     enabled: boolean;
-    triageEnabled: boolean;
     autofixEnabled: boolean;
     sensitivity: number;
     customReviewRules: string;
@@ -118,7 +117,6 @@ export function RepositoriesPage() {
         owner: editingRepo.owner,
         repo: editingRepo.repo,
         enabled: localSettings.enabled,
-        triageEnabled: localSettings.triageEnabled,
         autofixEnabled: localSettings.autofixEnabled,
         sensitivity: localSettings.sensitivity,
         customReviewRules: localSettings.customReviewRules,
@@ -142,7 +140,6 @@ export function RepositoriesPage() {
 
   const saveSettings = async (localSettings: {
     enabled: boolean;
-    triageEnabled: boolean;
     autofixEnabled: boolean;
     sensitivity: number;
     customReviewRules: string;
@@ -154,7 +151,6 @@ export function RepositoriesPage() {
         owner: selectedRepo.owner,
         repo: selectedRepo.name,
         enabled: localSettings.enabled,
-        triageEnabled: localSettings.triageEnabled,
         autofixEnabled: localSettings.autofixEnabled,
         sensitivity: localSettings.sensitivity,
         customReviewRules: localSettings.customReviewRules,
@@ -286,10 +282,9 @@ export function RepositoriesPage() {
 
           {editingRepo && editSettings && !isLoadingEditSettings && (
             <RepoSettingsForm
-              key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.triageEnabled}-${editSettings.autofixEnabled}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
+              key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.autofixEnabled}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
               initialSettings={{
                 enabled: editSettings.enabled,
-                triageEnabled: editSettings.triageEnabled,
                 autofixEnabled: editSettings.autofixEnabled ?? true,
                 sensitivity: editSettings.sensitivity ?? 50,
                 customReviewRules: editSettings.customReviewRules || "",

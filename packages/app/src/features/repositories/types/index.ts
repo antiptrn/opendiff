@@ -14,12 +14,10 @@ export interface RepositorySettings {
   repo: string;
   githubRepoId?: number | null;
   enabled: boolean;
-  triageEnabled: boolean;
   autofixEnabled: boolean;
   sensitivity: number;
   customReviewRules?: string;
   effectiveEnabled: boolean;
-  effectiveTriageEnabled: boolean;
 }
 
 // Organization repo with metadata (fetched from GitHub on-demand)
@@ -36,10 +34,8 @@ export interface OrgRepository {
   language: string | null;
   pushedAt: string | null;
   enabled: boolean;
-  triageEnabled: boolean;
   autofixEnabled: boolean;
   sensitivity: number;
   customReviewRules?: string;
   effectiveEnabled: boolean;
-  effectiveTriageEnabled: boolean;
 }

@@ -138,9 +138,7 @@ reposRoutes.get("/settings", async (c) => {
               repo: r.repo,
             })),
           },
-          {
-            OR: [{ enabled: true }, { triageEnabled: true }],
-          },
+          { enabled: true },
         ],
       },
     });
@@ -150,9 +148,7 @@ reposRoutes.get("/settings", async (c) => {
         owner: s.owner,
         repo: s.repo,
         enabled: s.enabled,
-        triageEnabled: s.triageEnabled,
         effectiveEnabled: s.enabled,
-        effectiveTriageEnabled: s.triageEnabled,
       }))
     );
   } catch (error) {
@@ -174,10 +170,8 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
       owner,
       repo,
       enabled: false,
-      triageEnabled: false,
       customReviewRules: "",
       effectiveEnabled: false,
-      effectiveTriageEnabled: false,
       autofixEnabled: false,
       sensitivity: 50,
     });
@@ -187,12 +181,10 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
     owner: settings.owner,
     repo: settings.repo,
     enabled: settings.enabled,
-    triageEnabled: settings.triageEnabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
     effectiveEnabled: settings.enabled,
-    effectiveTriageEnabled: settings.triageEnabled,
   });
 });
 
@@ -202,10 +194,9 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
   const orgId = await requireOrgAccess(c);
 
   // Extract settings from body (githubRepoId stored for stable identification)
-  const { enabled, triageEnabled, autofixEnabled, sensitivity, customReviewRules, githubRepoId } =
+  const { enabled, autofixEnabled, sensitivity, customReviewRules, githubRepoId } =
     body as {
       enabled?: boolean;
-      triageEnabled?: boolean;
       autofixEnabled?: boolean;
       sensitivity?: number;
       customReviewRules?: string;
@@ -219,7 +210,6 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     where: { owner_repo: { owner, repo } },
     update: {
       enabled: enabled ?? false,
-      triageEnabled: triageEnabled ?? false,
       autofixEnabled: autofixEnabled !== undefined ? autofixEnabled : undefined,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : undefined,
       customReviewRules: customReviewRules !== undefined ? customReviewRules || null : undefined,
@@ -232,7 +222,6 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       owner,
       repo,
       enabled: enabled ?? false,
-      triageEnabled: triageEnabled ?? false,
       autofixEnabled: autofixEnabled ?? true,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : 50,
       customReviewRules: customReviewRules || null,
@@ -247,7 +236,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     userId,
     action: "repo.settings.updated",
     target: `${owner}/${repo}`,
-    metadata: { enabled, triageEnabled },
+    metadata: { enabled },
     c,
   });
 
@@ -265,12 +254,10 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     repo: settings.repo,
     githubRepoId: settings.githubRepoId ? Number(settings.githubRepoId) : null,
     enabled: settings.enabled,
-    triageEnabled: settings.triageEnabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
     effectiveEnabled: settings.enabled,
-    effectiveTriageEnabled: settings.triageEnabled,
   });
 });
 
@@ -341,12 +328,10 @@ reposRoutes.get("/org/repos", requireAuth(), async (c) => {
           language: meta?.language ?? null,
           pushedAt: meta?.pushedAt ?? null,
           enabled: r.enabled,
-          triageEnabled: r.triageEnabled,
           autofixEnabled: r.autofixEnabled,
           sensitivity: r.sensitivity,
           customReviewRules: r.customReviewRules || "",
           effectiveEnabled: r.enabled,
-          effectiveTriageEnabled: r.triageEnabled,
         };
       })
     );
@@ -412,12 +397,10 @@ reposRoutes.get("/org/repos/:owner/:repo", requireAuth(), async (c) => {
       language: meta?.language ?? null,
       pushedAt: meta?.pushedAt ?? null,
       enabled: r.enabled,
-      triageEnabled: r.triageEnabled,
       autofixEnabled: r.autofixEnabled,
       sensitivity: r.sensitivity,
       customReviewRules: r.customReviewRules || "",
       effectiveEnabled: r.enabled,
-      effectiveTriageEnabled: r.triageEnabled,
     });
   } catch (error) {
     console.error("Error fetching org repo:", error);

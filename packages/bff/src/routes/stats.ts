@@ -27,7 +27,7 @@ statsRoutes.get("/", requireAuth(), async (c) => {
       const orgRepos = await prisma.repositorySettings.findMany({
         where: {
           organizationId: orgId,
-          OR: [{ enabled: true }, { triageEnabled: true }],
+          enabled: true,
         },
       });
 
@@ -112,7 +112,7 @@ statsRoutes.get("/", requireAuth(), async (c) => {
     // Scope all DB queries to the current org so we don't pick up orphaned data
     const repoOrgFilter = orgId ? { organizationId: orgId } : {};
 
-    // Count connected repos (repos with enabled=true OR triageEnabled=true)
+    // Count connected repos (repos with enabled=true)
     const connectedRepos =
       repoNames.length > 0
         ? await prisma.repositorySettings.count({
@@ -121,7 +121,7 @@ statsRoutes.get("/", requireAuth(), async (c) => {
               OR: repoNames.map((r: { owner: string; repo: string }) => ({
                 owner: r.owner,
                 repo: r.repo,
-                OR: [{ enabled: true }, { triageEnabled: true }],
+                enabled: true,
               })),
             },
           })
