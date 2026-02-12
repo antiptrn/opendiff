@@ -108,12 +108,6 @@ export function SoloSubscriptionCard({
             )}
           </SubscriptionInfoList>
 
-          {hasSubscription && quotaPool && !quotaPool.hasUnlimited && quotaPool.total !== -1 && (
-            <div className="mt-4">
-              <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
-            </div>
-          )}
-
           {!hasSubscription && !isLoading ? (
             <Button asChild>
               <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Upgrade</Link>
@@ -135,6 +129,12 @@ export function SoloSubscriptionCard({
                 )}
               </div>
             )
+          )}
+
+          {quotaPool && !quotaPool.hasUnlimited && (
+            <div className="mt-6">
+              <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
+            </div>
           )}
         </CardContent>
       </Card>

@@ -9,6 +9,15 @@ interface QuotaProgressProps {
  * Progress bar showing quota usage
  */
 export function QuotaProgress({ used, total }: QuotaProgressProps) {
+  // No quota (no plan) — just show the token count
+  if (total <= 0) {
+    return (
+      <div className="pt-4 border-t">
+        <p className="text-sm">{formatTokenQuota(used)} tokens used this cycle</p>
+      </div>
+    );
+  }
+
   const percentage = Math.min(100, (used / total) * 100);
 
   return (

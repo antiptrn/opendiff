@@ -128,16 +128,23 @@ export async function getOrgQuotaPool(orgId: string): Promise<{
     where: { id: orgId },
   });
 
-  if (!org || !org.subscriptionTier || org.subscriptionStatus !== "ACTIVE") {
+  if (!org) {
     return { total: 0, used: 0, hasUnlimited: false };
+  }
+
+  const granted = Number(org.grantedTokens);
+  const used = Number(org.tokensUsedThisCycle);
+
+  if (!org.subscriptionTier || org.subscriptionStatus !== "ACTIVE") {
+    return { total: granted, used, hasUnlimited: false };
   }
 
   const quota = getOrgTokenQuota(org.subscriptionTier, org.seatCount, org.productId);
   const hasUnlimited = quota === -1;
 
   return {
-    total: hasUnlimited ? -1 : quota,
-    used: Number(org.tokensUsedThisCycle),
+    total: hasUnlimited ? -1 : quota + granted,
+    used,
     hasUnlimited,
   };
 }
