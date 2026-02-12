@@ -185,7 +185,6 @@ model RepositorySettings {
   owner             String        // Keep for lookups
   repo              String        // Keep for lookups
   enabled           Boolean        @default(true)
-  triageEnabled     Boolean        @default(true)
   autofixEnabled    Boolean        @default(true)
   sensitivity       Int            @default(50) // 0-100 scale for review strictness
   customReviewRules String?

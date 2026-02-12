@@ -108,9 +108,7 @@ internalRoutes.get("/settings/:owner/:repo", async (c) => {
       owner,
       repo,
       enabled: false,
-      triageEnabled: false,
       effectiveEnabled: false,
-      effectiveTriageEnabled: false,
       autofixEnabled: false,
       sensitivity: 50,
     });
@@ -120,11 +118,9 @@ internalRoutes.get("/settings/:owner/:repo", async (c) => {
     owner: settings.owner,
     repo: settings.repo,
     enabled: settings.enabled,
-    triageEnabled: settings.triageEnabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     effectiveEnabled: settings.enabled,
-    effectiveTriageEnabled: settings.triageEnabled,
   });
 });
 

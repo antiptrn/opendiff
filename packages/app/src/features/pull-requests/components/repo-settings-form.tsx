@@ -8,14 +8,12 @@ import { useState } from "react";
 interface RepoSettingsFormProps {
   initialSettings: {
     enabled: boolean;
-    triageEnabled: boolean;
     autofixEnabled: boolean;
     sensitivity: number;
     customReviewRules: string;
   };
   onSave: (settings: {
     enabled: boolean;
-    triageEnabled: boolean;
     autofixEnabled: boolean;
     sensitivity: number;
     customReviewRules: string;
@@ -72,9 +70,7 @@ export function RepoSettingsForm({
           id="autofix"
           checked={settings.autofixEnabled}
           onCheckedChange={(checked) => {
-            const enabled = checked === true;
-            updateSetting("triageEnabled", enabled);
-            updateSetting("autofixEnabled", enabled);
+            updateSetting("autofixEnabled", checked === true);
           }}
           className="mt-[3px]"
         />

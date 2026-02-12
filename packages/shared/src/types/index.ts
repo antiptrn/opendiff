@@ -51,9 +51,7 @@ export interface RepositorySettings {
   owner: string;
   repo: string;
   enabled: boolean;
-  triageEnabled: boolean;
   effectiveEnabled: boolean;
-  effectiveTriageEnabled: boolean;
   autofixEnabled: boolean;
   sensitivity: number;
 }

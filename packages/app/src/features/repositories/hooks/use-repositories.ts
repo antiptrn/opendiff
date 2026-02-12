@@ -82,7 +82,6 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       owner,
       repo,
       enabled,
-      triageEnabled,
       autofixEnabled,
       sensitivity,
       customReviewRules,
@@ -91,7 +90,6 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       owner: string;
       repo: string;
       enabled: boolean;
-      triageEnabled: boolean;
       autofixEnabled?: boolean;
       sensitivity?: number;
       customReviewRules?: string;
@@ -106,7 +104,6 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
         },
         body: JSON.stringify({
           enabled,
-          triageEnabled,
           autofixEnabled,
           sensitivity,
           customReviewRules,

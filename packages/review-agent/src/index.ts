@@ -92,13 +92,10 @@ interface WebhookContext {
   customRules: string | null;
 }
 
-async function initWebhookContext(
-  payload: {
-    repository: { owner: { login: string }; name: string };
-    installation?: { id: number };
-  },
-  opts?: { withTriage?: boolean }
-): Promise<WebhookContext> {
+async function initWebhookContext(payload: {
+  repository: { owner: { login: string }; name: string };
+  installation?: { id: number };
+}): Promise<WebhookContext> {
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
 
@@ -109,7 +106,7 @@ async function initWebhookContext(
   const githubClient = new GitHubClient(octokit);
   const agent = new CodeReviewAgent();
   const formatter = new ReviewFormatter();
-  const triageAgent = opts?.withTriage ? new TriageAgent() : undefined;
+  const triageAgent = new TriageAgent();
   const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
 
   const customRules = await getCustomReviewRules(owner, repo);
@@ -150,9 +147,7 @@ app.post("/webhook", async (c) => {
 
     if (triggerActions.includes(payload.action)) {
       try {
-        const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload, {
-          withTriage: true,
-        });
+        const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
 
         if (!settings.effectiveEnabled) {
           console.log(
@@ -167,15 +162,13 @@ app.post("/webhook", async (c) => {
           return c.json({ status: "skipped", reason: "draft" });
         }
 
-        // Configure triage options — run triage whenever enabled, push behavior depends on autofixEnabled
-        const triageOptions = settings.effectiveTriageEnabled
-          ? {
-              enabled: true,
-              autofixEnabled: settings.autofixEnabled,
-              triageAgent: new TriageAgent(),
-              botUsername: BOT_USERNAME,
-            }
-          : undefined;
+        // Triage always runs when repo has reviews enabled; autofixEnabled controls push behavior
+        const triageOptions = {
+          enabled: true,
+          autofixEnabled: settings.autofixEnabled,
+          triageAgent: new TriageAgent(),
+          botUsername: BOT_USERNAME,
+        };
 
         // Process the PR
         const result = await handler.handlePullRequestOpened(

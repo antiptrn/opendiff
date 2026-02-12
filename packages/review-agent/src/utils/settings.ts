@@ -13,9 +13,7 @@ export async function getRepositorySettings(
     owner,
     repo,
     enabled: false,
-    triageEnabled: false,
     effectiveEnabled: false,
-    effectiveTriageEnabled: false,
     autofixEnabled: false,
     sensitivity: 50,
   };
