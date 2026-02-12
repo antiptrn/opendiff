@@ -36,6 +36,10 @@ ALLOWED_ORIGINS=${APP_URL},${WEBSITE_URL}
 REVIEW_AGENT_WEBHOOK_URL=http://localhost:${AGENT_PORT}/webhook
 REVIEW_AGENT_API_KEY=preview-agent-key-${PR_NUMBER}
 PAYMENT_PROVIDER=mock
+OAUTH_CALLBACK_BASE_URL=https://api-preview.opendiff.dev
+PREVIEW_PR_NUMBER=${PR_NUMBER}
+GITHUB_CLIENT_ID=${PREVIEW_GITHUB_CLIENT_ID:-}
+GITHUB_CLIENT_SECRET=${PREVIEW_GITHUB_CLIENT_SECRET:-}
 EOF
 
 # ── App ──────────────────────────────────────────────────────────────────────

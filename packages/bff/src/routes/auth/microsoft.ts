@@ -7,6 +7,8 @@ import {
   FRONTEND_URL,
   MICROSOFT_CLIENT_ID,
   MICROSOFT_CLIENT_SECRET,
+  OAUTH_CALLBACK_BASE_URL,
+  PREVIEW_PR_NUMBER,
   getBaseUrl,
   sanitizeRedirectUrl,
 } from "./utils";
@@ -14,7 +16,8 @@ import {
 const microsoftRoutes = new Hono();
 
 microsoftRoutes.get("/", (c) => {
-  const redirectUri = `${getBaseUrl(c)}/auth/microsoft/callback`;
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/microsoft/callback`;
   const scope = "openid email profile User.Read";
   const clientRedirectUrl = c.req.query("redirectUrl");
 
@@ -27,11 +30,14 @@ microsoftRoutes.get("/", (c) => {
   microsoftAuthUrl.searchParams.set("scope", scope);
   microsoftAuthUrl.searchParams.set("response_mode", "query");
 
-  if (clientRedirectUrl) {
-    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString(
-      "base64"
+  const stateObj: Record<string, unknown> = {};
+  if (clientRedirectUrl) stateObj.redirectUrl = clientRedirectUrl;
+  if (PREVIEW_PR_NUMBER) stateObj.prNumber = PREVIEW_PR_NUMBER;
+  if (Object.keys(stateObj).length > 0) {
+    microsoftAuthUrl.searchParams.set(
+      "state",
+      Buffer.from(JSON.stringify(stateObj)).toString("base64")
     );
-    microsoftAuthUrl.searchParams.set("state", state);
   }
 
   return c.redirect(microsoftAuthUrl.toString());
@@ -40,7 +46,8 @@ microsoftRoutes.get("/", (c) => {
 microsoftRoutes.get("/callback", async (c) => {
   const code = c.req.query("code");
   const state = c.req.query("state");
-  const redirectUri = `${getBaseUrl(c)}/auth/microsoft/callback`;
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/microsoft/callback`;
 
   if (!code) {
     return c.redirect(`${FRONTEND_URL}/login?error=no_code`);

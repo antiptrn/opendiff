@@ -5,6 +5,10 @@ export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
 export const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID ?? "";
 export const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET ?? "";
 export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
+export const OAUTH_CALLBACK_BASE_URL = process.env.OAUTH_CALLBACK_BASE_URL || "";
+export const PREVIEW_PR_NUMBER = process.env.PREVIEW_PR_NUMBER
+  ? parseInt(process.env.PREVIEW_PR_NUMBER, 10)
+  : null;
 
 export function getBaseUrl(c: {
   req: { url: string; header: (name: string) => string | undefined };

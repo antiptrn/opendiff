@@ -7,6 +7,8 @@ import {
   FRONTEND_URL,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
+  OAUTH_CALLBACK_BASE_URL,
+  PREVIEW_PR_NUMBER,
   getBaseUrl,
   sanitizeRedirectUrl,
 } from "./utils";
@@ -14,7 +16,8 @@ import {
 const googleRoutes = new Hono();
 
 googleRoutes.get("/", (c) => {
-  const redirectUri = `${getBaseUrl(c)}/auth/google/callback`;
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/google/callback`;
   const scope = "openid email profile";
   const clientRedirectUrl = c.req.query("redirectUrl");
 
@@ -26,11 +29,14 @@ googleRoutes.get("/", (c) => {
   googleAuthUrl.searchParams.set("access_type", "offline");
   googleAuthUrl.searchParams.set("prompt", "consent");
 
-  if (clientRedirectUrl) {
-    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString(
-      "base64"
+  const stateObj: Record<string, unknown> = {};
+  if (clientRedirectUrl) stateObj.redirectUrl = clientRedirectUrl;
+  if (PREVIEW_PR_NUMBER) stateObj.prNumber = PREVIEW_PR_NUMBER;
+  if (Object.keys(stateObj).length > 0) {
+    googleAuthUrl.searchParams.set(
+      "state",
+      Buffer.from(JSON.stringify(stateObj)).toString("base64")
     );
-    googleAuthUrl.searchParams.set("state", state);
   }
 
   return c.redirect(googleAuthUrl.toString());
@@ -39,7 +45,8 @@ googleRoutes.get("/", (c) => {
 googleRoutes.get("/callback", async (c) => {
   const code = c.req.query("code");
   const state = c.req.query("state");
-  const redirectUri = `${getBaseUrl(c)}/auth/google/callback`;
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/google/callback`;
 
   if (!code) {
     return c.redirect(`${FRONTEND_URL}/login?error=no_code`);

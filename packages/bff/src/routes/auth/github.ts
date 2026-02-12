@@ -11,6 +11,8 @@ import {
   GOOGLE_CLIENT_SECRET,
   MICROSOFT_CLIENT_ID,
   MICROSOFT_CLIENT_SECRET,
+  OAUTH_CALLBACK_BASE_URL,
+  PREVIEW_PR_NUMBER,
   getBaseUrl,
   sanitizeRedirectUrl,
 } from "./utils";
@@ -18,7 +20,8 @@ import {
 const githubRoutes = new Hono();
 
 githubRoutes.get("/", (c) => {
-  const redirectUri = `${getBaseUrl(c)}/auth/github/callback`;
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/github/callback`;
   const scope = "read:user user:email repo";
   const clientRedirectUrl = c.req.query("redirectUrl");
 
@@ -27,11 +30,14 @@ githubRoutes.get("/", (c) => {
   githubAuthUrl.searchParams.set("redirect_uri", redirectUri);
   githubAuthUrl.searchParams.set("scope", scope);
 
-  if (clientRedirectUrl) {
-    const state = Buffer.from(JSON.stringify({ redirectUrl: clientRedirectUrl })).toString(
-      "base64"
+  const stateObj: Record<string, unknown> = {};
+  if (clientRedirectUrl) stateObj.redirectUrl = clientRedirectUrl;
+  if (PREVIEW_PR_NUMBER) stateObj.prNumber = PREVIEW_PR_NUMBER;
+  if (Object.keys(stateObj).length > 0) {
+    githubAuthUrl.searchParams.set(
+      "state",
+      Buffer.from(JSON.stringify(stateObj)).toString("base64")
     );
-    githubAuthUrl.searchParams.set("state", state);
   }
 
   return c.redirect(githubAuthUrl.toString());

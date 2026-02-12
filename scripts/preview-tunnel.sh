@@ -49,6 +49,12 @@ credentials-file: $CLOUDFLARED_DIR/${TUNNEL_UUID}.json
 ingress:
 EOF
 
+# Static ingress rule for the shared OAuth auth proxy
+cat >> "$CONFIG_FILE" <<EOF
+  - hostname: api-preview.opendiff.dev
+    service: http://localhost:9999
+EOF
+
 # Append each fragment's ingress rules
 for FRAGMENT in $FRAGMENTS; do
   cat "$FRAGMENT" >> "$CONFIG_FILE"

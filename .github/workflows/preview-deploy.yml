@@ -47,6 +47,9 @@ jobs:
           git reset --hard "origin/${{ github.event.pull_request.head.ref }}"
 
       - name: Generate preview env files
+        env:
+          PREVIEW_GITHUB_CLIENT_ID: ${{ secrets.PREVIEW_GITHUB_CLIENT_ID }}
+          PREVIEW_GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
         run: bash "$PREVIEW_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
       - name: Install dependencies
