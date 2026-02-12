@@ -7,15 +7,18 @@ CONFIG_FILE="$CLOUDFLARED_DIR/preview-tunnel.yml"
 PID_FILE="$CLOUDFLARED_DIR/preview-tunnel.pid"
 TUNNEL_NAME="opendiff-previews"
 
-# Find the credentials file for the preview tunnel
-CREDS_FILE=$(ls "$CLOUDFLARED_DIR"/*.json 2>/dev/null | head -n 1)
-if [ -z "$CREDS_FILE" ]; then
-  echo "Error: No cloudflared credentials file found in $CLOUDFLARED_DIR"
+# Look up the tunnel UUID by name
+TUNNEL_UUID=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}')
+if [ -z "$TUNNEL_UUID" ]; then
+  echo "Error: Tunnel '$TUNNEL_NAME' not found. Run: cloudflared tunnel create $TUNNEL_NAME"
   exit 1
 fi
 
-# Find the tunnel UUID from the credentials file
-TUNNEL_UUID=$(basename "$CREDS_FILE" .json)
+CREDS_FILE="$CLOUDFLARED_DIR/${TUNNEL_UUID}.json"
+if [ ! -f "$CREDS_FILE" ]; then
+  echo "Error: Credentials file not found at $CREDS_FILE"
+  exit 1
+fi
 
 # Kill existing preview tunnel process
 if [ -f "$PID_FILE" ]; then
