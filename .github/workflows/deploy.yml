@@ -17,19 +17,14 @@ jobs:
     env:
       DEPLOY_DIR: /home/j/developer/opendiff
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install (for checks)
-        run: bun install
-
-      - name: Lint
-        run: bun run lint
-
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
 
       - name: Install dependencies
         run: cd $DEPLOY_DIR && bun install
+
+      - name: Lint
+        run: cd $DEPLOY_DIR && bun run lint
 
       - name: Generate Prisma client
         run: cd $DEPLOY_DIR/packages/bff && bunx prisma generate
