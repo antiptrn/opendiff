@@ -12,6 +12,8 @@ jobs:
       PREVIEW_DIR: /home/j/previews/pr-${{ github.event.pull_request.number }}
       INGRESS_DIR: /home/j/.cloudflared/preview-ingress.d
     steps:
+      - uses: actions/checkout@v4
+
       - name: Stop preview services
         run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
 
@@ -22,6 +24,4 @@ jobs:
         run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"
 
       - name: Reassemble tunnel config
-        run: |
-          # Use the script from production repo since preview dir is deleted
-          bash /home/j/developer/opendiff/scripts/preview-tunnel.sh
+        run: bash scripts/preview-tunnel.sh
