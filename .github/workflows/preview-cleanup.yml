@@ -1,0 +1,27 @@
+name: Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup-preview:
+    runs-on: self-hosted
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PREVIEW_DIR: /home/j/previews/pr-${{ github.event.pull_request.number }}
+      INGRESS_DIR: /home/j/.cloudflared/preview-ingress.d
+    steps:
+      - name: Stop preview services
+        run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
+
+      - name: Remove preview directory
+        run: rm -rf "$PREVIEW_DIR"
+
+      - name: Remove ingress fragment
+        run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"
+
+      - name: Reassemble tunnel config
+        run: |
+          # Use the script from production repo since preview dir is deleted
+          bash /home/j/developer/opendiff/scripts/preview-tunnel.sh
