@@ -133,6 +133,8 @@ jobs:
           EOF
 
       - name: Restart preview tunnel
+        env:
+          RUNNER_TRACKING_ID: ""
         run: bash "$PREVIEW_DIR/scripts/preview-tunnel.sh"
 
       - name: Comment on PR with preview URLs
