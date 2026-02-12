@@ -18,9 +18,9 @@ jobs:
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
-      PROD_DIR: /home/j/developer/opendiff
-      PREVIEW_DIR: /home/j/previews/pr-${{ github.event.pull_request.number }}
-      INGRESS_DIR: /home/j/.cloudflared/preview-ingress.d
+      PROD_DIR: ${{ secrets.DEPLOY_DIR }}
+      PREVIEW_DIR: ${{ secrets.PREVIEWS_BASE_DIR }}/pr-${{ github.event.pull_request.number }}
+      INGRESS_DIR: ${{ secrets.INGRESS_DIR }}
     steps:
       - name: Compute ports and URLs
         run: |

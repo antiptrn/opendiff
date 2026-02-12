@@ -15,7 +15,7 @@ jobs:
   deploy:
     runs-on: self-hosted
     env:
-      DEPLOY_DIR: /home/j/developer/opendiff
+      DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
     steps:
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
