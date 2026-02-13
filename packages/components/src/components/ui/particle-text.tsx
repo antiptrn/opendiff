@@ -63,6 +63,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
     const mouseRef = useRef({ x: -1000, y: -1000, isActive: false });
     const animationFrameRef = useRef<number>(0);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
+    const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const dprRef = useRef<number>(1);
     const computedFontSizeRef = useRef<number>(fontSize);
 
@@ -226,7 +227,13 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         animate();
 
         resizeObserverRef.current = new ResizeObserver(() => {
-            initParticles();
+            // Debounce the resize handler to avoid expensive reinitialization during continuous resizing
+            if (resizeTimeoutRef.current) {
+                clearTimeout(resizeTimeoutRef.current);
+            }
+            resizeTimeoutRef.current = setTimeout(() => {
+                initParticles();
+            }, 200);
         });
         resizeObserverRef.current.observe(container);
 
@@ -266,6 +273,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             if (animationFrameRef.current)
                 cancelAnimationFrame(animationFrameRef.current);
             if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
+            if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
             if (mouseEnabled) {
                 container.removeEventListener("mousemove", handleMouseMove);
                 container.removeEventListener("mouseleave", handleMouseLeave);
