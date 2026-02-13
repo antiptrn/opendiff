@@ -267,12 +267,12 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             mouseRef.current.isActive = false;
         };
 
+        const touchMoveOptions = { passive: false };
+
         if (mouseEnabled) {
             container.addEventListener("mousemove", handleMouseMove);
             container.addEventListener("mouseleave", handleMouseLeave);
-            container.addEventListener("touchmove", handleTouchMove, {
-                passive: false,
-            });
+            container.addEventListener("touchmove", handleTouchMove, touchMoveOptions);
             container.addEventListener("touchend", handleTouchEnd);
         }
 
@@ -284,7 +284,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             if (mouseEnabled) {
                 container.removeEventListener("mousemove", handleMouseMove);
                 container.removeEventListener("mouseleave", handleMouseLeave);
-                container.removeEventListener("touchmove", handleTouchMove);
+                container.removeEventListener("touchmove", handleTouchMove, touchMoveOptions);
                 container.removeEventListener("touchend", handleTouchEnd);
             }
         };
