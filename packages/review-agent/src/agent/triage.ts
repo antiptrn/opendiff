@@ -7,6 +7,14 @@ interface FixResult {
   fixed: boolean;
   explanation: string;
   tokensUsed?: number;
+  requiresClarification?: boolean;
+  clarificationQuestion?: string;
+}
+
+interface ParsedFixResponse {
+  status: "fixed" | "needs_clarification" | "cannot_fix";
+  explanation: string;
+  clarificationQuestion?: string;
 }
 
 export class TriageAgent {
@@ -55,7 +63,6 @@ export class TriageAgent {
           const resultMsg = message as SDKResultMessage;
           if (resultMsg.subtype === "success") {
             result = resultMsg.result || "";
-            hasChanges = true; // If we got a success result, assume changes were made
             // Capture token usage
             const usage = resultMsg.usage;
             if (usage) {
@@ -63,9 +70,10 @@ export class TriageAgent {
             }
           } else {
             // Error result — use SDK errors, last agent response, or fallback
-            const errorDetail = resultMsg.errors?.join(", ")
-              || lastAssistantText
-              || "Agent encountered an error but provided no details";
+            const errorDetail =
+              resultMsg.errors?.join(", ") ||
+              lastAssistantText ||
+              "Agent encountered an error but provided no details";
             return {
               fixed: false,
               explanation: errorDetail,
@@ -74,9 +82,28 @@ export class TriageAgent {
         }
       }
 
+      const parsed = this.parseFixResponse(result || lastAssistantText);
+      if (parsed?.status === "needs_clarification") {
+        return {
+          fixed: false,
+          explanation: parsed.explanation,
+          requiresClarification: true,
+          clarificationQuestion: parsed.clarificationQuestion,
+          tokensUsed: totalTokens,
+        };
+      }
+
+      if (parsed?.status === "cannot_fix") {
+        return {
+          fixed: false,
+          explanation: parsed.explanation,
+          tokensUsed: totalTokens,
+        };
+      }
+
       return {
         fixed: hasChanges,
-        explanation: result || "Changes applied",
+        explanation: parsed?.explanation || result || "Changes applied",
         tokensUsed: totalTokens,
       };
     } catch (error) {
@@ -84,9 +111,10 @@ export class TriageAgent {
       // If we already have changes/result, ignore the cleanup error
       if (hasChanges && error instanceof TypeError && String(error).includes("trim")) {
         console.warn("Ignoring SDK stream cleanup error");
+        const parsed = this.parseFixResponse(result || lastAssistantText);
         return {
           fixed: true,
-          explanation: result || "Changes applied",
+          explanation: parsed?.explanation || result || "Changes applied",
           tokensUsed: totalTokens,
         };
       }
@@ -95,6 +123,46 @@ export class TriageAgent {
         fixed: false,
         explanation: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  private parseFixResponse(text: string): ParsedFixResponse | null {
+    if (!text) return null;
+
+    try {
+      let jsonText = text.trim();
+      const fenceMatch = jsonText.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/);
+      if (fenceMatch) {
+        jsonText = fenceMatch[1].trim();
+      }
+
+      const jsonStart = jsonText.search(/\{\s*"/);
+      if (jsonStart !== -1) {
+        const jsonEnd = jsonText.lastIndexOf("}");
+        if (jsonEnd > jsonStart) {
+          jsonText = jsonText.slice(jsonStart, jsonEnd + 1);
+        }
+      }
+
+      const parsed = JSON.parse(jsonText) as Partial<ParsedFixResponse>;
+      const status = parsed.status;
+      const explanation = typeof parsed.explanation === "string" ? parsed.explanation.trim() : "";
+      const clarificationQuestion =
+        typeof parsed.clarificationQuestion === "string"
+          ? parsed.clarificationQuestion.trim()
+          : undefined;
+
+      if (!status || !["fixed", "needs_clarification", "cannot_fix"].includes(status)) {
+        return null;
+      }
+
+      return {
+        status,
+        explanation: explanation || "Processed issue",
+        clarificationQuestion,
+      };
+    } catch {
+      return null;
     }
   }
 }

@@ -1,6 +1,6 @@
-import { Loader2 } from "lucide-react";
 import { Badge } from "components/components/ui/badge";
 import { Button } from "components/components/ui/button";
+import { Loader2 } from "lucide-react";
 import type { PullRequestFixDetail } from "../hooks/use-pull-requests";
 import { DiffBlock } from "./diff-block";
 import MarkdownBlock from "./markdown-block";
@@ -24,6 +24,24 @@ export function FixStatusBadge({ status }: { status: string }) {
       return (
         <Badge variant="outline" className="font-normal">
           Pending
+        </Badge>
+      );
+    case "WAITING_FOR_USER":
+      return (
+        <Badge variant="outline" className="font-normal">
+          Waiting For Clarification
+        </Badge>
+      );
+    case "APPLYING":
+      return (
+        <Badge variant="outline" className="font-normal">
+          Applying
+        </Badge>
+      );
+    case "FAILED":
+      return (
+        <Badge variant="secondary" className="font-normal text-muted-foreground">
+          Failed
         </Badge>
       );
     default:

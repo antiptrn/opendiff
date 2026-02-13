@@ -362,4 +362,24 @@ export class GitHubClient {
       return null;
     }
   }
+
+  async getCollaboratorPermission(
+    owner: string,
+    repo: string,
+    username: string
+  ): Promise<"admin" | "write" | "read" | "none" | "maintain" | "triage"> {
+    try {
+      const { data } = await this.octokit.rest.repos.getCollaboratorPermissionLevel({
+        owner,
+        repo,
+        username,
+      });
+      return data.permission as "admin" | "write" | "read" | "none" | "maintain" | "triage";
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "status" in error && error.status === 404) {
+        return "none";
+      }
+      throw error;
+    }
+  }
 }

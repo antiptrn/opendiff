@@ -41,7 +41,10 @@ enum AccountType {
 
 enum FixStatus {
   PENDING
+  WAITING_FOR_USER
+  APPLYING
   ACCEPTED
+  FAILED
   REJECTED
 }
 
@@ -241,17 +244,52 @@ model ReviewComment {
 }
 
 model ReviewFix {
-  id         String      @id @default(cuid())
-  commentId  String      @unique
-  comment    ReviewComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  status     FixStatus   @default(PENDING)
-  diff       String?
-  commitSha  String?
-  summary    String?
-  acceptedAt DateTime?
-  rejectedAt DateTime?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id                   String      @id @default(cuid())
+  commentId            String      @unique
+  comment              ReviewComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  status               FixStatus   @default(PENDING)
+  fingerprint          String?
+  diff                 String?
+  commitSha            String?
+  summary              String?
+  clarificationQuestion String?
+  clarificationContext Json?
+  acceptedAt           DateTime?
+  rejectedAt           DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@index([status])
+  @@index([fingerprint])
+}
+
+model ReviewClarificationLock {
+  id                  String   @id @default(cuid())
+  owner               String
+  repo                String
+  pullNumber          Int
+  fingerprint         String
+  file                String
+  line                Int
+  issueType           String
+  message             String
+  reviewFixId         String?
+  threadGithubCommentId BigInt?
+  active              Boolean  @default(true)
+  resolvedAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([owner, repo, pullNumber, fingerprint])
+  @@index([owner, repo, pullNumber, active])
+  @@index([threadGithubCommentId])
+}
+
+model AgentExecutionLock {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  context   String?
+  createdAt DateTime @default(now())
 }
 
 model AuditLog {

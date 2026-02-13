@@ -9,6 +9,12 @@ interface PRContext {
   sensitivity?: number; // 0-100 scale for review strictness
 }
 
+export interface CommentIntentResult {
+  intent: "answer" | "ask_clarification" | "execute_fix";
+  response: string;
+  executionInstruction?: string;
+}
+
 export class CodeReviewAgent {
   private getReviewPrompt(
     files: FileToReview[],
@@ -231,6 +237,21 @@ Flag anything that could be improved. The goal is to maintain the highest code q
     codeContext?: { filename: string; diff?: string },
     customRules?: string | null
   ): Promise<string> {
+    const result = await this.respondToCommentWithIntent(
+      conversation,
+      workingDir,
+      codeContext,
+      customRules
+    );
+    return result.response;
+  }
+
+  async respondToCommentWithIntent(
+    conversation: Array<{ user: string; body: string }>,
+    workingDir: string,
+    codeContext?: { filename: string; diff?: string },
+    customRules?: string | null
+  ): Promise<CommentIntentResult> {
     let customRulesSection = "";
     if (customRules?.trim()) {
       customRulesSection = `\n## Custom Review Rules (from repository owner)\n\nKeep these custom rules in mind during the conversation:\n\n${customRules}\n`;
@@ -285,6 +306,52 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       throw new Error("Failed to get response");
     }
 
-    return result;
+    return this.parseCommentIntent(result);
+  }
+
+  private parseCommentIntent(text: string): CommentIntentResult {
+    const fallback: CommentIntentResult = {
+      intent: "answer",
+      response: text.trim(),
+    };
+
+    try {
+      let jsonText = text.trim();
+      const fenceMatch = jsonText.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/);
+      if (fenceMatch) {
+        jsonText = fenceMatch[1].trim();
+      }
+
+      const jsonStart = jsonText.search(/\{\s*"/);
+      if (jsonStart !== -1) {
+        const jsonEnd = jsonText.lastIndexOf("}");
+        if (jsonEnd > jsonStart) {
+          jsonText = jsonText.slice(jsonStart, jsonEnd + 1);
+        }
+      }
+
+      const parsed = JSON.parse(jsonText) as Partial<CommentIntentResult>;
+      const intent = parsed.intent;
+      const response = typeof parsed.response === "string" ? parsed.response.trim() : "";
+      const executionInstruction =
+        typeof parsed.executionInstruction === "string"
+          ? parsed.executionInstruction.trim()
+          : undefined;
+
+      if (!intent || !["answer", "ask_clarification", "execute_fix"].includes(intent)) {
+        return fallback;
+      }
+      if (!response) {
+        return fallback;
+      }
+
+      return {
+        intent,
+        response,
+        executionInstruction,
+      };
+    } catch {
+      return fallback;
+    }
   }
 }

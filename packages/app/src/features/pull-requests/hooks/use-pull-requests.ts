@@ -6,7 +6,7 @@ import { queryKeys } from "shared/services";
 export interface PullRequestFixDetail {
   id: string;
   commentId: string;
-  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  status: "PENDING" | "WAITING_FOR_USER" | "APPLYING" | "ACCEPTED" | "FAILED" | "REJECTED";
   diff: string | null;
   commitSha: string | null;
   summary: string | null;

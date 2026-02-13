@@ -1,9 +1,9 @@
 /** Review query endpoints: list reviews, get review details, update metadata, and accept/reject fixes. */
 import { Hono } from "hono";
 import { prisma } from "../../db";
+import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../../middleware/auth";
 import { generateReviewSummary } from "../../utils/generate-summary";
 import { fetchPRMetadata, fetchPRMetadataBatch } from "../../utils/github-metadata";
-import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../../middleware/auth";
 
 const queryRoutes = new Hono();
 
@@ -68,7 +68,9 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     const fixCount = r.comments.filter((c) => c.fix).length;
     const acceptedCount = r.comments.filter((c) => c.fix?.status === "ACCEPTED").length;
     const rejectedCount = r.comments.filter((c) => c.fix?.status === "REJECTED").length;
-    const pendingCount = r.comments.filter((c) => c.fix?.status === "PENDING").length;
+    const pendingCount = r.comments.filter(
+      (c) => c.fix?.status === "PENDING" || (c.fix?.status as string) === "WAITING_FOR_USER"
+    ).length;
 
     const owner = r.repositorySettings?.owner ?? null;
     const repo = r.repositorySettings?.repo ?? null;
@@ -273,7 +275,7 @@ queryRoutes.patch("/reviews/:id", requireAuth(), async (c) => {
 
   // Resolve GitHub token
   const isGitHubToken = /^(gho_|ghu_|ghp_|github_pat_)/.test(token);
-  const githubToken: string | null = isGitHubToken ? token : (user.githubAccessToken || null);
+  const githubToken: string | null = isGitHubToken ? token : user.githubAccessToken || null;
 
   if (!githubToken) {
     return c.json({ error: "GitHub access required" }, 403);

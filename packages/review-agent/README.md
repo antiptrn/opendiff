@@ -70,8 +70,10 @@ Configure a GitHub webhook pointing to this service:
 
 - Review issues are generated first.
 - Triage attempts to fix up to 10 issues per cycle.
+- If triage cannot safely proceed, it asks a clarification question in the relevant review thread.
 - With autofix enabled, fixes are committed and pushed to the PR branch, then matching review threads are replied to and resolved.
 - With autofix disabled, fix metadata is collected without pushing commits.
+- In review comment threads, the bot can distinguish between discussion and explicit "do this" requests and trigger a fix attempt for executable requests.
 
 ## Scripts
 

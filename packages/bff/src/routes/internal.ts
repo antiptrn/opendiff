@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { prisma } from "../db";
 import { getOrgQuotaPool } from "../middleware/organization";
 import { createNotification } from "../services/notifications";
+import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 
 /** Timing-safe comparison of two strings to prevent timing attacks. */
 function safeCompare(a: string, b: string): boolean {
@@ -173,7 +174,8 @@ internalRoutes.get("/api-key/:owner/:repo", async (c) => {
   const org = repoSettings.organization;
 
   // Check if org has BYOK tier with active subscription
-  const hasByokTier = org.subscriptionTier === "SELF_SUFFICIENT" && org.subscriptionStatus === "ACTIVE";
+  const hasByokTier =
+    org.subscriptionTier === "SELF_SUFFICIENT" && org.subscriptionStatus === "ACTIVE";
 
   if (!hasByokTier) {
     return c.json({ error: "Organization not on Self-sufficient tier", useDefault: true });
@@ -264,7 +266,7 @@ internalRoutes.post("/fixes/:fixId/failed", async (c) => {
   try {
     const fix = await prisma.reviewFix.update({
       where: { id: fixId },
-      data: { status: "PENDING", acceptedAt: null },
+      data: { status: "FAILED", acceptedAt: null },
       include: {
         comment: {
           include: {
@@ -292,6 +294,154 @@ internalRoutes.post("/fixes/:fixId/failed", async (c) => {
     console.error(`Failed to mark fix ${fixId} as failed:`, error);
     return c.json({ error: "Fix not found" }, 404);
   }
+});
+
+// Acquire an idempotency lock for agent execution actions
+internalRoutes.post("/execution-locks/acquire", async (c) => {
+  const apiKey = c.req.header("X-API-Key") || "";
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { key, context } = await c.req.json();
+  if (!key || typeof key !== "string") {
+    return c.json({ error: "key is required" }, 400);
+  }
+
+  try {
+    await prisma.agentExecutionLock.create({
+      data: {
+        key,
+        context: typeof context === "string" ? context : null,
+      },
+    });
+    return c.json({ acquired: true });
+  } catch {
+    return c.json({ acquired: false });
+  }
+});
+
+// Query active clarification locks for issue suppression
+internalRoutes.post("/clarification-locks/suppressions", async (c) => {
+  const apiKey = c.req.header("X-API-Key") || "";
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { owner, repo, pullNumber, fingerprints } = await c.req.json();
+  if (!owner || !repo || !pullNumber || !Array.isArray(fingerprints)) {
+    return c.json({ error: "owner, repo, pullNumber, fingerprints are required" }, 400);
+  }
+
+  const rows = await prisma.reviewClarificationLock.findMany({
+    where: {
+      owner,
+      repo,
+      pullNumber,
+      active: true,
+      fingerprint: { in: fingerprints },
+    },
+    select: { fingerprint: true },
+  });
+
+  return c.json({ suppressedFingerprints: rows.map((r) => r.fingerprint) });
+});
+
+internalRoutes.get("/clarification-locks/pending/:owner/:repo/:pullNumber", async (c) => {
+  const apiKey = c.req.header("X-API-Key") || "";
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { owner, repo, pullNumber } = c.req.param();
+  const pull = Number.parseInt(pullNumber, 10);
+  if (!owner || !repo || Number.isNaN(pull)) {
+    return c.json({ error: "Invalid parameters" }, 400);
+  }
+
+  const count = await prisma.reviewClarificationLock.count({
+    where: { owner, repo, pullNumber: pull, active: true },
+  });
+
+  return c.json({ hasPending: count > 0, count });
+});
+
+internalRoutes.get(
+  "/clarification-locks/by-thread/:owner/:repo/:pullNumber/:commentId",
+  async (c) => {
+    const apiKey = c.req.header("X-API-Key") || "";
+    const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+    if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { owner, repo, pullNumber, commentId } = c.req.param();
+    const pull = Number.parseInt(pullNumber, 10);
+    let threadCommentId: bigint;
+    try {
+      threadCommentId = BigInt(commentId);
+    } catch {
+      return c.json({ error: "Invalid commentId" }, 400);
+    }
+
+    const lock = await prisma.reviewClarificationLock.findFirst({
+      where: {
+        owner,
+        repo,
+        pullNumber: pull,
+        threadGithubCommentId: threadCommentId,
+        active: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!lock) {
+      return c.json({ lock: null });
+    }
+
+    return c.json({ lock });
+  }
+);
+
+internalRoutes.post("/clarification-locks/resolve", async (c) => {
+  const apiKey = c.req.header("X-API-Key") || "";
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { owner, repo, pullNumber, fingerprint, commitSha } = await c.req.json();
+  if (!owner || !repo || !pullNumber || !fingerprint) {
+    return c.json({ error: "owner, repo, pullNumber, fingerprint are required" }, 400);
+  }
+
+  await prisma.reviewClarificationLock.updateMany({
+    where: { owner, repo, pullNumber, fingerprint, active: true },
+    data: { active: false, resolvedAt: new Date() },
+  });
+
+  await prisma.reviewFix.updateMany({
+    where: {
+      fingerprint,
+      status: "WAITING_FOR_USER",
+      comment: {
+        review: {
+          pullNumber,
+          repositorySettings: { owner, repo },
+        },
+      },
+    },
+    data: {
+      status: "ACCEPTED",
+      acceptedAt: new Date(),
+      commitSha: typeof commitSha === "string" ? commitSha : null,
+    },
+  });
+
+  return c.json({ success: true });
 });
 
 // Get all skills for a repo's organization members (used by review agent for hydration)
@@ -338,7 +488,8 @@ internalRoutes.post("/reviews", async (c) => {
   }
 
   const body = await c.req.json();
-  const { githubRepoId, owner, repo, pullNumber, reviewType, reviewId, commentId, tokensUsed } = body;
+  const { githubRepoId, owner, repo, pullNumber, reviewType, reviewId, commentId, tokensUsed } =
+    body;
 
   if (!githubRepoId || !pullNumber || !reviewType) {
     return c.json({ error: "Missing required fields" }, 400);
@@ -364,7 +515,9 @@ internalRoutes.post("/reviews", async (c) => {
     }
 
     if (!repoSettings) {
-      console.warn(`No repository settings found for githubRepoId: ${githubRepoId}, owner: ${owner}, repo: ${repo}`);
+      console.warn(
+        `No repository settings found for githubRepoId: ${githubRepoId}, owner: ${owner}, repo: ${repo}`
+      );
       return c.json({ error: "Repository not configured" }, 404);
     }
 
@@ -373,7 +526,14 @@ internalRoutes.post("/reviews", async (c) => {
     if (org) {
       const quotaPool = await getOrgQuotaPool(org.id);
       if (quotaPool.total !== -1 && Number(org.tokensUsedThisCycle) >= quotaPool.total) {
-        return c.json({ error: "Token quota exceeded", quota: quotaPool.total, used: Number(org.tokensUsedThisCycle) }, 403);
+        return c.json(
+          {
+            error: "Token quota exceeded",
+            quota: quotaPool.total,
+            used: Number(org.tokensUsedThisCycle),
+          },
+          403
+        );
       }
       await prisma.organization.update({
         where: { id: org.id },
@@ -439,6 +599,13 @@ internalRoutes.post("/reviews/:reviewId/comments", async (c) => {
 
   const created = [];
   for (const comment of comments) {
+    const fingerprint = buildIssueFingerprint({
+      type: comment.type,
+      file: comment.path,
+      line: comment.line,
+      message: comment.body,
+    });
+
     const reviewComment = await prisma.reviewComment.create({
       data: {
         reviewId,
@@ -452,16 +619,62 @@ internalRoutes.post("/reviews/:reviewId/comments", async (c) => {
 
     let fix = null;
     if (comment.fix) {
+      const requestedStatus = comment.fix.status;
+      const status =
+        requestedStatus === "WAITING_FOR_USER"
+          ? "WAITING_FOR_USER"
+          : autofixEnabled
+            ? "ACCEPTED"
+            : "PENDING";
       fix = await prisma.reviewFix.create({
         data: {
           commentId: reviewComment.id,
-          status: autofixEnabled ? "ACCEPTED" : "PENDING",
+          status,
+          fingerprint,
           diff: comment.fix.diff || null,
           summary: comment.fix.summary || null,
           commitSha: comment.fix.commitSha || null,
-          acceptedAt: autofixEnabled ? new Date() : null,
+          clarificationQuestion: comment.fix.clarificationQuestion || null,
+          clarificationContext: comment.fix.clarificationContext || null,
+          acceptedAt: status === "ACCEPTED" ? new Date() : null,
         },
       });
+
+      if (status === "WAITING_FOR_USER") {
+        await prisma.reviewClarificationLock.upsert({
+          where: {
+            owner_repo_pullNumber_fingerprint: {
+              owner: review.repositorySettings?.owner || "",
+              repo: review.repositorySettings?.repo || "",
+              pullNumber: review.pullNumber,
+              fingerprint,
+            },
+          },
+          create: {
+            owner: review.repositorySettings?.owner || "",
+            repo: review.repositorySettings?.repo || "",
+            pullNumber: review.pullNumber,
+            fingerprint,
+            file: comment.path || "",
+            line: comment.line || 0,
+            issueType: comment.type || "unknown",
+            message: comment.body,
+            reviewFixId: fix.id,
+            threadGithubCommentId: comment.githubCommentId ? BigInt(comment.githubCommentId) : null,
+            active: true,
+          },
+          update: {
+            file: comment.path || "",
+            line: comment.line || 0,
+            issueType: comment.type || "unknown",
+            message: comment.body,
+            reviewFixId: fix.id,
+            threadGithubCommentId: comment.githubCommentId ? BigInt(comment.githubCommentId) : null,
+            active: true,
+            resolvedAt: null,
+          },
+        });
+      }
     }
 
     created.push({ commentId: reviewComment.id, fixId: fix?.id || null });

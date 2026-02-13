@@ -5,6 +5,13 @@ import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import type { DiffPatches } from "../review/types";
 import { withClonedRepo } from "../utils/git";
+import { buildIssueFingerprint } from "../utils/issue-fingerprint";
+import {
+  acquireExecutionLock,
+  getClarificationLockByThread,
+  getSuppressedIssueFingerprints,
+  resolveClarificationLock,
+} from "../utils/settings";
 import { handleTriageAfterReview } from "./triage-handler";
 
 // File extensions to review
@@ -67,6 +74,7 @@ interface WebhookPayload {
     body: string;
     user: { login: string };
     path?: string;
+    line?: number;
     in_reply_to_id?: number;
   };
   issue?: {
@@ -92,6 +100,11 @@ interface HandlerResult {
     }>;
     skippedIssues: Array<{
       issue: CodeIssue;
+      reason: string;
+    }>;
+    clarificationIssues?: Array<{
+      issue: CodeIssue;
+      question: string;
       reason: string;
     }>;
   };
@@ -161,6 +174,7 @@ export class WebhookHandler {
       reviewResult.triageResult = {
         fixedIssues: triageResult.fixedIssues,
         skippedIssues: triageResult.skippedIssues,
+        clarificationIssues: triageResult.clarificationIssues,
       };
     }
 
@@ -243,6 +257,31 @@ export class WebhookHandler {
             customRules
           );
 
+          const issueFingerprints = reviewResult.issues.map((issue) =>
+            buildIssueFingerprint(issue)
+          );
+          const suppressed = await getSuppressedIssueFingerprints(
+            owner,
+            repo,
+            prNumber,
+            issueFingerprints
+          );
+
+          const filteredIssues = reviewResult.issues.filter(
+            (issue) => !suppressed.has(buildIssueFingerprint(issue))
+          );
+
+          if (suppressed.size > 0) {
+            console.log(
+              `Suppressed ${suppressed.size} clarification-locked issue(s) for ${owner}/${repo}#${prNumber}`
+            );
+          }
+
+          const effectiveReviewResult = {
+            ...reviewResult,
+            issues: filteredIssues,
+          };
+
           // Build patches map for filtering inline comments to valid diff lines
           const patches: DiffPatches = {};
           for (const file of codeFiles) {
@@ -252,7 +291,7 @@ export class WebhookHandler {
           }
 
           // Format for GitHub (with patches to filter comments to valid lines)
-          const review = this.formatter.formatReview(reviewResult, patches);
+          const review = this.formatter.formatReview(effectiveReviewResult, patches);
 
           // Submit review
           const { id } = await this.github.submitReview(
@@ -263,7 +302,12 @@ export class WebhookHandler {
             review
           );
 
-          return { success: true, reviewId: id, issues: reviewResult.issues, tokensUsed: reviewResult.tokensUsed } as HandlerResult;
+          return {
+            success: true,
+            reviewId: id,
+            issues: effectiveReviewResult.issues,
+            tokensUsed: reviewResult.tokensUsed,
+          } as HandlerResult;
         }
       );
     } catch (error) {
@@ -335,12 +379,102 @@ export class WebhookHandler {
           }
 
           // Get AI response using Agent SDK
-          const response = await this.agent.respondToComment(
+          const response = await this.agent.respondToCommentWithIntent(
             conversation,
             tempDir,
             codeContext,
             customRules
           );
+
+          if (response.intent === "execute_fix" && comment.path && this.triageAgent) {
+            const executionKey = `execute-fix:${owner}:${repo}:${prNumber}:review-comment:${comment.id}`;
+            const acquired = await acquireExecutionLock(executionKey, "review_comment_execute_fix");
+            if (!acquired) {
+              return { success: true, skipped: true } as HandlerResult;
+            }
+
+            const canExecute = await this.canUserExecuteFix(
+              owner,
+              repo,
+              pull_request.user.login,
+              comment.user.login
+            );
+
+            if (!canExecute) {
+              const denied = await this.github.replyToReviewComment(
+                owner,
+                repo,
+                prNumber,
+                comment.id,
+                "I can explain issues, but only the PR author or collaborators with write access can ask me to apply fixes."
+              );
+              return { success: true, reviewId: denied.id } as HandlerResult;
+            }
+
+            const threadRootCommentId = comment.in_reply_to_id || comment.id;
+            const clarificationLock = await getClarificationLockByThread(
+              owner,
+              repo,
+              prNumber,
+              threadRootCommentId
+            );
+
+            const issueToFix: CodeIssue = {
+              type: (clarificationLock?.issueType as CodeIssue["type"]) || "bug-risk",
+              severity: "warning",
+              file: clarificationLock?.file || comment.path,
+              line: clarificationLock?.line || comment.line || 1,
+              message:
+                clarificationLock?.message || comment.body.slice(0, 120) || "apply requested fix",
+              suggestion: response.executionInstruction || response.response,
+            };
+
+            const triageResult = await handleTriageAfterReview(
+              this.github,
+              this.triageAgent,
+              {
+                number: prNumber,
+                head: pull_request.head,
+              },
+              [issueToFix],
+              owner,
+              repo,
+              botUsername,
+              true,
+              { postSummary: false }
+            );
+
+            if (triageResult.fixedIssues.length > 0) {
+              if (clarificationLock?.fingerprint) {
+                await resolveClarificationLock(
+                  owner,
+                  repo,
+                  prNumber,
+                  clarificationLock.fingerprint,
+                  triageResult.fixedIssues[0]?.commitSha
+                );
+              }
+              return {
+                success: true,
+                reviewId: triageResult.fixedIssues[0]?.githubCommentId ?? comment.id,
+              } as HandlerResult;
+            }
+
+            const fallbackBody =
+              triageResult.clarificationIssues[0]?.question ||
+              triageResult.skippedIssues[0]?.reason ||
+              "I could not apply that fix yet.";
+
+            const { id } = await this.github.replyToReviewComment(
+              owner,
+              repo,
+              prNumber,
+              comment.id,
+              `I couldn't apply that yet. ${fallbackBody}`
+            );
+
+            return { success: true, reviewId: id } as HandlerResult;
+          }
 
           // Reply to the comment
           const { id } = await this.github.replyToReviewComment(
@@ -348,7 +482,7 @@ export class WebhookHandler {
             repo,
             prNumber,
             comment.id,
-            response
+            response.response
           );
 
           return { success: true, reviewId: id } as HandlerResult;
@@ -416,7 +550,7 @@ export class WebhookHandler {
           }));
 
           // Get AI response using Agent SDK
-          const response = await this.agent.respondToComment(
+          const response = await this.agent.respondToCommentWithIntent(
             conversation,
             tempDir,
             undefined,
@@ -424,7 +558,12 @@ export class WebhookHandler {
           );
 
           // Post reply
-          const { id } = await this.github.createIssueComment(owner, repo, prNumber, response);
+          const { id } = await this.github.createIssueComment(
+            owner,
+            repo,
+            prNumber,
+            response.response
+          );
 
           return { success: true, reviewId: id } as HandlerResult;
         }
@@ -444,5 +583,19 @@ export class WebhookHandler {
 
   private shouldSkipFile(filename: string): boolean {
     return SKIP_PATTERNS.some((pattern) => pattern.test(filename));
+  }
+
+  private async canUserExecuteFix(
+    owner: string,
+    repo: string,
+    pullAuthor: string,
+    requester: string
+  ): Promise<boolean> {
+    if (requester === pullAuthor) {
+      return true;
+    }
+
+    const permission = await this.github.getCollaboratorPermission(owner, repo, requester);
+    return permission === "admin" || permission === "write" || permission === "maintain";
   }
 }

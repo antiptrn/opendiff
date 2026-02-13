@@ -16,6 +16,12 @@ interface TriageResult {
     issue: CodeIssue;
     reason: string;
   }>;
+  clarificationIssues: Array<{
+    issue: CodeIssue;
+    question: string;
+    reason: string;
+    githubCommentId?: number;
+  }>;
   error?: string;
 }
 
@@ -38,13 +44,19 @@ export async function handleTriageAfterReview(
   owner: string,
   repo: string,
   botUsername: string,
-  autofixEnabled: boolean
+  autofixEnabled: boolean,
+  options?: {
+    postSummary?: boolean;
+  }
 ): Promise<TriageResult> {
   const result: TriageResult = {
     success: true,
     fixedIssues: [],
     skippedIssues: [],
+    clarificationIssues: [],
   };
+
+  const postSummary = options?.postSummary ?? true;
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
@@ -82,6 +94,18 @@ export async function handleTriageAfterReview(
             const fix = await triageAgent.fixIssue(issue, _tempDir);
 
             if (!fix.fixed) {
+              if (fix.requiresClarification) {
+                const question =
+                  fix.clarificationQuestion || "Can you clarify the desired behavior?";
+                console.log(`Issue needs clarification: ${question}`);
+                result.clarificationIssues.push({
+                  issue,
+                  question,
+                  reason: fix.explanation,
+                });
+                continue;
+              }
+
               console.log(`Could not fix issue: ${fix.explanation}`);
               result.skippedIssues.push({
                 issue,
@@ -118,7 +142,7 @@ export async function handleTriageAfterReview(
         }
 
         console.log(
-          `Triage complete: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped`
+          `Triage complete: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped, ${result.clarificationIssues.length} needs clarification`
         );
 
         // Push all commits if any fixes were made and autofix is enabled
@@ -128,7 +152,11 @@ export async function handleTriageAfterReview(
         }
 
         // Reply to inline comments or just match comment IDs for DB storage
-        if (result.fixedIssues.length > 0 || result.skippedIssues.length > 0) {
+        if (
+          result.fixedIssues.length > 0 ||
+          result.skippedIssues.length > 0 ||
+          result.clarificationIssues.length > 0
+        ) {
           if (autofixEnabled) {
             // Autofix ON: reply + resolve + summary (current behavior)
             const bodyOnly = await replyToInlineComments(
@@ -138,18 +166,22 @@ export async function handleTriageAfterReview(
               pullRequest.number,
               result.fixedIssues,
               result.skippedIssues,
+              result.clarificationIssues,
               botUsername
             );
 
-            const summaryBody = formatTriageSummary(
-              result.fixedIssues,
-              result.skippedIssues,
-              bodyOnly
-            );
-            await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
-            console.log(
-              `Posted triage summary: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped`
-            );
+            if (postSummary) {
+              const summaryBody = formatTriageSummary(
+                result.fixedIssues,
+                result.skippedIssues,
+                result.clarificationIssues,
+                bodyOnly
+              );
+              await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
+              console.log(
+                `Posted triage summary: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped, ${result.clarificationIssues.length} needs clarification`
+              );
+            }
           } else {
             // Autofix OFF: just look up comment IDs for DB storage, don't reply/resolve
             await matchGitHubCommentIds(
@@ -179,6 +211,7 @@ export async function handleTriageAfterReview(
 interface BodyOnlyResult {
   fixed: TriageResult["fixedIssues"];
   skipped: TriageResult["skippedIssues"];
+  clarifications: TriageResult["clarificationIssues"];
 }
 
 interface BotComment {
@@ -231,9 +264,10 @@ async function replyToInlineComments(
   pullNumber: number,
   fixedIssues: TriageResult["fixedIssues"],
   skippedIssues: TriageResult["skippedIssues"],
+  clarificationIssues: TriageResult["clarificationIssues"],
   botUsername: string
 ): Promise<BodyOnlyResult> {
-  const bodyOnly: BodyOnlyResult = { fixed: [], skipped: [] };
+  const bodyOnly: BodyOnlyResult = { fixed: [], skipped: [], clarifications: [] };
 
   try {
     // Fetch all review comments on the PR
@@ -253,6 +287,7 @@ async function replyToInlineComments(
       const matchingComment = findMatchingComment(botComments, issue, usedCommentIds);
 
       if (matchingComment) {
+        usedCommentIds.add(matchingComment.id);
         const replyBody = `✅ **Fixed in ${commitSha.slice(0, 7)}**\n\n${explanation}`;
         try {
           await github.replyToReviewComment(owner, repo, pullNumber, matchingComment.id, replyBody);
@@ -294,11 +329,31 @@ async function replyToInlineComments(
           console.warn(`Failed to reply to skipped comment ${matchingComment.id}:`, error);
         }
       } else {
-        console.log(
-          `No matching bot comment found for skipped issue ${issue.file}:${issue.line}`
-        );
+        console.log(`No matching bot comment found for skipped issue ${issue.file}:${issue.line}`);
         // No inline comment - this was a body-only issue
         bodyOnly.skipped.push(skippedItem);
+      }
+    }
+
+    // Process clarification-needed issues
+    for (const clarificationItem of clarificationIssues) {
+      const { issue, question, reason } = clarificationItem;
+      const matchingComment = findMatchingComment(botComments, issue, usedCommentIds);
+
+      if (matchingComment) {
+        usedCommentIds.add(matchingComment.id);
+        clarificationItem.githubCommentId = matchingComment.id;
+        const replyBody = `❓ **Need clarification before auto-fixing**\n\n${reason}\n\n${question}`;
+        try {
+          await github.replyToReviewComment(owner, repo, pullNumber, matchingComment.id, replyBody);
+          console.log(
+            `Asked clarification on comment ${matchingComment.id} for ${issue.file}:${issue.line}`
+          );
+        } catch (error) {
+          console.warn(`Failed to ask clarification on comment ${matchingComment.id}:`, error);
+        }
+      } else {
+        bodyOnly.clarifications.push(clarificationItem);
       }
     }
   } catch (error) {
@@ -337,6 +392,7 @@ async function matchGitHubCommentIds(
 function formatTriageSummary(
   fixedIssues: TriageResult["fixedIssues"],
   skippedIssues: TriageResult["skippedIssues"],
+  clarificationIssues: TriageResult["clarificationIssues"],
   bodyOnly: BodyOnlyResult
 ): string {
   let body = "## Remediation Summary\n\n";
@@ -344,13 +400,16 @@ function formatTriageSummary(
   // Summary counts
   const totalFixed = fixedIssues.length;
   const totalSkipped = skippedIssues.length;
+  const totalClarification = clarificationIssues.length;
 
-  if (totalFixed > 0 && totalSkipped === 0) {
+  if (totalFixed > 0 && totalSkipped === 0 && totalClarification === 0) {
     body += `✅ **${totalFixed} issue${totalFixed > 1 ? "s" : ""} fixed automatically**\n\n`;
-  } else if (totalFixed === 0 && totalSkipped > 0) {
+  } else if (totalFixed === 0 && totalSkipped > 0 && totalClarification === 0) {
     body += `⏭️ **${totalSkipped} issue${totalSkipped > 1 ? "s" : ""} could not be auto-fixed**\n\n`;
+  } else if (totalFixed === 0 && totalSkipped === 0 && totalClarification > 0) {
+    body += `❓ **${totalClarification} issue${totalClarification > 1 ? "s" : ""} need clarification**\n\n`;
   } else {
-    body += `✅ **${totalFixed} fixed** · ⏭️ **${totalSkipped} skipped**\n\n`;
+    body += `✅ **${totalFixed} fixed** · ⏭️ **${totalSkipped} skipped** · ❓ **${totalClarification} needs clarification**\n\n`;
   }
 
   // Fixed issues
@@ -375,9 +434,25 @@ function formatTriageSummary(
     body += "\n";
   }
 
+  // Clarification-needed issues
+  if (totalClarification > 0) {
+    body += "### ❓ Clarification Needed\n\n";
+    for (const { issue, reason, question } of clarificationIssues) {
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
+      body += `  > ${reason}\n`;
+      body += `  > ${question}\n`;
+    }
+    body += "\n";
+  }
+
   // Note about body-only issues if any
-  if (bodyOnly.fixed.length > 0 || bodyOnly.skipped.length > 0) {
-    const bodyOnlyCount = bodyOnly.fixed.length + bodyOnly.skipped.length;
+  if (
+    bodyOnly.fixed.length > 0 ||
+    bodyOnly.skipped.length > 0 ||
+    bodyOnly.clarifications.length > 0
+  ) {
+    const bodyOnlyCount =
+      bodyOnly.fixed.length + bodyOnly.skipped.length + bodyOnly.clarifications.length;
     body += `---\n*${bodyOnlyCount} issue${bodyOnlyCount > 1 ? "s were" : " was"} found outside the diff (see above for details)*\n`;
   }
 

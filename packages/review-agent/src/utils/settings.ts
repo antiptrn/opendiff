@@ -1,4 +1,5 @@
 import type { CodeIssue, RepositorySettings } from "shared/types";
+import { buildIssueFingerprint } from "./issue-fingerprint";
 
 export type { RepositorySettings };
 
@@ -28,9 +29,13 @@ export async function getRepositorySettings(
     if (REVIEW_AGENT_API_KEY) {
       headers["X-API-Key"] = REVIEW_AGENT_API_KEY;
     }
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/settings/${owner}/${repo}`, { headers });
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/settings/${owner}/${repo}`, {
+      headers,
+    });
     if (!response.ok) {
-      console.warn(`Failed to fetch settings for ${owner}/${repo} (${response.status}), features disabled`);
+      console.warn(
+        `Failed to fetch settings for ${owner}/${repo} (${response.status}), features disabled`
+      );
       return defaultSettings;
     }
     return (await response.json()) as RepositorySettings;
@@ -116,6 +121,12 @@ export async function recordReviewComments(
       issue: CodeIssue;
       reason: string;
     }>;
+    clarificationIssues?: Array<{
+      issue: CodeIssue;
+      question: string;
+      reason: string;
+      githubCommentId?: number;
+    }>;
   }
 ): Promise<void> {
   if (!SETTINGS_API_URL) return;
@@ -126,18 +137,49 @@ export async function recordReviewComments(
     triageMap.set(`${f.issue.file}:${f.issue.line}`, f);
   }
 
+  type TriageClarificationItem = {
+    issue: CodeIssue;
+    question: string;
+    reason: string;
+    githubCommentId?: number;
+  };
+  const clarificationMap = new Map<string, TriageClarificationItem>();
+  for (const c of triageResult?.clarificationIssues ?? []) {
+    clarificationMap.set(`${c.issue.file}:${c.issue.line}`, c);
+  }
+
   const comments = issues.map((issue) => {
     const tf = triageMap.get(`${issue.file}:${issue.line}`);
+    const tc = clarificationMap.get(`${issue.file}:${issue.line}`);
+    const fingerprint = buildIssueFingerprint(issue);
     return {
+      type: issue.type,
       body: issue.message,
       path: issue.file,
       line: issue.line,
-      githubCommentId: tf?.githubCommentId || null,
+      githubCommentId: tf?.githubCommentId || tc?.githubCommentId || null,
+      fingerprint,
       fix: tf
-        ? { diff: tf.diff, summary: issue.suggestion || issue.message, commitSha: tf.commitSha }
-        : issue.suggestedCode
-          ? { diff: issue.suggestedCode, summary: issue.suggestion || null }
-          : null,
+        ? {
+            diff: tf.diff,
+            summary: issue.suggestion || issue.message,
+            commitSha: tf.commitSha,
+            fingerprint,
+          }
+        : tc
+          ? {
+              status: "WAITING_FOR_USER",
+              summary: tc.reason,
+              clarificationQuestion: tc.question,
+              clarificationContext: {
+                reason: tc.reason,
+                question: tc.question,
+              },
+              fingerprint,
+            }
+          : issue.suggestedCode
+            ? { diff: issue.suggestedCode, summary: issue.suggestion || null, fingerprint }
+            : null,
     };
   });
 
@@ -156,5 +198,150 @@ export async function recordReviewComments(
     }
   } catch (error) {
     console.warn("Error recording review comments:", error);
+  }
+}
+
+export async function getSuppressedIssueFingerprints(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  fingerprints: string[]
+): Promise<Set<string>> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY || fingerprints.length === 0) {
+    return new Set();
+  }
+
+  try {
+    const response = await fetch(
+      `${SETTINGS_API_URL}/api/internal/clarification-locks/suppressions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": REVIEW_AGENT_API_KEY,
+        },
+        body: JSON.stringify({ owner, repo, pullNumber, fingerprints }),
+      }
+    );
+    if (!response.ok) {
+      return new Set();
+    }
+    const data = (await response.json()) as { suppressedFingerprints?: string[] };
+    return new Set(data.suppressedFingerprints || []);
+  } catch {
+    return new Set();
+  }
+}
+
+export async function hasPendingClarificationLocks(
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<boolean> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `${SETTINGS_API_URL}/api/internal/clarification-locks/pending/${owner}/${repo}/${pullNumber}`,
+      {
+        headers: { "X-API-Key": REVIEW_AGENT_API_KEY },
+      }
+    );
+    if (!response.ok) {
+      return false;
+    }
+    const data = (await response.json()) as { hasPending?: boolean };
+    return Boolean(data.hasPending);
+  } catch {
+    return false;
+  }
+}
+
+export async function acquireExecutionLock(key: string, context: string): Promise<boolean> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return true;
+  }
+
+  try {
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/execution-locks/acquire`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": REVIEW_AGENT_API_KEY,
+      },
+      body: JSON.stringify({ key, context }),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const data = (await response.json()) as { acquired?: boolean };
+    return Boolean(data.acquired);
+  } catch {
+    return false;
+  }
+}
+
+export interface ClarificationLockInfo {
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  fingerprint: string;
+  file: string;
+  line: number;
+  issueType: string;
+  message: string;
+}
+
+export async function getClarificationLockByThread(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  threadCommentId: number
+): Promise<ClarificationLockInfo | null> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${SETTINGS_API_URL}/api/internal/clarification-locks/by-thread/${owner}/${repo}/${pullNumber}/${threadCommentId}`,
+      {
+        headers: { "X-API-Key": REVIEW_AGENT_API_KEY },
+      }
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as { lock?: ClarificationLockInfo | null };
+    return data.lock || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveClarificationLock(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  fingerprint: string,
+  commitSha?: string
+): Promise<void> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return;
+  }
+
+  try {
+    await fetch(`${SETTINGS_API_URL}/api/internal/clarification-locks/resolve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": REVIEW_AGENT_API_KEY,
+      },
+      body: JSON.stringify({ owner, repo, pullNumber, fingerprint, commitSha }),
+    });
+  } catch {
+    // best effort
   }
 }

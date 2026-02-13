@@ -1,4 +1,4 @@
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { Hono } from "hono";
@@ -6,11 +6,13 @@ import { CodeReviewAgent } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
 import { ReviewFormatter } from "./review/formatter";
+import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import {
   type RepositorySettings,
   getCustomReviewRules,
   getRepositorySettings,
+  hasPendingClarificationLocks,
   recordReview,
   recordReviewComments,
 } from "./utils/settings";
@@ -163,8 +165,24 @@ app.post("/webhook", async (c) => {
         }
 
         // Triage always runs when repo has reviews enabled; autofixEnabled controls push behavior
+        const sender = payload.sender?.login as string | undefined;
+        let triageEnabled = true;
+        if (payload.action === "synchronize" && sender?.includes("[bot]")) {
+          const pendingLocks = await hasPendingClarificationLocks(
+            owner,
+            repo,
+            payload.pull_request.number
+          );
+          if (pendingLocks) {
+            triageEnabled = false;
+            console.log(
+              `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
+            );
+          }
+        }
+
         const triageOptions = {
-          enabled: true,
+          enabled: triageEnabled,
           autofixEnabled: settings.autofixEnabled,
           triageAgent: new TriageAgent(),
           botUsername: BOT_USERNAME,
@@ -372,20 +390,15 @@ app.post("/callback/fix-accepted", async (c) => {
         botUsername: BOT_USERNAME,
       },
       async (tempDir, git) => {
-        // Write diff to temp file, apply it, then remove the patch file
-        const diffPath = `${tempDir}/.fix.patch`;
-        writeFileSync(diffPath, diff);
-        await git.raw(["apply", "--allow-empty", diffPath]);
-        unlinkSync(diffPath);
-
-        // Commit and push
-        await git.add(".");
         const msg = (commentBody || "apply accepted fix").slice(0, 72);
         const commitMessage = path ? `fix(${path}): ${msg}` : `fix: ${msg}`;
-        const commitResult = await git.commit(commitMessage);
-        const sha = commitResult.commit;
-
-        await git.push("origin", branch);
+        const sha = await applyPatchAndPush({
+          tempDir,
+          git,
+          diff,
+          commitMessage,
+          branch,
+        });
         console.log(`Fix ${fixId} applied and pushed: ${sha}`);
 
         return sha;
