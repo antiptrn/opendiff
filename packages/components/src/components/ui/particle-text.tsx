@@ -178,7 +178,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
 
             const particles = particlesRef.current;
             const mouse = mouseRef.current;
-            const { radius = 150, strength = 5 } = mouseControls;
+            const { enabled = true, radius = 150, strength = 5 } = mouseControls;
             const scaledRadius = radius * dpr;
 
             for (let i = 0; i < particles.length; i++) {
@@ -190,7 +190,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
                 let forceX = 0;
                 let forceY = 0;
 
-                if (mouse.isActive) {
+                if (enabled && mouse.isActive) {
                     const mdx = mouse.x * dpr - p.x;
                     const mdy = mouse.y * dpr - p.y;
                     const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
@@ -249,21 +249,26 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             mouseRef.current.isActive = false;
         };
 
-        container.addEventListener("mousemove", handleMouseMove);
-        container.addEventListener("mouseleave", handleMouseLeave);
-        container.addEventListener("touchmove", handleTouchMove, {
-            passive: false,
-        });
-        container.addEventListener("touchend", handleTouchEnd);
+        const { enabled = true } = mouseControls;
+        if (enabled) {
+            container.addEventListener("mousemove", handleMouseMove);
+            container.addEventListener("mouseleave", handleMouseLeave);
+            container.addEventListener("touchmove", handleTouchMove, {
+                passive: false,
+            });
+            container.addEventListener("touchend", handleTouchEnd);
+        }
 
         return () => {
             if (animationFrameRef.current)
                 cancelAnimationFrame(animationFrameRef.current);
             if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
-            container.removeEventListener("mousemove", handleMouseMove);
-            container.removeEventListener("mouseleave", handleMouseLeave);
-            container.removeEventListener("touchmove", handleTouchMove);
-            container.removeEventListener("touchend", handleTouchEnd);
+            if (enabled) {
+                container.removeEventListener("mousemove", handleMouseMove);
+                container.removeEventListener("mouseleave", handleMouseLeave);
+                container.removeEventListener("touchmove", handleTouchMove);
+                container.removeEventListener("touchend", handleTouchEnd);
+            }
         };
     }, [
         text,
