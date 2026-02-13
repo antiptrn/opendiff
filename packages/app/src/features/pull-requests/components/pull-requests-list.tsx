@@ -1,31 +1,26 @@
-import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, ExternalLink, GitPullRequest } from "lucide-react";
 import { Button } from "components/components/ui/button";
 import { Skeleton } from "components/components/ui/skeleton";
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, ExternalLink, GitPullRequest } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { PullRequestSummary } from "../hooks/use-pull-requests";
 
 function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; showRepo?: boolean }) {
-  const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
-
-  const goToPullRequest = () => navigate(`/console/pull-requests/${pullRequest.id}`);
 
   return (
     <button
       type="button"
-      className="w-full text-left py-4 select-none cursor-pointer transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100 bg-transparent border-none p-0"
+      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100 cursor-pointer"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={goToPullRequest}
     >
       <div className="flex items-start gap-3">
         <GitPullRequest className="size-5 mt-2 text-foreground" />
         <div className="min-w-0 flex flex-col">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-lg truncate">
-              {`${pullRequest.pullNumber}${pullRequest.pullTitle}` ||
+              {`#${pullRequest.pullNumber} ${pullRequest.pullTitle}` ||
                 `PR #${pullRequest.pullNumber}`}
             </span>
             {pullRequest.pullUrl && (
