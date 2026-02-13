@@ -30,7 +30,7 @@ jobs:
         run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build
 
       - name: Run migrations
-        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
 
       - name: Notify Slack
         if: always()

@@ -71,7 +71,7 @@ jobs:
         run: bash "$PROD_DIR/scripts/preview-start.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
       - name: Run database migrations
-        run: cd "$PREVIEW_DIR" && docker compose run --rm bff bunx prisma migrate deploy
+        run: cd "$PREVIEW_DIR" && docker compose run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
 
       - name: Write cloudflared ingress fragment
         run: |
