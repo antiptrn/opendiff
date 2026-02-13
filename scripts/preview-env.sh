@@ -19,6 +19,7 @@ BFF_URL="https://pr-${PR_NUMBER}-api.opendiff.dev"
 APP_URL="https://pr-${PR_NUMBER}-app.opendiff.dev"
 WEBSITE_URL="https://pr-${PR_NUMBER}.opendiff.dev"
 
+AGENT_API_KEY=$(openssl rand -hex 16)
 PREVIEW_DB="antiptrn_preview_${PR_NUMBER}"
 
 # ── Create preview database if it doesn't exist ──────────────────────────────
@@ -34,7 +35,7 @@ DATABASE_URL=postgresql://j:j@host.docker.internal:5432/${PREVIEW_DB}
 FRONTEND_URL=${APP_URL}
 ALLOWED_ORIGINS=${APP_URL},${WEBSITE_URL}
 REVIEW_AGENT_WEBHOOK_URL=http://host.docker.internal:${AGENT_PORT}/webhook
-REVIEW_AGENT_API_KEY=preview-agent-key-${PR_NUMBER}
+REVIEW_AGENT_API_KEY=${AGENT_API_KEY}
 PAYMENT_PROVIDER=mock
 OAUTH_CALLBACK_BASE_URL=https://api-preview.opendiff.dev
 PREVIEW_PR_NUMBER=${PR_NUMBER}
@@ -60,7 +61,7 @@ EOF
 cat > "${PREVIEW_DIR}/packages/review-agent/.env" <<EOF
 PORT=3000
 SETTINGS_API_URL=http://host.docker.internal:${BFF_PORT}
-REVIEW_AGENT_API_KEY=preview-agent-key-${PR_NUMBER}
+REVIEW_AGENT_API_KEY=${AGENT_API_KEY}
 BOT_USERNAME=opendiff-agent[bot]
 EOF
 
@@ -79,6 +80,7 @@ services:
       - "host.docker.internal:host-gateway"
     labels:
       preview-pr: "${PR_NUMBER}"
+    init: true
     mem_limit: 512m
     restart: unless-stopped
 
@@ -90,7 +92,7 @@ services:
       args:
         PACKAGE: website
     ports:
-      - "${WEBSITE_PORT}:80"
+      - "${WEBSITE_PORT}:8080"
     labels:
       preview-pr: "${PR_NUMBER}"
     mem_limit: 128m
@@ -104,7 +106,7 @@ services:
       args:
         PACKAGE: app
     ports:
-      - "${APP_PORT}:80"
+      - "${APP_PORT}:8080"
     labels:
       preview-pr: "${PR_NUMBER}"
     mem_limit: 128m
@@ -122,6 +124,7 @@ services:
       - "host.docker.internal:host-gateway"
     labels:
       preview-pr: "${PR_NUMBER}"
+    init: true
     mem_limit: 512m
     restart: unless-stopped
 EOF

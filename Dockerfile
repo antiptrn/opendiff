@@ -26,6 +26,7 @@ FROM base AS bff
 RUN cd packages/bff && bunx prisma generate
 
 ENV NODE_ENV=production
+USER bun
 EXPOSE 3001
 
 CMD ["bun", "run", "packages/bff/src/index.ts"]
@@ -45,7 +46,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 ARG PACKAGE=website
 COPY --from=frontend-build /app/packages/${PACKAGE}/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080
 
 # ── Agent ────────────────────────────────────────────────────────
 FROM base AS agent
@@ -53,6 +54,7 @@ FROM base AS agent
 RUN bun run --cwd packages/review-agent build
 
 ENV NODE_ENV=production
+USER bun
 EXPOSE 3000
 
 CMD ["bun", "run", "packages/review-agent/dist/index.js"]

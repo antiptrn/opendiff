@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-PR_NUMBER="${1:?Usage: preview-stop.sh <PR_NUMBER>}"
-
-PREVIEW_DIR="/home/j/previews/pr-${PR_NUMBER}"
+PR_NUMBER="${1:?Usage: preview-stop.sh <PR_NUMBER> <PREVIEW_DIR>}"
+PREVIEW_DIR="${2:?Usage: preview-stop.sh <PR_NUMBER> <PREVIEW_DIR>}"
 
 if [ -f "$PREVIEW_DIR/docker-compose.yml" ]; then
   cd "$PREVIEW_DIR"

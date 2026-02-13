@@ -7,14 +7,13 @@ services:
     ports:
       - "3001:3001"
     env_file: packages/bff/.env
-    environment:
-      - DATABASE_URL=postgresql://j:j@host.docker.internal:5432/antiptrn
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - /home/j/developer/review-agent/private-key.pem:/home/j/developer/review-agent/private-key.pem:ro
     labels:
       app: opendiff-prod
+    init: true
     mem_limit: 512m
     restart: unless-stopped
 
@@ -26,7 +25,7 @@ services:
       args:
         PACKAGE: website
     ports:
-      - "5173:80"
+      - "5173:8080"
     labels:
       app: opendiff-prod
     mem_limit: 128m
@@ -40,7 +39,7 @@ services:
       args:
         PACKAGE: app
     ports:
-      - "5174:80"
+      - "5174:8080"
     labels:
       app: opendiff-prod
     mem_limit: 128m
@@ -54,13 +53,12 @@ services:
     ports:
       - "3000:3000"
     env_file: packages/review-agent/.env
-    environment:
-      - SETTINGS_API_URL=http://host.docker.internal:3001
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - /home/j/developer/review-agent/private-key.pem:/home/j/developer/review-agent/private-key.pem:ro
     labels:
       app: opendiff-prod
+    init: true
     mem_limit: 512m
     restart: unless-stopped

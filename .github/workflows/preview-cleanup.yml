@@ -1,14 +1,16 @@
 name: Preview Cleanup
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 permissions: {}
 
 jobs:
   cleanup-preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -39,6 +41,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
+          SAFE_TITLE=${SAFE_TITLE:1:-1}
           curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
             --data-raw "{

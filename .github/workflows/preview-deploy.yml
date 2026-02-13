@@ -1,7 +1,7 @@
 name: Preview Deploy
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 concurrency:
@@ -14,7 +14,9 @@ permissions:
 
 jobs:
   deploy-preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -48,19 +50,25 @@ jobs:
           git checkout "$HEAD_REF" 2>/dev/null || git checkout -b "$HEAD_REF" "origin/$HEAD_REF"
           git reset --hard "origin/$HEAD_REF"
 
+      - name: Copy trusted build files
+        run: |
+          cp "$PROD_DIR/Dockerfile" "$PREVIEW_DIR/Dockerfile"
+          cp "$PROD_DIR/.dockerignore" "$PREVIEW_DIR/.dockerignore"
+          cp "$PROD_DIR/nginx.conf" "$PREVIEW_DIR/nginx.conf"
+
       - name: Generate preview env files
         env:
           PREVIEW_GITHUB_CLIENT_ID: ${{ secrets.PREVIEW_GITHUB_CLIENT_ID }}
           PREVIEW_GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
-        run: bash "$PREVIEW_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
+        run: bash "$PROD_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
       - name: Stop existing preview services
-        run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
+        run: bash "$PROD_DIR/scripts/preview-stop.sh" "$PR_NUMBER" "$PREVIEW_DIR" || true
 
       - name: Start preview services
         env:
           RUNNER_TRACKING_ID: ""
-        run: bash "$PREVIEW_DIR/scripts/preview-start.sh" "$PR_NUMBER"
+        run: bash "$PROD_DIR/scripts/preview-start.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
       - name: Run database migrations
         run: cd "$PREVIEW_DIR" && docker compose run --rm bff bunx prisma migrate deploy
@@ -82,7 +90,7 @@ jobs:
       - name: Restart preview tunnel
         env:
           RUNNER_TRACKING_ID: ""
-        run: bash "$PREVIEW_DIR/scripts/preview-tunnel.sh"
+        run: bash "$PROD_DIR/scripts/preview-tunnel.sh"
 
       - name: Comment on PR with preview URLs
         env:
@@ -125,7 +133,9 @@ jobs:
           fi
           # Sanitize untrusted inputs for JSON embedding
           SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
+          SAFE_TITLE=${SAFE_TITLE:1:-1}
           SAFE_ACTOR=$(printf '%s' "$GH_ACTOR" | jq -Rs .)
+          SAFE_ACTOR=${SAFE_ACTOR:1:-1}
           curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
             --data-raw "{

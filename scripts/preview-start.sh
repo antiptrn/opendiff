@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-PR_NUMBER="${1:?Usage: preview-start.sh <PR_NUMBER>}"
-
-PREVIEW_DIR="/home/j/previews/pr-${PR_NUMBER}"
+PR_NUMBER="${1:?Usage: preview-start.sh <PR_NUMBER> <PREVIEW_DIR>}"
+PREVIEW_DIR="${2:?Usage: preview-start.sh <PR_NUMBER> <PREVIEW_DIR>}"
 
 BFF_PORT=$((10000 + PR_NUMBER))
 WEBSITE_PORT=$((20000 + PR_NUMBER))
