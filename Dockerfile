@@ -51,6 +51,7 @@ EXPOSE 8080
 # ── Agent ────────────────────────────────────────────────────────
 FROM base AS agent
 
+RUN apk add --no-cache git
 RUN bun run --cwd packages/review-agent build
 
 ENV NODE_ENV=production
