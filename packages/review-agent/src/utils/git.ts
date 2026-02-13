@@ -1,7 +1,11 @@
-import { mkdir, rm } from "node:fs/promises";
+import { appendFile, mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
 import type { GitHubClient } from "../github/client";
 import { cleanupUserSkills, hydrateSkills } from "./skill-hydrator";
+
+/** Patterns that should never be committed by the bot */
+const GIT_EXCLUDE_PATTERNS = ["core", "core.*", "*.core", ".claude/"];
 
 interface CloneOptions {
   github: GitHubClient;
@@ -59,6 +63,10 @@ export async function withClonedRepo<T>(
     if (opts.mode === "read-write") {
       await git.addConfig("user.email", `${opts.botUsername}[bot]@users.noreply.github.com`);
       await git.addConfig("user.name", `${opts.botUsername}[bot]`);
+
+      // Exclude core dumps and other junk from git add
+      const excludeFile = join(tempDir, ".git", "info", "exclude");
+      await appendFile(excludeFile, "\n" + GIT_EXCLUDE_PATTERNS.join("\n") + "\n");
     }
 
     // Hydrate user skills into the workspace (fire-and-forget on failure)

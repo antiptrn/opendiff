@@ -21,6 +21,7 @@ export class TriageAgent {
     });
 
     let result = "";
+    let lastAssistantText = "";
     let hasChanges = false;
     let totalTokens = 0;
 
@@ -35,13 +36,16 @@ export class TriageAgent {
           settingSources: ["user"],
         },
       })) {
-        // Track if assistant used edit/write tools
+        // Track if assistant used edit/write tools and capture text output
         if (message.type === "assistant") {
           const assistantMsg = message as SDKAssistantMessage;
           const content = assistantMsg.message?.content ?? [];
           for (const block of content) {
             if (block.type === "tool_use" && (block.name === "Edit" || block.name === "Write")) {
               hasChanges = true;
+            }
+            if (block.type === "text" && block.text) {
+              lastAssistantText = block.text;
             }
           }
         }
@@ -58,10 +62,13 @@ export class TriageAgent {
               totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
             }
           } else {
-            // Error result
+            // Error result — use SDK errors, last agent response, or fallback
+            const errorDetail = resultMsg.errors?.join(", ")
+              || lastAssistantText
+              || "Agent encountered an error but provided no details";
             return {
               fixed: false,
-              explanation: resultMsg.errors?.join(", ") || "Agent failed to fix the issue",
+              explanation: errorDetail,
             };
           }
         }

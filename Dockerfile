@@ -55,7 +55,10 @@ RUN apk add --no-cache git
 RUN bun run --cwd packages/review-agent build
 
 ENV NODE_ENV=production
+# Disable core dumps — prevents junk files from being committed by git add
+RUN ulimit -c 0
+ENV BUN_CRASH_REPORTER_URL=""
 USER bun
 EXPOSE 3000
 
-CMD ["bun", "run", "packages/review-agent/dist/index.js"]
+CMD ["sh", "-c", "ulimit -c 0 && exec bun run packages/review-agent/dist/index.js"]

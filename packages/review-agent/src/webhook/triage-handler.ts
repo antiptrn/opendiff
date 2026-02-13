@@ -280,32 +280,23 @@ async function replyToInlineComments(
     // Process skipped issues
     for (const skippedItem of skippedIssues) {
       const { issue, reason } = skippedItem;
-      const matchingComment = botComments.find(
-        (c) => c.path === issue.file && c.line === issue.line
-      );
+      const matchingComment = findMatchingComment(botComments, issue, usedCommentIds);
 
       if (matchingComment) {
-        const replyBody = `⏭️ **Skipped auto-fix**\n\n${reason}`;
+        usedCommentIds.add(matchingComment.id);
+        const replyBody = `⏭️ **Could not auto-fix**\n\n${reason}`;
         try {
           await github.replyToReviewComment(owner, repo, pullNumber, matchingComment.id, replyBody);
           console.log(
             `Replied to skipped comment ${matchingComment.id} for ${issue.file}:${issue.line}`
           );
-
-          const threadId = await github.getReviewThreadId(
-            owner,
-            repo,
-            pullNumber,
-            matchingComment.nodeId
-          );
-          if (threadId) {
-            await github.resolveReviewThread(threadId);
-            console.log(`Resolved skipped thread for ${issue.file}:${issue.line}`);
-          }
         } catch (error) {
-          console.warn(`Failed to reply/resolve skipped comment ${matchingComment.id}:`, error);
+          console.warn(`Failed to reply to skipped comment ${matchingComment.id}:`, error);
         }
       } else {
+        console.log(
+          `No matching bot comment found for skipped issue ${issue.file}:${issue.line}`
+        );
         // No inline comment - this was a body-only issue
         bodyOnly.skipped.push(skippedItem);
       }
