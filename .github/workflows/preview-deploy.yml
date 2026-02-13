@@ -13,22 +13,10 @@ permissions:
   issues: write
 
 jobs:
-  debug:
-    runs-on: self-hosted
-    steps:
-      - name: Debug values
-        run: |
-          echo "head_repo: ${{ github.event.pull_request.head.repo.full_name }}"
-          echo "repository: ${{ github.repository }}"
-          echo "author_association: ${{ github.event.pull_request.author_association }}"
-          echo "repo_match: ${{ github.event.pull_request.head.repo.full_name == github.repository }}"
-          echo "assoc_match: ${{ contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) }}"
-
   deploy-preview:
-    needs: debug
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)
     runs-on: self-hosted
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
