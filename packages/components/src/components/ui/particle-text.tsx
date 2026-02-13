@@ -52,6 +52,10 @@ const ParticleText: React.FC<ParticleTextProps> = ({
     ease = 0.05,
     autoFit = true,
 }) => {
+    // Destructure mouseControls to avoid object reference issues in dependency array
+    const mouseEnabled = mouseControls.enabled ?? true;
+    const mouseRadius = mouseControls.radius ?? 150;
+    const mouseStrength = mouseControls.strength ?? 5;
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<Particle[]>([]);
@@ -178,8 +182,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
 
             const particles = particlesRef.current;
             const mouse = mouseRef.current;
-            const { enabled = true, radius = 150, strength = 5 } = mouseControls;
-            const scaledRadius = radius * dpr;
+            const scaledRadius = mouseRadius * dpr;
 
             for (let i = 0; i < particles.length; i++) {
                 const p = particles[i];
@@ -190,7 +193,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
                 let forceX = 0;
                 let forceY = 0;
 
-                if (enabled && mouse.isActive) {
+                if (mouseEnabled && mouse.isActive) {
                     const mdx = mouse.x * dpr - p.x;
                     const mdy = mouse.y * dpr - p.y;
                     const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
@@ -198,8 +201,8 @@ const ParticleText: React.FC<ParticleTextProps> = ({
                     if (mDist < scaledRadius) {
                         const force = (scaledRadius - mDist) / scaledRadius;
                         const angle = Math.atan2(mdy, mdx);
-                        forceX = -Math.cos(angle) * force * strength * 5;
-                        forceY = -Math.sin(angle) * force * strength * 5;
+                        forceX = -Math.cos(angle) * force * mouseStrength * 5;
+                        forceY = -Math.sin(angle) * force * mouseStrength * 5;
                     }
                 }
 
@@ -249,8 +252,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             mouseRef.current.isActive = false;
         };
 
-        const { enabled = true } = mouseControls;
-        if (enabled) {
+        if (mouseEnabled) {
             container.addEventListener("mousemove", handleMouseMove);
             container.addEventListener("mouseleave", handleMouseLeave);
             container.addEventListener("touchmove", handleTouchMove, {
@@ -263,7 +265,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
             if (animationFrameRef.current)
                 cancelAnimationFrame(animationFrameRef.current);
             if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
-            if (enabled) {
+            if (mouseEnabled) {
                 container.removeEventListener("mousemove", handleMouseMove);
                 container.removeEventListener("mouseleave", handleMouseLeave);
                 container.removeEventListener("touchmove", handleTouchMove);
@@ -275,7 +277,9 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         colors,
         particleSize,
         particleGap,
-        mouseControls,
+        mouseEnabled,
+        mouseRadius,
+        mouseStrength,
         backgroundColor,
         fontFamily,
         fontSize,
