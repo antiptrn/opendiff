@@ -16,9 +16,11 @@ export function FAQSection() {
           <h1 className="lg:text-5xl md:text-5xl text-3xl leading-tight">
             Frequently Asked Questions
           </h1>
-          <Button variant="secondary" className="mt-8 lg:w-auto md:w-auto w-full">
-            Contact us
-          </Button>
+          <a href="mailto:contact@opendiff.io">
+            <Button variant="secondary" className="mt-8 lg:w-auto md:w-auto w-full">
+              Contact us
+            </Button>
+          </a>
         </div>
         <div className="w-full max-w-3xl mx-auto text-foreground items-center justify-start gap-4 overflow-hidden">
           <Accordion multiple>
