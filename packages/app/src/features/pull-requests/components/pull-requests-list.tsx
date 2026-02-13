@@ -9,9 +9,8 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
   const [hovered, setHovered] = useState(false);
 
   return (
-    <button
-      type="button"
-      className="w-full text-left py-4 select-none cursor-pointer transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100 bg-transparent border-none p-0"
+    <div
+      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -50,7 +49,7 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
