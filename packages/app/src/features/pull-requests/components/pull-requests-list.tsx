@@ -1,8 +1,8 @@
-import { Button } from "components/components/ui/button";
-import { Skeleton } from "components/components/ui/skeleton";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ExternalLink, GitPullRequest } from "lucide-react";
-import { useState } from "react";
+import { Button } from "components/components/ui/button";
+import { Skeleton } from "components/components/ui/skeleton";
 import type { PullRequestSummary } from "../hooks/use-pull-requests";
 
 function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; showRepo?: boolean }) {
