@@ -20,32 +20,16 @@ jobs:
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
 
-      - name: Install dependencies
-        run: cd $DEPLOY_DIR && bun install
+      - name: Stop existing containers
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml down
 
-      - name: Lint
-        run: cd $DEPLOY_DIR && bun run lint
-
-      - name: Generate Prisma client
-        run: cd $DEPLOY_DIR/packages/bff && bunx prisma generate
-
-      - name: Run migrations
-        run: cd $DEPLOY_DIR/packages/bff && bunx prisma migrate deploy
-
-      - name: Build
-        run: |
-          cd $DEPLOY_DIR
-          bun run --cwd packages/website build
-          bun run --cwd packages/app build
-          bun run --cwd packages/review-agent build
-
-      - name: Restart services
+      - name: Build and start containers
         env:
           RUNNER_TRACKING_ID: ""
-        run: |
-          cd $DEPLOY_DIR
-          bash scripts/stop.sh
-          bash scripts/start.sh prod --skip-build
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build
+
+      - name: Run migrations
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy
 
       - name: Notify Slack
         if: always()

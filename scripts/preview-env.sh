@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Generate isolated .env files for a PR preview environment.
+# Generate isolated .env files and docker-compose.yml for a PR preview environment.
 # Usage: bash scripts/preview-env.sh <PR_NUMBER> <PREVIEW_DIR>
 #
 # Creates a dedicated Postgres database (antiptrn_preview_<PR>) and writes
-# env files that never touch production secrets.
+# env files that containers use at runtime via docker compose env_file.
 
 set -euo pipefail
 
@@ -29,11 +29,11 @@ fi
 
 # ── BFF ──────────────────────────────────────────────────────────────────────
 cat > "${PREVIEW_DIR}/packages/bff/.env" <<EOF
-PORT=${BFF_PORT}
-DATABASE_URL=postgresql://j:j@localhost:5432/${PREVIEW_DB}
+PORT=3001
+DATABASE_URL=postgresql://j:j@host.docker.internal:5432/${PREVIEW_DB}
 FRONTEND_URL=${APP_URL}
 ALLOWED_ORIGINS=${APP_URL},${WEBSITE_URL}
-REVIEW_AGENT_WEBHOOK_URL=http://localhost:${AGENT_PORT}/webhook
+REVIEW_AGENT_WEBHOOK_URL=http://host.docker.internal:${AGENT_PORT}/webhook
 REVIEW_AGENT_API_KEY=preview-agent-key-${PR_NUMBER}
 PAYMENT_PROVIDER=mock
 OAUTH_CALLBACK_BASE_URL=https://api-preview.opendiff.dev
@@ -42,30 +42,88 @@ GITHUB_CLIENT_ID=${PREVIEW_GITHUB_CLIENT_ID:-}
 GITHUB_CLIENT_SECRET=${PREVIEW_GITHUB_CLIENT_SECRET:-}
 EOF
 
-# ── App ──────────────────────────────────────────────────────────────────────
+# ── App (VITE_* vars read from .env by vite during Docker build) ─────────────
 cat > "${PREVIEW_DIR}/packages/app/.env" <<EOF
 VITE_API_URL=${BFF_URL}
 VITE_APP_URL=${APP_URL}
 VITE_WEBSITE_URL=${WEBSITE_URL}
-VITE_PORT=${APP_PORT}
-VITE_ALLOWED_HOST=pr-${PR_NUMBER}-app.opendiff.dev
 EOF
 
-# ── Website ──────────────────────────────────────────────────────────────────
+# ── Website (VITE_* vars read from .env by vite during Docker build) ─────────
 cat > "${PREVIEW_DIR}/packages/website/.env" <<EOF
 VITE_API_URL=${BFF_URL}
 VITE_APP_URL=${APP_URL}
 VITE_WEBSITE_URL=${WEBSITE_URL}
-VITE_PORT=${WEBSITE_PORT}
-VITE_ALLOWED_HOST=pr-${PR_NUMBER}.opendiff.dev
 EOF
 
 # ── Review Agent ─────────────────────────────────────────────────────────────
 cat > "${PREVIEW_DIR}/packages/review-agent/.env" <<EOF
-PORT=${AGENT_PORT}
-SETTINGS_API_URL=http://localhost:${BFF_PORT}
+PORT=3000
+SETTINGS_API_URL=http://host.docker.internal:${BFF_PORT}
 REVIEW_AGENT_API_KEY=preview-agent-key-${PR_NUMBER}
 BOT_USERNAME=opendiff-agent[bot]
 EOF
 
-echo "Preview env files written to ${PREVIEW_DIR}"
+# ── Docker Compose ───────────────────────────────────────────────────────────
+cat > "${PREVIEW_DIR}/docker-compose.yml" <<EOF
+services:
+  bff:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bff
+    ports:
+      - "${BFF_PORT}:3001"
+    env_file: packages/bff/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      preview-pr: "${PR_NUMBER}"
+    mem_limit: 512m
+    restart: unless-stopped
+
+  website:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        PACKAGE: website
+    ports:
+      - "${WEBSITE_PORT}:80"
+    labels:
+      preview-pr: "${PR_NUMBER}"
+    mem_limit: 128m
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        PACKAGE: app
+    ports:
+      - "${APP_PORT}:80"
+    labels:
+      preview-pr: "${PR_NUMBER}"
+    mem_limit: 128m
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: agent
+    ports:
+      - "${AGENT_PORT}:3000"
+    env_file: packages/review-agent/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      preview-pr: "${PR_NUMBER}"
+    mem_limit: 512m
+    restart: unless-stopped
+EOF
+
+echo "Preview env files and docker-compose.yml written to ${PREVIEW_DIR}"

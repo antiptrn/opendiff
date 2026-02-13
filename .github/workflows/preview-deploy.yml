@@ -54,22 +54,6 @@ jobs:
           PREVIEW_GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
         run: bash "$PREVIEW_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
 
-      - name: Install dependencies
-        run: cd "$PREVIEW_DIR" && bun install
-
-      - name: Generate Prisma client
-        run: cd "$PREVIEW_DIR/packages/bff" && bunx prisma generate
-
-      - name: Run migrations on preview database
-        run: cd "$PREVIEW_DIR/packages/bff" && bunx prisma migrate deploy
-
-      - name: Build frontends and agent
-        run: |
-          cd "$PREVIEW_DIR"
-          bun run --cwd packages/website build
-          bun run --cwd packages/app build
-          bun run --cwd packages/review-agent build
-
       - name: Stop existing preview services
         run: bash "$PREVIEW_DIR/scripts/preview-stop.sh" "$PR_NUMBER" || true
 
@@ -77,6 +61,9 @@ jobs:
         env:
           RUNNER_TRACKING_ID: ""
         run: bash "$PREVIEW_DIR/scripts/preview-start.sh" "$PR_NUMBER"
+
+      - name: Run database migrations
+        run: cd "$PREVIEW_DIR" && docker compose run --rm bff bunx prisma migrate deploy
 
       - name: Write cloudflared ingress fragment
         run: |

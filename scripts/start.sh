@@ -6,24 +6,13 @@ LOGS="$ROOT/logs"
 mkdir -p "$LOGS"
 
 MODE="${1:-dev}"
-SKIP_BUILD="${2:-}"
 
 # Kill existing services first
-bash "$ROOT/scripts/stop.sh" 2>/dev/null || true
+bash "$ROOT/scripts/stop.sh" "$MODE" 2>/dev/null || true
 
 if [ "$MODE" = "prod" ]; then
-  if [ "$SKIP_BUILD" != "--skip-build" ]; then
-    echo "Building..."
-    bun run --cwd "$ROOT/packages/website" build
-    bun run --cwd "$ROOT/packages/app" build
-    bun run --cwd "$ROOT/packages/review-agent" build
-  fi
-
-  echo "Starting prod services..."
-  nohup bun run --cwd "$ROOT/packages/bff" start > "$LOGS/server.log" 2>&1 &
-  nohup bun run --cwd "$ROOT/packages/website" preview > "$LOGS/website.log" 2>&1 &
-  nohup bun run --cwd "$ROOT/packages/app" preview > "$LOGS/app.log" 2>&1 &
-  nohup bun run --cwd "$ROOT/packages/review-agent" start > "$LOGS/agent.log" 2>&1 &
+  echo "Starting prod services via Docker..."
+  docker compose -f "$ROOT/docker-compose.prod.yml" up -d --build
 else
   echo "Starting dev services..."
   nohup bun run --cwd "$ROOT/packages/bff" dev > "$LOGS/server.log" 2>&1 &
