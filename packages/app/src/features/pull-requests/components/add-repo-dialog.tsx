@@ -97,7 +97,7 @@ export function AddRepoDialog({
                 onChange={(e) => onSearchChange(e.target.value)}
               />
             </div>
-            <div className="max-h-80 bg-background overflow-y-auto rounded-2xl py-2.5">
+            <div className="max-h-80 bg-background overflow-y-auto rounded-xl py-2.5">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -121,11 +121,10 @@ export function AddRepoDialog({
                       type="button"
                       onClick={() => !isAlreadyAdded && onRepoSelect(repo.full_name)}
                       disabled={isAlreadyAdded}
-                      className={`w-full text-left px-5 py-2 transition-colors ${
-                        isAlreadyAdded
+                      className={`w-full text-left px-5 py-2 transition-colors ${isAlreadyAdded
                           ? "opacity-50 cursor-not-allowed"
                           : "hover:bg-muted/50 cursor-pointer"
-                      }`}
+                        }`}
                     >
                       <RepoListItem name={repo.full_name}>
                         {isAlreadyAdded && (

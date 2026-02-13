@@ -16,15 +16,15 @@ export function GettingStartedSection() {
       <div className="flex lg:flex-row md:flex-row flex-col items-center justify-center gap-8 w-full mt-8 px-8">
         <FeatureCard
           className="lg:h-100 md:h-100 h-auto pb-0"
-          title="Autonomous iteration"
-          description="OpenDiff reviews your code, but can also automatically fix issues and commit changes back."
+          title="Recursive reviews"
+          description="OpenDiff doesn't just review your code — it fixes issues and commits the changes automatically in a recursive loop."
         >
           <AutonomousIterationItems />
         </FeatureCard>
         <FeatureCard
           grid
-          title="Flexible and customizable"
-          description="Powered by Claude, our industry-leading coding agent catches bugs before they ship to production."
+          title="Customizable"
+          description="We give you the tools to customize the code review process to your team's needs."
         >
           <div className="px-4 gap-3.5 py-2 flex items-center justify-start bg-muted rounded-md">
             <Book className="size-3.5 shrink-0" />

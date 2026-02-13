@@ -41,8 +41,8 @@ export function HeroSection() {
               Star OpenDiff on GitHub
             </a>
           </Button>
-          <h5 className="font-normal max-w-[619px] text-[40px] md:text-[58px] leading-tight pb-1">
-            Security, compliance, and control—by design
+          <h5 className="font-normal max-w-[559px] text-[40px] md:text-[58px] leading-tight pb-1">
+            Stop shipping slop—don't stop shipping fast
           </h5>
           <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
             Arm your team with AI-powered code reviews to catch bugs before they ship to production.
