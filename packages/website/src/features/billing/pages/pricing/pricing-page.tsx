@@ -42,7 +42,7 @@ export function PricingPage() {
           Deploy OpenDiff on your own infrastructure
           <ExternalLink className="size-3.5 shrink-0" />
         </Button>
-        <h5 className="tracking-tighter font-normal max-w-[519px] text-[40px] md:text-[63px] leading-tight pb-1">
+        <h5 className="font-normal max-w-[519px] text-[40px] md:text-[63px] leading-tight pb-1">
           Built for developers
         </h5>
         <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-2.5 text-balance leading-7">

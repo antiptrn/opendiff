@@ -1,4 +1,8 @@
 export { HeroSection } from "./hero-section";
+export { GettingStartedSection } from "./getting-started-section";
+export { OpenSourceSection } from "./open-source-section";
+export { LanderCtaSection } from "./lander-cta-section";
+export { FAQSection } from "./faq-section";
 export { BenefitsSection } from "./benefits-section";
 export { ServicesSection } from "./services-section";
 export { TestimonialsSection } from "./testimonials-section";
