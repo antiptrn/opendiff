@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback, useMemo } from "react";
 
 interface Particle {
     x: number;
@@ -56,6 +56,11 @@ const ParticleText: React.FC<ParticleTextProps> = ({
     const mouseEnabled = mouseControls.enabled ?? true;
     const mouseRadius = mouseControls.radius ?? 150;
     const mouseStrength = mouseControls.strength ?? 5;
+
+    // Memoize colors array to avoid unnecessary re-renders when array reference changes
+    // but contents remain the same
+    const memoizedColors = useMemo(() => colors, [JSON.stringify(colors)]);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<Particle[]>([]);
@@ -152,7 +157,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
                 for (let x = 0; x < canvas.width; x += step) {
                     const index = (y * canvas.width + x) * 4;
                     if (data[index + 3] > 128) {
-                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        const color = memoizedColors[Math.floor(Math.random() * memoizedColors.length)];
                         newParticles.push({
                             x: Math.random() * canvas.width,
                             y: Math.random() * canvas.height,
@@ -274,7 +279,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         };
     }, [
         text,
-        colors,
+        memoizedColors,
         particleSize,
         particleGap,
         mouseEnabled,
