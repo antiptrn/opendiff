@@ -14,8 +14,10 @@ export function OpenSourceSection() {
             AI gets expensive fast. OpenDiff can be used with Anthropic&apos;s existing billing
             quotas so you don&apos;t have to pay for API usage.
           </p>
-          <Button variant="secondary" className="lg:mt-16 md:mt-16 mt-8 lg:w-auto md:w-auto w-full">
-            Clone OpenDiff on GitHub
+          <Button variant="secondary" className="lg:mt-16 md:mt-16 mt-8 lg:w-auto md:w-auto w-full" asChild>
+            <a href="https://github.com/opendiff/opendiff" target="_blank" rel="noopener noreferrer">
+              Clone OpenDiff on GitHub
+            </a>
           </Button>
         </div>
       </div>
