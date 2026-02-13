@@ -64,7 +64,7 @@ docker run -d -p 3000:3000 --env-file .env review-agent
 
 For GitHub to reach your Raspberry Pi, you need to expose port 3000. Options:
 
-- **Cloudflare Tunnel** (recommended): Free, secure, no port forwarding
+- **Cloudflare Tunnel** (recommended): Secure and managed, no port forwarding
 - **ngrok**: Quick for testing
 - **Port forwarding**: Direct but requires static IP
 

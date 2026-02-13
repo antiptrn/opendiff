@@ -317,7 +317,6 @@ Skills are automatically applied based on the repository configuration and team 
 
 | Tier | Token Quota | Features |
 |------|-------------|----------|
-| **Free** | — | Basic access |
 | **Self-sufficient** | Unlimited (BYOK) | Bring Your Own Key — use your Anthropic API key |
 | **Pro** | 2.5M tokens/mo | Automated PR reviews, auto-fix, custom rules, skills |
 | **Ultra** | 8M tokens/mo | Everything in Pro with higher token quota |
