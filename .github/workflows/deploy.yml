@@ -21,8 +21,8 @@ jobs:
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
 
-      - name: Stop existing containers
-        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml down
+      - name: Stop existing services
+        run: bash $DEPLOY_DIR/scripts/stop.sh prod
 
       - name: Build and start containers
         env:
