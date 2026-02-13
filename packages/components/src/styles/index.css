@@ -32,6 +32,22 @@
 
 @font-face {
 	font-family: "Helvetica Now Display";
+	src: url("/typefaces/helvetica-now/HelveticaNowDisplay-Light.woff2") format("woff2");
+	font-weight: 300;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Helvetica Now Display";
+	src: url("/typefaces/helvetica-now/HelveticaNowDisplay-Regular.woff2") format("woff2");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Helvetica Now Display";
 	src: url("/typefaces/helvetica-now/HelveticaNowDisplay-Medium.woff2") format("woff2");
 	font-weight: 500;
 	font-style: normal;
@@ -187,7 +203,7 @@
 		@apply font-helvetica;
 	}
 	h1, h2, h3, h4, h5, h6 {
-		@apply tracking-tighter;
+		@apply tracking-tight font-helvetica-display;
 	}
 }
 

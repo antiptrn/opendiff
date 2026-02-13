@@ -13,7 +13,7 @@ export default function HighlightCard({ title, description, Icon }: Props) {
       <CardContent>
         {Icon && <Icon className="size-5 text-foreground" />}
         <h2 className="text-xl mt-8 line-clamp-1">{title}</h2>
-        <p className="mt-4 text-muted-foreground text-base line-clamp-2">{description}</p>
+        <p className="mt-2 text-muted-foreground text-base line-clamp-2">{description}</p>
       </CardContent>
     </Card>
   );
