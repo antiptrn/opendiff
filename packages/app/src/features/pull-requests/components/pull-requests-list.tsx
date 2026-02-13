@@ -8,11 +8,20 @@ import type { PullRequestSummary } from "../hooks/use-pull-requests";
 function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; showRepo?: boolean }) {
   const [hovered, setHovered] = useState(false);
 
+  const handleNavigate = () => {
+    // Navigate to PR detail page
+    if (pullRequest.pullUrl) {
+      window.location.href = `/pull-requests/${pullRequest.id}`;
+    }
+  };
+
   return (
-    <div
-      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100"
+    <button
+      type="button"
+      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100 cursor-pointer"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={handleNavigate}
     >
       <div className="flex items-start gap-3">
         <GitPullRequest className="size-5 mt-2 text-foreground" />
@@ -49,7 +58,7 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
