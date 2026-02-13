@@ -11,7 +11,7 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
   return (
     <button
       type="button"
-      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100 cursor-pointer"
+      className="w-full text-left py-4 select-none transition-opacity duration-150 group-hover/pr-list:opacity-40 hover:!opacity-100"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

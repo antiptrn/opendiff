@@ -51,10 +51,10 @@ export function HeroSection() {
                   <SiGithub className="size-3.5 shrink-0" />
                   Star OpenDiff on GitHub
                 </Button>
-                <h5 className="tracking-tighter font-normal max-w-[519px] text-[40px] md:text-[58px] leading-tight pb-1">
-                  Stop shipping slop
+                <h5 className="tracking-tighter font-normal max-w-[519px] text-[40px] md:text-[58px] leading-[110%] pb-1">
+                  <span className="text-muted-foreground">Stop shipping slop.</span> Keep shipping fast.
                 </h5>
-                <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-2.5 text-balance leading-7">
+                <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-5 md:mt-5 mt-4 text-balance leading-7">
                   Arm your team with AI-powered code reviews to catch bugs before they ship to
                   production.
                 </p>
@@ -139,9 +139,12 @@ export function HeroSection() {
           <div className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8">
             <div className="lg:w-full md:w-full w-full bg-card rounded-xl lg:p-16 md:p-16 p-8 gap-0">
               <h1 className="lg:text-4xl md:text-4xl text-3xl lg:leading-12 md:leading-12 leading-10">
-                Your team moves fast with AI. But fast shouldn’t mean sloppy. OpenDiff makes sure every line still earns its merge.
+                Stop shipping slop. Keep shipping fast.
               </h1>
-              <Button className="lg:mt-13 md:mt-13 mt-6 lg:w-auto md:w-auto w-full">Get started now</Button>
+              <p className="text-muted-foreground lg:text-lg md:text-lg text-base mt-4">
+                Your team moves fast with AI. But fast shouldn’t mean sloppy. OpenDiff makes sure every line still earns its merge.
+              </p>
+              <Button className="lg:mt-16 md:mt-16 mt-8 lg:w-auto md:w-auto w-full">Get started now</Button>
             </div>
           </div>
           <Separator className="lg:mt-16 md:mt-16 mt-8" />
