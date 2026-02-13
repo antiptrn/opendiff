@@ -71,7 +71,7 @@ function SelectTrigger({
       className={cn(selectTriggerVariants({ variant, size, className }))}
       {...props}
     >
-      <h3>{children}</h3>
+      <span>{children}</span>
       <SelectPrimitive.Icon asChild>
         <ChevronDownIcon className="ml-0.5 -mr-1 text-muted-foreground pointer-events-none" />
       </SelectPrimitive.Icon>
