@@ -245,10 +245,17 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         };
 
         const handleTouchMove = (e: TouchEvent) => {
-            e.preventDefault();
             const rect = canvas.getBoundingClientRect();
-            mouseRef.current.x = e.touches[0].clientX - rect.left;
-            mouseRef.current.y = e.touches[0].clientY - rect.top;
+            const touchX = e.touches[0].clientX - rect.left;
+            const touchY = e.touches[0].clientY - rect.top;
+
+            // Only prevent default if touch is within canvas bounds
+            if (touchX >= 0 && touchX <= rect.width && touchY >= 0 && touchY <= rect.height) {
+                e.preventDefault();
+            }
+
+            mouseRef.current.x = touchX;
+            mouseRef.current.y = touchY;
             mouseRef.current.isActive = true;
         };
 
