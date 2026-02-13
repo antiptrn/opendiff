@@ -34,9 +34,12 @@ export function HeroSection() {
           <Button
             variant="secondary"
             className="lg:mb-6 md:mb-6 mb-4 text-sm font-normal rounded-lg h-auto py-2 px-3.5 gap-2.5"
+            asChild
           >
-            <SiGithub className="size-3.5 shrink-0" />
-            Star OpenDiff on GitHub
+            <a href="https://github.com/opendiff/opendiff" target="_blank" rel="noopener noreferrer">
+              <SiGithub className="size-3.5 shrink-0" />
+              Star OpenDiff on GitHub
+            </a>
           </Button>
           <h5 className="font-normal max-w-[619px] text-[40px] md:text-[58px] leading-tight pb-1">
             Security, compliance, and control—by design
