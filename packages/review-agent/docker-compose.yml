@@ -1,0 +1,26 @@
+services:
+  review-agent:
+    build: .
+    container_name: review-agent
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-}
+      - GITHUB_PRIVATE_KEY_PATH=/app/private-key.pem
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - BOT_USERNAME=${BOT_USERNAME:-opendiff-bot}
+      - BOT_TEAMS=${BOT_TEAMS:-}
+    env_file:
+      - .env
+    volumes:
+      - ./private-key.pem:/app/private-key.pem:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

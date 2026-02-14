@@ -1,0 +1,55 @@
+name: Preview Cleanup
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  cleanup-preview:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)
+    runs-on: self-hosted
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PREVIEW_DIR: ${{ secrets.PREVIEWS_BASE_DIR }}/pr-${{ github.event.pull_request.number }}
+      INGRESS_DIR: ${{ secrets.INGRESS_DIR }}
+      PREVIEW_DB_PREFIX: ${{ vars.PREVIEW_DB_PREFIX || 'opendiff_preview_' }}
+      PREVIEW_DB_USER: ${{ vars.PREVIEW_DB_USER || 'postgres' }}
+      PREVIEW_DB_HOST: ${{ vars.PREVIEW_DB_HOST || 'localhost' }}
+      PREVIEW_DB_PORT: ${{ vars.PREVIEW_DB_PORT || '5432' }}
+      PREVIEW_DB_ADMIN_DB: ${{ vars.PREVIEW_DB_ADMIN_DB || 'postgres' }}
+      PGPASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+    steps:
+      - name: Stop preview containers
+        run: |
+          if [ -f "$PREVIEW_DIR/docker-compose.yml" ]; then
+            cd "$PREVIEW_DIR"
+            docker compose down -v --remove-orphans
+          fi
+
+      - name: Remove preview directory
+        run: rm -rf "$PREVIEW_DIR"
+
+      - name: Drop preview database
+        run: psql -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "DROP DATABASE IF EXISTS ${PREVIEW_DB_PREFIX}${PR_NUMBER};"
+
+      - name: Remove ingress fragment
+        run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"
+
+      - name: Reassemble tunnel config
+        run: bash "${{ secrets.DEPLOY_DIR }}/scripts/preview-tunnel.sh"
+
+      - name: Notify Slack
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
+          SAFE_TITLE=${SAFE_TITLE:1:-1}
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --data-raw "{
+              \"text\": \":broom: *Preview PR #${PR_NUMBER} cleaned up*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${SAFE_TITLE}>\"
+            }"

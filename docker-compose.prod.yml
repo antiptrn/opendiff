@@ -1,0 +1,64 @@
+services:
+  bff:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bff
+    ports:
+      - "3001:3001"
+    env_file: packages/bff/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:ro
+    labels:
+      app: opendiff-prod
+    init: true
+    mem_limit: 512m
+    restart: unless-stopped
+
+  website:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        PACKAGE: website
+    ports:
+      - "5173:8080"
+    labels:
+      app: opendiff-prod
+    mem_limit: 128m
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        PACKAGE: app
+    ports:
+      - "5174:8080"
+    labels:
+      app: opendiff-prod
+    mem_limit: 128m
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: agent
+    ports:
+      - "3000:3000"
+    env_file: packages/review-agent/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:ro
+    labels:
+      app: opendiff-prod
+    init: true
+    mem_limit: 512m
+    restart: unless-stopped

@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: self-hosted
+    environment: production
+    env:
+      DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+      GITHUB_PRIVATE_KEY_PATH: ${{ secrets.GH_APP_PRIVATE_KEY_PATH }}
+    steps:
+      - name: Pull latest
+        run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
+
+      - name: Stop existing services
+        run: bash $DEPLOY_DIR/scripts/stop.sh prod
+
+      - name: Build and start containers
+        env:
+          RUNNER_TRACKING_ID: ""
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build
+
+      - name: Run migrations
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
+
+      - name: Notify Slack
+        if: always()
+        env:
+          GH_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI=":white_check_mark:"
+            STATUS="succeeded"
+          else
+            EMOJI=":x:"
+            STATUS="failed"
+          fi
+          SAFE_ACTOR=$(printf '%s' "$GH_ACTOR" | jq -Rs .)
+          SAFE_ACTOR=${SAFE_ACTOR:1:-1}
+          SAFE_MSG=$(cd $DEPLOY_DIR && git log -1 --pretty=%s | jq -Rs .)
+          SAFE_MSG=${SAFE_MSG:1:-1}
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --data-raw "{
+              \"text\": \"${EMOJI} *Production deploy ${STATUS}*\n• Commit: <https://github.com/${{ github.repository }}/commit/${DEPLOY_SHA}|$(echo '${DEPLOY_SHA}' | cut -c1-7)>\n• By: ${SAFE_ACTOR}\n• Message: ${SAFE_MSG}\"
+            }"

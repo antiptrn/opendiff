@@ -1,0 +1,168 @@
+name: Preview Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: preview-${{ github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  deploy-preview:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.pull_requests[0].number != null
+    runs-on: self-hosted
+    env:
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      HEAD_REF: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROD_DIR: ${{ secrets.DEPLOY_DIR }}
+      PREVIEW_DIR: ${{ secrets.PREVIEWS_BASE_DIR }}/pr-${{ github.event.workflow_run.pull_requests[0].number }}
+      INGRESS_DIR: ${{ secrets.INGRESS_DIR }}
+      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN || 'opendiff.dev' }}
+      PREVIEW_APP_SUBDOMAIN_PREFIX: ${{ vars.PREVIEW_APP_SUBDOMAIN_PREFIX || 'app' }}
+      PREVIEW_API_SUBDOMAIN_PREFIX: ${{ vars.PREVIEW_API_SUBDOMAIN_PREFIX || 'api' }}
+      PREVIEW_AGENT_SUBDOMAIN_PREFIX: ${{ vars.PREVIEW_AGENT_SUBDOMAIN_PREFIX || 'agent' }}
+      PREVIEW_AUTH_PROXY_HOSTNAME: ${{ vars.PREVIEW_AUTH_PROXY_HOSTNAME || 'api-preview.opendiff.dev' }}
+    steps:
+      - name: Read PR metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json title --jq '.title')
+          echo "PR_TITLE=${PR_TITLE}" >> "$GITHUB_ENV"
+
+      - name: Compute ports and URLs
+        run: |
+          echo "BFF_PORT=$((10000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "WEBSITE_PORT=$((20000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "APP_PORT=$((30000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "AGENT_PORT=$((40000 + $PR_NUMBER))" >> $GITHUB_ENV
+          echo "BFF_URL=https://pr-${PR_NUMBER}-${PREVIEW_API_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}" >> $GITHUB_ENV
+          echo "APP_URL=https://pr-${PR_NUMBER}-${PREVIEW_APP_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}" >> $GITHUB_ENV
+          echo "WEBSITE_URL=https://pr-${PR_NUMBER}.${PREVIEW_DOMAIN}" >> $GITHUB_ENV
+          echo "AGENT_URL=https://pr-${PR_NUMBER}-${PREVIEW_AGENT_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}" >> $GITHUB_ENV
+
+      - name: Create/update preview directory
+        run: |
+          if [ ! -d "$PREVIEW_DIR/.git" ]; then
+            git clone "$PROD_DIR" "$PREVIEW_DIR"
+            # Re-point origin to GitHub so we can fetch PR branches
+            REMOTE_URL=$(git -C "$PROD_DIR" remote get-url origin)
+            git -C "$PREVIEW_DIR" remote set-url origin "$REMOTE_URL"
+          fi
+          cd "$PREVIEW_DIR"
+          git fetch origin
+          git checkout "$HEAD_REF" 2>/dev/null || git checkout -b "$HEAD_REF" "origin/$HEAD_REF"
+          git reset --hard "$HEAD_SHA"
+
+      - name: Copy trusted build files
+        run: |
+          cp "$PROD_DIR/Dockerfile" "$PREVIEW_DIR/Dockerfile"
+          cp "$PROD_DIR/.dockerignore" "$PREVIEW_DIR/.dockerignore"
+          cp "$PROD_DIR/nginx.conf" "$PREVIEW_DIR/nginx.conf"
+
+      - name: Generate preview env files
+        env:
+          PREVIEW_GITHUB_CLIENT_ID: ${{ secrets.PREVIEW_GITHUB_CLIENT_ID }}
+          PREVIEW_GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
+          PREVIEW_DB_PREFIX: ${{ vars.PREVIEW_DB_PREFIX || 'opendiff_preview_' }}
+          PREVIEW_DB_USER: ${{ vars.PREVIEW_DB_USER || 'postgres' }}
+          PREVIEW_DB_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          PREVIEW_DB_HOST: ${{ vars.PREVIEW_DB_HOST || 'localhost' }}
+          PREVIEW_DB_PORT: ${{ vars.PREVIEW_DB_PORT || '5432' }}
+          PREVIEW_DB_ADMIN_DB: ${{ vars.PREVIEW_DB_ADMIN_DB || 'postgres' }}
+          PREVIEW_OAUTH_CALLBACK_BASE_URL: ${{ vars.PREVIEW_OAUTH_CALLBACK_BASE_URL || '' }}
+          PREVIEW_BOT_USERNAME: ${{ vars.PREVIEW_BOT_USERNAME || 'opendiff-agent[bot]' }}
+        run: bash "$PROD_DIR/scripts/preview-env.sh" "$PR_NUMBER" "$PREVIEW_DIR"
+
+      - name: Stop existing preview services
+        run: bash "$PROD_DIR/scripts/preview-stop.sh" "$PR_NUMBER" "$PREVIEW_DIR" || true
+
+      - name: Start preview services
+        env:
+          RUNNER_TRACKING_ID: ""
+        run: bash "$PROD_DIR/scripts/preview-start.sh" "$PR_NUMBER" "$PREVIEW_DIR"
+
+      - name: Run database migrations
+        run: cd "$PREVIEW_DIR" && docker compose run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
+
+      - name: Write cloudflared ingress fragment
+        run: |
+          mkdir -p "$INGRESS_DIR"
+          cat > "$INGRESS_DIR/pr-${PR_NUMBER}.yml" <<EOF
+            - hostname: pr-${PR_NUMBER}.${PREVIEW_DOMAIN}
+              service: http://localhost:${{ env.WEBSITE_PORT }}
+            - hostname: pr-${PR_NUMBER}-${PREVIEW_APP_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}
+              service: http://localhost:${{ env.APP_PORT }}
+            - hostname: pr-${PR_NUMBER}-${PREVIEW_API_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}
+              service: http://localhost:${{ env.BFF_PORT }}
+            - hostname: pr-${PR_NUMBER}-${PREVIEW_AGENT_SUBDOMAIN_PREFIX}.${PREVIEW_DOMAIN}
+              service: http://localhost:${{ env.AGENT_PORT }}
+          EOF
+
+      - name: Restart preview tunnel
+        env:
+          RUNNER_TRACKING_ID: ""
+          PREVIEW_AUTH_PROXY_HOSTNAME: ${{ env.PREVIEW_AUTH_PROXY_HOSTNAME }}
+        run: bash "$PROD_DIR/scripts/preview-tunnel.sh"
+
+      - name: Comment on PR with preview URLs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COMMENT_BODY="## Preview Deployment
+
+          | Service | URL |
+          |---------|-----|
+          | Website | ${{ env.WEBSITE_URL }} |
+          | App | ${{ env.APP_URL }} |
+          | API | ${{ env.BFF_URL }} |
+          | Agent | ${{ env.AGENT_URL }} |
+
+          _Updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
+
+          # Check for existing preview comment via REST API
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | startswith("## Preview Deployment")) | .id' 2>/dev/null | head -n 1)
+
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING}" -X PATCH -f body="$COMMENT_BODY"
+          else
+            gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body "$COMMENT_BODY"
+          fi
+
+      - name: Notify Slack
+        if: always()
+        env:
+          GH_ACTOR: ${{ github.event.workflow_run.actor.login }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI=":white_check_mark:"
+            STATUS="deployed"
+            URLS="\n• Website: ${{ env.WEBSITE_URL }}\n• App: ${{ env.APP_URL }}\n• API: ${{ env.BFF_URL }}"
+          else
+            EMOJI=":x:"
+            STATUS="failed"
+            URLS=""
+          fi
+          # Sanitize untrusted inputs for JSON embedding
+          SAFE_TITLE=$(printf '%s' "$PR_TITLE" | jq -Rs .)
+          SAFE_TITLE=${SAFE_TITLE:1:-1}
+          SAFE_ACTOR=$(printf '%s' "$GH_ACTOR" | jq -Rs .)
+          SAFE_ACTOR=${SAFE_ACTOR:1:-1}
+          curl -sS -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --data-raw "{
+              \"text\": \"${EMOJI} *Preview PR #${PR_NUMBER} ${STATUS}*\n• PR: <https://github.com/${{ github.repository }}/pull/${PR_NUMBER}|${SAFE_TITLE}>\n• By: ${SAFE_ACTOR}${URLS}\"
+            }"

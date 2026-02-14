@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: self-hosted
+    env:
+      CI_DIR: /tmp/opendiff-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$CI_DIR"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$CI_DIR"
+          cd "$CI_DIR"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.event.pull_request.head.sha }}"
+            git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          else
+            git checkout --detach "${{ github.sha }}"
+          fi
+
+      - name: Install dependencies
+        run: cd "$CI_DIR" && bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: cd "$CI_DIR" && bunx prisma generate --schema packages/bff/prisma/schema.prisma
+
+      - name: Typecheck bff
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/bff/tsconfig.json
+
+      - name: Typecheck app
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/app/tsconfig.json
+
+      - name: Typecheck website
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/website/tsconfig.json
+
+      - name: Typecheck review-agent
+        run: cd "$CI_DIR" && bun run --cwd packages/review-agent typecheck
+
+      - name: Run tests
+        run: cd "$CI_DIR" && bun run test
+
+      - name: Cleanup workspace
+        if: always()
+        run: rm -rf "$CI_DIR"

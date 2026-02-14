@@ -1,0 +1,36 @@
+{
+  "name": "review-agent",
+  "version": "0.1.0",
+  "description": "GitHub code review agent powered by Claude AI",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun --external @anthropic-ai/claude-agent-sdk --external @opendiff/prompts",
+    "start": "bun run dist/index.js",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "ci": "biome ci ."
+  },
+  "dependencies": {
+    "@opendiff/prompts": "workspace:*",
+    "shared": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "0.1.77",
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@octokit/auth-app": "^8.1.2",
+    "@octokit/rest": "^21.0.0",
+    "@octokit/webhooks": "^13.2.0",
+    "hono": "^4.4.0",
+    "simple-git": "^3.30.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.5.0"
+  }
+}
