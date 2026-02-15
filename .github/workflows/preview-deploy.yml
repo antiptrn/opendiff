@@ -6,7 +6,12 @@ on:
     types: [completed]
 
 concurrency:
-  group: preview-${{ github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  group: >-
+    ${{
+      github.event.workflow_run.event == 'pull_request' &&
+      format('preview-{0}', github.event.workflow_run.pull_requests[0].number) ||
+      format('preview-run-{0}', github.event.workflow_run.id)
+    }}
   cancel-in-progress: true
 
 permissions:
@@ -24,11 +29,11 @@ jobs:
       github.event.workflow_run.pull_requests[0].number != null
     runs-on: self-hosted
     env:
-      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      PR_NUMBER: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0].number || '' }}
       HEAD_REF: ${{ github.event.workflow_run.head_branch }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
       PROD_DIR: ${{ secrets.DEPLOY_DIR }}
-      PREVIEW_DIR: ${{ secrets.PREVIEWS_BASE_DIR }}/pr-${{ github.event.workflow_run.pull_requests[0].number }}
+      PREVIEW_DIR_BASE: ${{ secrets.PREVIEWS_BASE_DIR }}
       INGRESS_DIR: ${{ secrets.INGRESS_DIR }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN || 'opendiff.dev' }}
       PREVIEW_APP_SUBDOMAIN_PREFIX: ${{ vars.PREVIEW_APP_SUBDOMAIN_PREFIX || 'app' }}
@@ -42,6 +47,10 @@ jobs:
         run: |
           PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json title --jq '.title')
           echo "PR_TITLE=${PR_TITLE}" >> "$GITHUB_ENV"
+
+      - name: Compute preview directory
+        run: |
+          echo "PREVIEW_DIR=${PREVIEW_DIR_BASE}/pr-${PR_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Compute ports and URLs
         run: |
