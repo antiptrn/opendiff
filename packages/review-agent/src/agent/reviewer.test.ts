@@ -6,9 +6,11 @@ import type { FileToReview } from "./types";
 let mockQueryResult = "";
 let mockQueryShouldFail = false;
 let mockQueryError = "Agent failed";
+let lastQueryArgs: unknown = null;
 
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-  query: async function* () {
+  query: async function* (args: unknown) {
+    lastQueryArgs = args;
     if (mockQueryShouldFail) {
       yield {
         type: "result",
@@ -34,6 +36,7 @@ describe("CodeReviewAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockQueryShouldFail = false;
+    lastQueryArgs = null;
     mockQueryResult = JSON.stringify({
       summary: "LGTM",
       issues: [],
@@ -99,6 +102,24 @@ describe("CodeReviewAgent", () => {
 
       expect(result.verdict).toBe("approve");
       expect(result.issues).toHaveLength(0);
+    });
+
+    it("should prefer CLAUDE_CODE_OAUTH_TOKEN over ANTHROPIC_API_KEY", async () => {
+      process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = "test-oauth-token";
+
+      await agent.reviewFiles(
+        [{ filename: "src/utils.ts" }],
+        { prTitle: "Test auth", prBody: null },
+        "/tmp/test-repo"
+      );
+
+      const args = lastQueryArgs as
+        | { options?: { env?: Record<string, string> } }
+        | null
+        | undefined;
+      expect(args?.options?.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("test-oauth-token");
+      expect(args?.options?.env?.ANTHROPIC_API_KEY).toBeUndefined();
     });
 
     it("should detect multiple issues across files", async () => {

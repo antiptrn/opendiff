@@ -5,6 +5,28 @@ import { loadPrompt } from "@opendiff/prompts";
 import simpleGit from "simple-git";
 import { getInstallationTokenForRepo } from "./github-metadata";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  // Claude Code "setup-token" produces a long-lived OAuth token (sk-ant-oat...).
+  // The Claude Agent SDK / Claude Code runtime expects this in CLAUDE_CODE_OAUTH_TOKEN.
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      // If an OAuth token is provided, ensure we don't accidentally fall back to API key auth.
+      if (oauthToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  if (oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+  }
+
+  return env;
+}
+
 interface ReviewCommentInput {
   body: string;
   path: string | null;
@@ -130,6 +152,7 @@ export async function generateReviewSummary(
         prompt,
         options: {
           cwd: tempDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: cloneSucceeded ? ["Read", "Glob", "Grep"] : [],
           permissionMode: "default",
           maxTurns: cloneSucceeded ? 10 : 1,

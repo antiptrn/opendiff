@@ -3,6 +3,29 @@ import type { SDKAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude
 import { loadPrompt } from "@opendiff/prompts";
 import type { FileToReview, ReviewResult } from "./types";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  // Claude Code "setup-token" produces a long-lived OAuth token (sk-ant-oat...).
+  // The Claude Agent SDK / Claude Code runtime expects this in CLAUDE_CODE_OAUTH_TOKEN.
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      // If an OAuth token is provided, ensure we don't accidentally fall back to API key auth.
+      if (oauthToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  // Prefer Claude Code OAuth token over API key if both are present.
+  if (oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+  }
+
+  return env;
+}
+
 interface PRContext {
   prTitle: string;
   prBody: string | null;
@@ -139,6 +162,7 @@ Flag anything that could be improved. The goal is to maintain the highest code q
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Glob", "Grep"],
           permissionMode: "default",
           maxTurns: 30,
@@ -308,6 +332,7 @@ Flag anything that could be improved. The goal is to maintain the highest code q
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Glob", "Grep"],
           permissionMode: "default",
           maxTurns: 10,
