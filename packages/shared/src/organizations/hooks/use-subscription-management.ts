@@ -28,8 +28,15 @@ export function useManageSubscription(orgId: string | null) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to manage subscription");
+        let message = "Failed to manage subscription";
+        try {
+          const error = (await response.json()) as { error?: string };
+          message = error.error || message;
+        } catch {
+          // ignore JSON parse failures; fall back to status text
+          message = response.statusText || message;
+        }
+        throw new Error(message);
       }
 
       return response.json();

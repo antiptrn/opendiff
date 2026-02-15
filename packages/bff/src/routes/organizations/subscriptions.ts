@@ -101,6 +101,17 @@ subscriptionRoutes.post("/subscription", requireAuth(), async (c) => {
       const currentProductId = org.productId;
       const newProductId = paymentProvider.getProductId(tier, billing);
 
+      if (!newProductId) {
+        console.error("Billing misconfiguration: missing productId", { tier, billing });
+        return c.json(
+          {
+            error:
+              "Billing is temporarily unavailable for this plan. Please contact support if this persists.",
+          },
+          500
+        );
+      }
+
       // Check if changing tier/billing or just adding seats
       if (currentProductId === newProductId) {
         // Just updating seat count (Polar doesn't support quantity updates, tracked internally)
@@ -168,10 +179,23 @@ subscriptionRoutes.post("/subscription", requireAuth(), async (c) => {
 
     // No existing subscription - create checkout
     const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    const productId = paymentProvider.getProductId(tier, billing);
+    if (!productId) {
+      console.error("Billing misconfiguration: missing productId", { tier, billing });
+      return c.json(
+        {
+          error:
+            "Billing is temporarily unavailable for this plan. Please contact support if this persists.",
+        },
+        500
+      );
+    }
+
     const checkout = await paymentProvider.createCheckout({
-      productId: paymentProvider.getProductId(tier, billing),
+      productId,
       quantity: seatQuantity,
-      successUrl: `${FRONTEND_URL}/console/settings?tab=organization&subscription_success=1`,
+      successUrl: `${FRONTEND_URL}/console/settings/billing?subscription_success=1`,
       customerEmail: membership.user.email || undefined,
       customerName: membership.user.name || membership.user.login,
       metadata: {

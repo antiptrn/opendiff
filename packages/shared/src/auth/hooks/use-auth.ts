@@ -211,7 +211,8 @@ export function useAuth() {
           ...user,
           subscriptionTier: data.subscriptionTier,
           subscriptionStatus: data.subscriptionStatus,
-          polarProductId: data.polarProductId,
+          // Backend returns `productId`; keep storing under the legacy key for now.
+          polarProductId: data.productId ?? data.polarProductId,
           cancelAtPeriodEnd: data.cancelAtPeriodEnd,
         };
         setUser(updatedUser);
