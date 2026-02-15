@@ -49,9 +49,15 @@ PREVIEW_DB="${PREVIEW_DB_PREFIX}${PR_NUMBER}"
 
 # ── Create preview database if it doesn't exist ──────────────────────────────
 export PGPASSWORD="$PREVIEW_DB_PASSWORD"
-if ! psql -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '${PREVIEW_DB}'" | grep -q 1; then
+
+PSQL_HOST_ARGS=()
+if [ -n "${PREVIEW_DB_HOST:-}" ] && [ "$PREVIEW_DB_HOST" != "localhost" ] && [ "$PREVIEW_DB_HOST" != "127.0.0.1" ]; then
+  PSQL_HOST_ARGS+=( -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" )
+fi
+
+if ! psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '${PREVIEW_DB}'" | grep -q 1; then
   echo "Creating preview database: ${PREVIEW_DB}"
-  psql -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "CREATE DATABASE ${PREVIEW_DB};"
+  psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "CREATE DATABASE ${PREVIEW_DB};"
 fi
 
 # ── BFF ──────────────────────────────────────────────────────────────────────
