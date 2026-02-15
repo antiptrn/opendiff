@@ -96,8 +96,10 @@ jobs:
           PREVIEW_DB_PREFIX: ${{ vars.PREVIEW_DB_PREFIX || 'opendiff_preview_' }}
           PREVIEW_DB_USER: ${{ vars.PREVIEW_DB_USER || 'postgres' }}
           PREVIEW_DB_ADMIN_USER: ${{ vars.PREVIEW_DB_ADMIN_USER || vars.PREVIEW_DB_USER || 'postgres' }}
-          PREVIEW_DB_APP_USER: ${{ vars.PREVIEW_DB_APP_USER || vars.PREVIEW_DB_USER || 'postgres' }}
+          PREVIEW_DB_APP_USER: ${{ vars.PREVIEW_DB_APP_USER || vars.PREVIEW_DB_ADMIN_USER || vars.PREVIEW_DB_USER || 'postgres' }}
           PREVIEW_DB_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          PREVIEW_DB_ADMIN_PASSWORD: ${{ secrets.PREVIEW_DB_ADMIN_PASSWORD }}
+          PREVIEW_DB_APP_PASSWORD: ${{ secrets.PREVIEW_DB_APP_PASSWORD }}
           PREVIEW_DB_HOST: ${{ vars.PREVIEW_DB_HOST || 'localhost' }}
           PREVIEW_DB_PORT: ${{ vars.PREVIEW_DB_PORT || '5432' }}
           PREVIEW_DB_ADMIN_DB: ${{ vars.PREVIEW_DB_ADMIN_DB || 'postgres' }}
