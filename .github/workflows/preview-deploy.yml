@@ -95,9 +95,12 @@ jobs:
           PREVIEW_GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
           PREVIEW_DB_PREFIX: ${{ vars.PREVIEW_DB_PREFIX || 'opendiff_preview_' }}
           PREVIEW_DB_USER: ${{ vars.PREVIEW_DB_USER || 'postgres' }}
-          PREVIEW_DB_ADMIN_USER: ${{ vars.PREVIEW_DB_ADMIN_USER || vars.PREVIEW_DB_USER || 'postgres' }}
-          PREVIEW_DB_APP_USER: ${{ vars.PREVIEW_DB_APP_USER || vars.PREVIEW_DB_USER || 'postgres' }}
+          # Prefer explicit admin/app users; do not fall back to PREVIEW_DB_USER to avoid accidental local usernames.
+          PREVIEW_DB_ADMIN_USER: ${{ vars.PREVIEW_DB_ADMIN_USER || 'postgres' }}
+          PREVIEW_DB_APP_USER: ${{ vars.PREVIEW_DB_APP_USER || vars.PREVIEW_DB_ADMIN_USER || 'postgres' }}
           PREVIEW_DB_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          PREVIEW_DB_ADMIN_PASSWORD: ${{ secrets.PREVIEW_DB_ADMIN_PASSWORD }}
+          PREVIEW_DB_APP_PASSWORD: ${{ secrets.PREVIEW_DB_APP_PASSWORD }}
           PREVIEW_DB_HOST: ${{ vars.PREVIEW_DB_HOST || 'localhost' }}
           PREVIEW_DB_PORT: ${{ vars.PREVIEW_DB_PORT || '5432' }}
           PREVIEW_DB_ADMIN_DB: ${{ vars.PREVIEW_DB_ADMIN_DB || 'postgres' }}
