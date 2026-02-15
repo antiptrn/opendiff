@@ -39,7 +39,7 @@ export function SubscriptionSuccessPage() {
 
         const data = await response.json();
 
-        if (data.subscriptionStatus === "ACTIVE" && data.polarSubscriptionId) {
+        if (data.subscriptionStatus === "ACTIVE" && data.subscriptionId) {
           // Subscription is active!
           setStatus("success");
 
