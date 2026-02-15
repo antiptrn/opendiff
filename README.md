@@ -15,11 +15,6 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 - **Custom Review Rules** - Configure per-repository review guidelines and coding standards
 
 ## Architecture
-
-<p align="center">
-  <img alt="OpenDiff Architecture" src="docs/architecture.png" width="800">
-</p>
-
 > **[View detailed architecture documentation →](./ARCHITECTURE.md)**
 
 ## Packages
