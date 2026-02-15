@@ -12,6 +12,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)
     runs-on: self-hosted
+    environment: preview
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PREVIEW_DIR: ${{ secrets.PREVIEWS_BASE_DIR }}/pr-${{ github.event.pull_request.number }}
