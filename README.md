@@ -45,7 +45,7 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 
 ```bash
 # Clone the repository
-git clone https://github.com/opendiff/opendiff.git
+git clone https://github.com/antiptrn/opendiff.git
 cd opendiff
 
 # Install dependencies
@@ -54,7 +54,7 @@ bun install
 
 ### Environment Setup
 
-Each package requires its own environment configuration. Copy the example files and configure:
+For local development, each package requires its own environment configuration. Copy the example files and configure:
 
 ```bash
 # Server
@@ -160,6 +160,10 @@ VITE_SELF_SUFFICIENT_YEARLY_PRODUCT_ID=xxx
 VITE_API_URL=http://localhost:3001
 VITE_APP_URL=http://localhost:5174
 
+# Optional: GitHub repo slug for displaying live star count
+# Example: antiptrn/opendiff
+VITE_GITHUB_REPO=
+
 # Dev server host allowlist (comma-separated)
 VITE_ALLOWED_HOSTS=localhost,127.0.0.1,opendiff.dev,.opendiff.dev
 
@@ -171,6 +175,28 @@ VITE_PRO_YEARLY_PRICE_ID=xxx
 VITE_ULTRA_MONTHLY_PRICE_ID=xxx
 VITE_ULTRA_YEARLY_PRICE_ID=xxx
 ```
+
+### GitHub Actions Environments (Preview + Production)
+
+If you use the included deploy/preview workflows, configure secrets on GitHub using environments:
+
+- `Repo -> Settings -> Environments -> production -> Secrets`
+  - `DEPLOY_DIR` (path to the trusted clone on your runner)
+  - `GH_APP_PRIVATE_KEY_PATH` (absolute path to your GitHub App PEM file on the runner)
+  - `SLACK_WEBHOOK_URL` (optional)
+
+- `Repo -> Settings -> Environments -> preview -> Secrets`
+  - `DEPLOY_DIR`
+  - `PREVIEWS_BASE_DIR`
+  - `INGRESS_DIR`
+  - `PREVIEW_DB_PASSWORD`
+  - `PREVIEW_GITHUB_CLIENT_ID`
+  - `PREVIEW_GITHUB_CLIENT_SECRET`
+  - `SLACK_WEBHOOK_URL` (optional)
+
+Preview behavior is controlled by repo-level Actions variables (non-secret):
+- `Repo -> Settings -> Secrets and variables -> Actions -> Variables`
+  - `PREVIEW_DOMAIN`, `PREVIEW_*_SUBDOMAIN_PREFIX`, `PREVIEW_DB_*`, `PREVIEW_OAUTH_CALLBACK_BASE_URL`, `PREVIEW_BOT_USERNAME`
 
 #### Review Agent Configuration (`packages/review-agent/.env`)
 
