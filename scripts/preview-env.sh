@@ -75,9 +75,12 @@ if ! psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_ADMIN_USER" -d "$PREVIEW_DB_ADM
 fi
 
 # ── BFF ──────────────────────────────────────────────────────────────────────
+# Note: We intentionally use the admin DB user for `DATABASE_URL` in preview.
+# Preview runs migrations inside the bff container and needs DDL privileges.
+# This avoids brittle failures when a separate app user isn't provisioned.
 cat > "${PREVIEW_DIR}/packages/bff/.env" <<EOF
 PORT=3001
-DATABASE_URL=postgresql://${PREVIEW_DB_APP_USER}${APP_DB_PASSWORD_SEGMENT}@host.docker.internal:${PREVIEW_DB_PORT}/${PREVIEW_DB}
+DATABASE_URL=postgresql://${PREVIEW_DB_ADMIN_USER}${ADMIN_DB_PASSWORD_SEGMENT}@host.docker.internal:${PREVIEW_DB_PORT}/${PREVIEW_DB}
 FRONTEND_URL=${APP_URL}
 ALLOWED_ORIGINS=${APP_URL},${WEBSITE_URL}
 REVIEW_AGENT_WEBHOOK_URL=http://host.docker.internal:${AGENT_PORT}/webhook
