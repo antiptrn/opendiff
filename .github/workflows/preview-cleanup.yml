@@ -35,7 +35,17 @@ jobs:
         run: rm -rf "$PREVIEW_DIR"
 
       - name: Drop preview database
-        run: psql -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "DROP DATABASE IF EXISTS ${PREVIEW_DB_PREFIX}${PR_NUMBER};"
+        shell: bash
+        run: |
+          PSQL_HOST_ARGS=()
+          if [ -n "${PREVIEW_DB_HOST:-}" ] && [ "$PREVIEW_DB_HOST" != "localhost" ] && [ "$PREVIEW_DB_HOST" != "127.0.0.1" ]; then
+            PSQL_HOST_ARGS+=( -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" )
+          fi
+
+          psql "${PSQL_HOST_ARGS[@]}" \
+            -U "$PREVIEW_DB_USER" \
+            -d "$PREVIEW_DB_ADMIN_DB" \
+            -c "DROP DATABASE IF EXISTS ${PREVIEW_DB_PREFIX}${PR_NUMBER};"
 
       - name: Remove ingress fragment
         run: rm -f "$INGRESS_DIR/pr-${PR_NUMBER}.yml"
