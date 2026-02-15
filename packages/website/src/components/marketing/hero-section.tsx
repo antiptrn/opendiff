@@ -35,7 +35,7 @@ export function HeroSection() {
             asChild
           >
             <a
-              href="https://github.com/opendiff/opendiff"
+              href="https://github.com/antiptrn/opendiff"
               target="_blank"
               rel="noopener noreferrer"
             >

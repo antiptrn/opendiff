@@ -35,13 +35,16 @@ export function PricingPage() {
         />*/}
       <div className="relative z-10 flex flex-col text-center items-center justify-center">
         <Button
+          asChild
           variant="secondary"
           className="lg:mb-6 md:mb-6 mb-4 text-sm font-normal rounded-lg h-auto py-2 px-3.5 gap-2.5"
         >
-          Deploy OpenDiff on your own infrastructure
-          <ExternalLink className="size-3.5 shrink-0" />
+          <a href="https://github.com/antiptrn/opendiff" target="_blank" rel="noopener noreferrer">
+            Deploy OpenDiff on your own infrastructure
+            <ExternalLink className="size-3.5 shrink-0" />
+          </a>
         </Button>
-        <h5 className="font-normal max-w-[519px] text-[40px] md:text-[63px] leading-tight pb-1">
+        <h5 className="font-normal max-w-[559px] text-[40px] md:text-[63px] leading-tight pb-1">
           Built for developers
         </h5>
         <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-2.5 text-balance leading-7">
