@@ -123,9 +123,9 @@ REVIEW_AGENT_API_KEY=xxx
 REVIEW_AGENT_WEBHOOK_URL=http://localhost:3000
 
 # Anthropic (AI summary generation)
-# Provide either ANTHROPIC_API_KEY (recommended) or ANTHROPIC_AUTH_TOKEN
+# Provide either ANTHROPIC_API_KEY (recommended) or CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)
 ANTHROPIC_API_KEY=sk-ant-xxx
-ANTHROPIC_AUTH_TOKEN=
+CLAUDE_CODE_OAUTH_TOKEN=
 
 # Cloudflare R2 Storage
 R2_ACCOUNT_ID=xxx
@@ -214,9 +214,9 @@ GITHUB_PRIVATE_KEY_PATH=/path/to/private-key.pem
 # GITHUB_TOKEN=ghp_xxx
 
 # Anthropic
-# Provide either ANTHROPIC_API_KEY (recommended) or ANTHROPIC_AUTH_TOKEN
+# Provide either ANTHROPIC_API_KEY (recommended) or CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)
 ANTHROPIC_API_KEY=sk-ant-xxx
-ANTHROPIC_AUTH_TOKEN=
+CLAUDE_CODE_OAUTH_TOKEN=
 
 # Bot configuration
 BOT_USERNAME=opendiff-bot

@@ -104,9 +104,9 @@ describe("CodeReviewAgent", () => {
       expect(result.issues).toHaveLength(0);
     });
 
-    it("should prefer ANTHROPIC_AUTH_TOKEN over ANTHROPIC_API_KEY", async () => {
+    it("should prefer CLAUDE_CODE_OAUTH_TOKEN over ANTHROPIC_API_KEY", async () => {
       process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-      process.env.ANTHROPIC_AUTH_TOKEN = "test-auth-token";
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = "test-oauth-token";
 
       await agent.reviewFiles(
         [{ filename: "src/utils.ts" }],
@@ -118,7 +118,7 @@ describe("CodeReviewAgent", () => {
         | { options?: { env?: Record<string, string> } }
         | null
         | undefined;
-      expect(args?.options?.env?.ANTHROPIC_AUTH_TOKEN).toBe("test-auth-token");
+      expect(args?.options?.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("test-oauth-token");
       expect(args?.options?.env?.ANTHROPIC_API_KEY).toBeUndefined();
     });
 

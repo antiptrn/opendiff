@@ -26,9 +26,9 @@ Copy `.env.example` to `.env` and configure values.
 |---|---|---|
 | `GITHUB_WEBHOOK_SECRET` | Yes | Validates webhook signatures. |
 | `ANTHROPIC_API_KEY` | Yes* | Used by Claude Agent SDK for review and triage (API key auth). |
-| `ANTHROPIC_AUTH_TOKEN` | Yes* | Alternative auth for Claude Agent SDK (Bearer token). Preferred over `ANTHROPIC_API_KEY` if both are set. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Yes* | Claude Code setup token (OAuth) from `claude setup-token`. Preferred over `ANTHROPIC_API_KEY` if both are set. |
 
-\* Provide either `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`.
+\* Provide either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`.
 | `GITHUB_APP_ID` + (`GITHUB_PRIVATE_KEY` or `GITHUB_PRIVATE_KEY_PATH`) | Recommended | Preferred GitHub auth mode. Required for `fix-accepted` callback. |
 | `GITHUB_TOKEN` | Fallback | Used only when GitHub App auth is not configured. |
 | `BOT_USERNAME` | Optional | Defaults to `opendiff-bot`. |
