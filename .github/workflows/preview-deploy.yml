@@ -55,7 +55,6 @@ jobs:
             git -C "$PROD_DIR" fetch origin main
             git -C "$PROD_DIR" reset --hard origin/main
           fi
-
       - name: Compute preview directory
         run: |
           echo "PREVIEW_DIR=${PREVIEW_DIR_BASE}/pr-${PR_NUMBER}" >> "$GITHUB_ENV"
