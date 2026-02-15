@@ -5,6 +5,25 @@ import { loadPrompt } from "@opendiff/prompts";
 import simpleGit from "simple-git";
 import { getInstallationTokenForRepo } from "./github-metadata";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      if (authToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  if (authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = authToken;
+  }
+
+  return env;
+}
+
 interface ReviewCommentInput {
   body: string;
   path: string | null;
@@ -130,6 +149,7 @@ export async function generateReviewSummary(
         prompt,
         options: {
           cwd: tempDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: cloneSucceeded ? ["Read", "Glob", "Grep"] : [],
           permissionMode: "default",
           maxTurns: cloneSucceeded ? 10 : 1,

@@ -12,6 +12,25 @@ import { getOrgQuotaPool } from "../../middleware/organization";
 import type { LocalReviewFile } from "./utils";
 import { buildLocalReviewPrompt, parseLocalReviewResponse } from "./utils";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      if (authToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  if (authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = authToken;
+  }
+
+  return env;
+}
+
 const localRoutes = new Hono();
 
 localRoutes.post("/reviews/local", requireAuth(), async (c) => {
@@ -96,6 +115,7 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Glob", "Grep"],
           permissionMode: "default",
           maxTurns: 30,

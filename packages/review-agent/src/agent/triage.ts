@@ -3,6 +3,25 @@ import type { SDKAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude
 import { loadPrompt } from "@opendiff/prompts";
 import type { CodeIssue } from "./types";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      if (authToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  if (authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = authToken;
+  }
+
+  return env;
+}
+
 interface FixResult {
   fixed: boolean;
   explanation: string;
@@ -38,6 +57,7 @@ export class TriageAgent {
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Edit", "Write", "Glob", "Grep"],
           permissionMode: "acceptEdits",
           maxTurns: 20,

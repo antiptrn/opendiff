@@ -3,6 +3,26 @@ import type { SDKAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude
 import { loadPrompt } from "@opendiff/prompts";
 import type { FileToReview, ReviewResult } from "./types";
 
+function buildClaudeAgentEnv(): Record<string, string> {
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN?.trim();
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      if (authToken && key === "ANTHROPIC_API_KEY") {
+        continue;
+      }
+      env[key] = value;
+    }
+  }
+
+  // Prefer auth token over API key if both are present.
+  if (authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = authToken;
+  }
+
+  return env;
+}
+
 interface PRContext {
   prTitle: string;
   prBody: string | null;
@@ -139,6 +159,7 @@ Flag anything that could be improved. The goal is to maintain the highest code q
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Glob", "Grep"],
           permissionMode: "default",
           maxTurns: 30,
@@ -308,6 +329,7 @@ Flag anything that could be improved. The goal is to maintain the highest code q
         prompt,
         options: {
           cwd: workingDir,
+          env: buildClaudeAgentEnv(),
           allowedTools: ["Read", "Glob", "Grep"],
           permissionMode: "default",
           maxTurns: 10,
