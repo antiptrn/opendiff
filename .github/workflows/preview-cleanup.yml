@@ -19,6 +19,7 @@ jobs:
       INGRESS_DIR: ${{ secrets.INGRESS_DIR }}
       PREVIEW_DB_PREFIX: ${{ vars.PREVIEW_DB_PREFIX || 'opendiff_preview_' }}
       PREVIEW_DB_USER: ${{ vars.PREVIEW_DB_USER || 'postgres' }}
+      PREVIEW_DB_ADMIN_USER: ${{ vars.PREVIEW_DB_ADMIN_USER || vars.PREVIEW_DB_USER || 'postgres' }}
       PREVIEW_DB_HOST: ${{ vars.PREVIEW_DB_HOST || 'localhost' }}
       PREVIEW_DB_PORT: ${{ vars.PREVIEW_DB_PORT || '5432' }}
       PREVIEW_DB_ADMIN_DB: ${{ vars.PREVIEW_DB_ADMIN_DB || 'postgres' }}
@@ -43,7 +44,7 @@ jobs:
           fi
 
           psql "${PSQL_HOST_ARGS[@]}" \
-            -U "$PREVIEW_DB_USER" \
+            -U "$PREVIEW_DB_ADMIN_USER" \
             -d "$PREVIEW_DB_ADMIN_DB" \
             -c "DROP DATABASE IF EXISTS ${PREVIEW_DB_PREFIX}${PR_NUMBER};"
 

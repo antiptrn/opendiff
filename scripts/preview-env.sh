@@ -28,6 +28,8 @@ PREVIEW_API_SUBDOMAIN_PREFIX="${PREVIEW_API_SUBDOMAIN_PREFIX:-api}"
 PREVIEW_AGENT_SUBDOMAIN_PREFIX="${PREVIEW_AGENT_SUBDOMAIN_PREFIX:-agent}"
 PREVIEW_DB_PREFIX="${PREVIEW_DB_PREFIX:-opendiff_preview_}"
 PREVIEW_DB_USER="${PREVIEW_DB_USER:-postgres}"
+PREVIEW_DB_ADMIN_USER="${PREVIEW_DB_ADMIN_USER:-$PREVIEW_DB_USER}"
+PREVIEW_DB_APP_USER="${PREVIEW_DB_APP_USER:-postgres}"
 PREVIEW_DB_PASSWORD="${PREVIEW_DB_PASSWORD:-}"
 PREVIEW_DB_HOST="${PREVIEW_DB_HOST:-localhost}"
 PREVIEW_DB_PORT="${PREVIEW_DB_PORT:-5432}"
@@ -55,15 +57,15 @@ if [ -n "${PREVIEW_DB_HOST:-}" ] && [ "$PREVIEW_DB_HOST" != "localhost" ] && [ "
   PSQL_HOST_ARGS+=( -h "$PREVIEW_DB_HOST" -p "$PREVIEW_DB_PORT" )
 fi
 
-if ! psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '${PREVIEW_DB}'" | grep -q 1; then
+if ! psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_ADMIN_USER" -d "$PREVIEW_DB_ADMIN_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '${PREVIEW_DB}'" | grep -q 1; then
   echo "Creating preview database: ${PREVIEW_DB}"
-  psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "CREATE DATABASE ${PREVIEW_DB};"
+  psql "${PSQL_HOST_ARGS[@]}" -U "$PREVIEW_DB_ADMIN_USER" -d "$PREVIEW_DB_ADMIN_DB" -c "CREATE DATABASE ${PREVIEW_DB};"
 fi
 
 # ── BFF ──────────────────────────────────────────────────────────────────────
 cat > "${PREVIEW_DIR}/packages/bff/.env" <<EOF
 PORT=3001
-DATABASE_URL=postgresql://${PREVIEW_DB_USER}${DB_PASSWORD_SEGMENT}@host.docker.internal:${PREVIEW_DB_PORT}/${PREVIEW_DB}
+DATABASE_URL=postgresql://${PREVIEW_DB_APP_USER}${DB_PASSWORD_SEGMENT}@host.docker.internal:${PREVIEW_DB_PORT}/${PREVIEW_DB}
 FRONTEND_URL=${APP_URL}
 ALLOWED_ORIGINS=${APP_URL},${WEBSITE_URL}
 REVIEW_AGENT_WEBHOOK_URL=http://host.docker.internal:${AGENT_PORT}/webhook
