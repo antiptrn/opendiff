@@ -36,20 +36,30 @@ export async function verifyTurnstileToken({
       body.set("remoteip", ip);
     }
 
-    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body,
-    });
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 10000);
 
-    if (!response.ok) {
-      return false;
+    try {
+      const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const result = (await response.json()) as { success?: boolean };
+      return !!result.success;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const result = (await response.json()) as { success?: boolean };
-    return !!result.success;
   } catch {
     return false;
   }
