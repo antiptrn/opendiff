@@ -19,7 +19,7 @@ export async function verifyTurnstileToken({
   ip?: string;
 }): Promise<boolean> {
   if (!TURNSTILE_SECRET_KEY) {
-    return true;
+    throw new Error("TURNSTILE_SECRET_KEY is not configured - Turnstile verification cannot proceed");
   }
 
   if (!token) {
