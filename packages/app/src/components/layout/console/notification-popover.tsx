@@ -139,7 +139,7 @@ export function NotificationPopover() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost" className="relative">
+        <Button size="icon" variant="ghost" className="relative rounded-full text-muted-foreground">
           <Bell />
           {unreadCount > 0 && (
             <div className="absolute top-1.5 right-1.5 flex size-1.5 items-center justify-center rounded-full bg-blue-400" />

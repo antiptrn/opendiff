@@ -9,7 +9,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "components/components/ui/dropdown-menu";
-import { LifeBuoy, Loader2, LogOut, MessageSquare, Settings, UserPlus, Users } from "lucide-react";
+import { LifeBuoy, Loader2, LogOut, MessageSquare, UserPlus, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import type { useAuth } from "shared/auth";
 
@@ -39,9 +39,9 @@ export function UserMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="size-9 cursor-pointer flex items-center rounded-full group"
+          className="size-7 cursor-pointer flex items-center rounded-full group"
         >
-          <Avatar>
+          <Avatar className="size-7">
             <AvatarImage src={user.avatar_url} />
             <AvatarFallback>{user.login.charAt(0)}</AvatarFallback>
           </Avatar>
@@ -102,21 +102,15 @@ export function UserMenu({
             </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuItem asChild className="cursor-pointer">
-          <Link to="/console/settings">
-            <Settings className="size-4" strokeWidth={2.6} />
-            Settings
-          </Link>
+        <DropdownMenuItem onClick={onFeedbackClick} className="cursor-pointer">
+          <MessageSquare className="size-4" strokeWidth={2.6} />
+          Leave feedback
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="cursor-pointer">
           <a href="mailto:support@opendiff.dev?subject=Support%20Request">
             <LifeBuoy className="size-4" strokeWidth={2.6} />
             Support
           </a>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onFeedbackClick} className="cursor-pointer">
-          <MessageSquare className="size-4" strokeWidth={2.6} />
-          Feedback
         </DropdownMenuItem>
         {/* Sign out - in main dropdown */}
         <DropdownMenuItem onClick={onLogout} className="cursor-pointer">

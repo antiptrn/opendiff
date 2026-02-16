@@ -1,7 +1,13 @@
-export function Icon() {
+import { cn } from "../utils";
+
+interface Props {
+  className?: string;
+}
+
+export function Icon({ className }: Props) {
   return (
     <svg
-      className="size-8 text-foreground dark:invert"
+      className={cn("size-8 text-foreground dark:invert", className)}
       version="1.1"
       fill="#000"
       xmlns="http://www.w3.org/2000/svg"
