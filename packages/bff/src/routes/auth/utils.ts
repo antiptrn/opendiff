@@ -11,6 +11,25 @@ export const PREVIEW_PR_NUMBER = process.env.PREVIEW_PR_NUMBER
   ? Number.parseInt(process.env.PREVIEW_PR_NUMBER, 10)
   : null;
 
+const TURNSTILE_VERIFY_ERROR_REDIRECT = `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`;
+
+interface TurnstileContext {
+  req: {
+    query: (name: string) => string | undefined;
+    header: (name: string) => string | undefined;
+  };
+}
+
+export function getTurnstileErrorRedirect(): string {
+  return TURNSTILE_VERIFY_ERROR_REDIRECT;
+}
+
+export function extractClientIp(req: TurnstileContext["req"]): string {
+  const cfConnectingIp = req.header("cf-connecting-ip");
+  const xForwardedFor = req.header("x-forwarded-for");
+  return cfConnectingIp || xForwardedFor?.split(",")[0]?.trim() || "";
+}
+
 export async function verifyTurnstileToken({
   token,
   ip,
@@ -32,7 +51,7 @@ export async function verifyTurnstileToken({
   if (!ip) {
     console.error(
       "[SECURITY ERROR] Turnstile verification called without a valid IP address. " +
-      "This allows token replay attacks. Failing verification."
+        "This allows token replay attacks. Failing verification."
     );
     return false;
   }
@@ -83,6 +102,24 @@ export async function verifyTurnstileToken({
   } catch {
     return false;
   }
+}
+
+/**
+ * Verifies Turnstile token + client IP from the incoming request.
+ * Requires deployment behind Cloudflare or a trusted proxy that sets client IP headers.
+ */
+export async function verifyTurnstileRequest(c: TurnstileContext): Promise<boolean> {
+  const turnstileToken = c.req.query("turnstileToken");
+  const clientIp = extractClientIp(c.req);
+
+  if (!clientIp) {
+    console.warn(
+      "[SECURITY WARNING] Failed to extract client IP from cf-connecting-ip or x-forwarded-for headers. " +
+        "Turnstile verification will fail. Ensure the BFF is deployed behind Cloudflare or a trusted proxy."
+    );
+  }
+
+  return verifyTurnstileToken({ token: turnstileToken, ip: clientIp });
 }
 
 export function getBaseUrl(c: {

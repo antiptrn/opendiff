@@ -10,24 +10,18 @@ import {
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getTurnstileErrorRedirect,
   sanitizeRedirectUrl,
-  verifyTurnstileToken,
+  verifyTurnstileRequest,
 } from "./utils";
 
 const googleRoutes = new Hono();
 
 googleRoutes.get("/", async (c) => {
-  const turnstileToken = c.req.query("turnstileToken");
-  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
-  const isHuman = await verifyTurnstileToken({
-    token: turnstileToken,
-    ip: clientIp.split(",")[0]?.trim(),
-  });
+  const isHuman = await verifyTurnstileRequest(c);
 
   if (!isHuman) {
-    return c.redirect(
-      `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`
-    );
+    return c.redirect(getTurnstileErrorRedirect());
   }
 
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);

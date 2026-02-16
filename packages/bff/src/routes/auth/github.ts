@@ -14,38 +14,18 @@ import {
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getTurnstileErrorRedirect,
   sanitizeRedirectUrl,
-  verifyTurnstileToken,
+  verifyTurnstileRequest,
 } from "./utils";
 
 const githubRoutes = new Hono();
 
 githubRoutes.get("/", async (c) => {
-  const turnstileToken = c.req.query("turnstileToken");
-
-  // SECURITY: Extract client IP from trusted proxy headers.
-  // The BFF MUST be deployed behind Cloudflare or a trusted proxy that sets cf-connecting-ip.
-  // This is critical to prevent turnstile token replay attacks across different IPs.
-  const cfConnectingIp = c.req.header("cf-connecting-ip");
-  const xForwardedFor = c.req.header("x-forwarded-for");
-  const clientIp = cfConnectingIp || xForwardedFor?.split(",")[0]?.trim() || "";
-
-  if (!clientIp) {
-    console.warn(
-      "[SECURITY WARNING] Failed to extract client IP from cf-connecting-ip or x-forwarded-for headers. " +
-      "Turnstile verification will fail. Ensure the BFF is deployed behind Cloudflare or a trusted proxy."
-    );
-  }
-
-  const isHuman = await verifyTurnstileToken({
-    token: turnstileToken,
-    ip: clientIp,
-  });
+  const isHuman = await verifyTurnstileRequest(c);
 
   if (!isHuman) {
-    return c.redirect(
-      `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`
-    );
+    return c.redirect(getTurnstileErrorRedirect());
   }
 
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);

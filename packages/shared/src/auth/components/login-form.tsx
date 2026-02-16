@@ -46,6 +46,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   const pendingProviderRef = useRef<LoginProvider>(null);
   const eventListenerRef = useRef<{ script: HTMLScriptElement; listener: () => void } | null>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  const hasTurnstile = !!turnstileSiteKey?.trim();
 
   const startProviderLogin = useCallback(
     (provider: Exclude<LoginProvider, null>, turnstileToken?: string) => {
@@ -69,7 +70,9 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   );
 
   useEffect(() => {
-    if (!turnstileSiteKey || !turnstileContainerRef.current) {
+    const siteKey = turnstileSiteKey?.trim();
+
+    if (!siteKey || !turnstileContainerRef.current) {
       return;
     }
 
@@ -79,7 +82,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
       }
 
       turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
-        sitekey: turnstileSiteKey,
+        sitekey: siteKey,
         size: "invisible",
         appearance: "execute",
         theme: "dark",
@@ -117,16 +120,18 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
         if (window.turnstile) {
           renderWidget();
         } else {
-          existingScript.addEventListener("load", renderWidget, { once: true });
-          eventListenerRef.current = { script: existingScript, listener: renderWidget };
+          const handleLoad = () => renderWidget();
+          existingScript.addEventListener("load", handleLoad);
+          eventListenerRef.current = { script: existingScript, listener: handleLoad };
         }
       } else {
         const script = document.createElement("script");
         script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
         script.async = true;
         script.defer = true;
-        script.addEventListener("load", renderWidget, { once: true });
-        eventListenerRef.current = { script, listener: renderWidget };
+        const handleLoad = () => renderWidget();
+        script.addEventListener("load", handleLoad);
+        eventListenerRef.current = { script, listener: handleLoad };
         document.head.appendChild(script);
       }
 
@@ -139,7 +144,10 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
     return () => {
       // Clean up event listener if it exists
       if (eventListenerRef.current) {
-        eventListenerRef.current.script.removeEventListener("load", eventListenerRef.current.listener);
+        eventListenerRef.current.script.removeEventListener(
+          "load",
+          eventListenerRef.current.listener
+        );
         eventListenerRef.current = null;
       }
 
@@ -150,15 +158,15 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
 
       pendingProviderRef.current = null;
     };
-  }, [startProviderLogin, turnstileSiteKey]);
+  }, [startProviderLogin]);
 
   const handleProviderLogin = (provider: Exclude<LoginProvider, null>) => {
     setLoadingProvider(provider);
     setTurnstileError(null);
 
     // Check if Turnstile is configured via environment variable
-    if (!turnstileSiteKey || turnstileSiteKey.trim() === "") {
-      if (process.env.NODE_ENV === "development") {
+    if (!hasTurnstile) {
+      if (import.meta.env.DEV) {
         console.warn(
           "VITE_TURNSTILE_SITE_KEY is not configured. Proceeding with login without human verification."
         );
@@ -236,7 +244,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
         )}
         {addAccount ? "Add Microsoft account" : "Login with Microsoft"}
       </Button>
-      {turnstileSiteKey && (
+      {hasTurnstile && (
         <>
           <div ref={turnstileContainerRef} className="h-0 w-0 overflow-hidden" aria-hidden="true" />
           {turnstileError && <p className="text-sm text-destructive -mt-1">{turnstileError}</p>}
