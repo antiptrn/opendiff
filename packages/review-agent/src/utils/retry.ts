@@ -24,4 +24,6 @@ export async function withRetry<T>(
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
+  // This should never be reached, but TypeScript can't prove it
+  throw new Error(`${label} failed: max retries exhausted`);
 }
