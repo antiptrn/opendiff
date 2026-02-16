@@ -1,13 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Icon } from "components/components";
 import { useThemeCookieSync } from "components/hooks";
-import { ClipboardCheck, FolderGit, Loader2, Shield } from "lucide-react";
+import { ClipboardCheck, FolderGit, LayoutGrid, Loader2, Settings, Shield } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
+import { ConsoleHeader, type ConsoleHeaderNavItem } from "./console-header";
 import { FeedbackDialog } from "./feedback-dialog";
-import { NavItem, type NavItemConfig } from "./nav-item";
 import { NotificationPopover } from "./notification-popover";
 import { UserMenu } from "./user-menu";
 
@@ -22,6 +21,8 @@ export function ConsoleLayout() {
     canManageMembers,
     isUnauthorized,
     currentOrgId,
+    currentOrg,
+    currentSeat,
     orgDetails,
   } = useOrganization();
   const location = useLocation();
@@ -146,49 +147,45 @@ export function ConsoleLayout() {
     return <Navigate to="/create-organization" replace />;
   }
 
-  const navItems: NavItemConfig[] = [
+  const navItems: ConsoleHeaderNavItem[] = [
+    { label: "Dashboard", href: "/console", icon: LayoutGrid },
     { label: "Pull Requests", href: "/console/pull-requests", icon: ClipboardCheck },
     { label: "Repositories", href: "/console/repositories", icon: FolderGit },
+    { label: "Settings", href: "/console/settings", icon: Settings },
     ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield }] : []),
   ];
 
+  const planLabel = currentSeat?.tier || "Free";
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="h-20 flex items-center shrink-0 px-8">
-        {/* Left: Org switcher */}
-        <div className="flex items-center shrink-0">
-          <Link to="/console" className="flex items-center">
-            <Icon />
-          </Link>
-        </div>
-
-        {/* Center: Nav items */}
-        <nav className="flex items-center h-full ml-4">
-          {navItems.map((item) => {
-            const isActive =
-              item.href === "/console"
-                ? location.pathname === item.href
-                : location.pathname.startsWith(item.href);
-            return <NavItem key={item.href} item={item} isActive={isActive} />;
-          })}
-        </nav>
-
-        {/* Right: Notifications, User */}
-        <div className="flex items-center gap-4 ml-auto h-full">
-          <NotificationPopover />
-          <UserMenu
-            user={user}
-            accounts={accounts}
-            switchingToAccountId={switchingToAccountId}
-            onSwitchAccount={handleSwitchAccount}
-            onFeedbackClick={() => setFeedbackOpen(true)}
-            onLogout={logout}
-          />
-        </div>
-      </header>
+      <ConsoleHeader
+        email={user.email}
+        organizationName={currentOrg?.name || orgDetails?.name}
+        organizationAvatarUrl={currentOrg?.avatarUrl || orgDetails?.avatarUrl}
+        showOrganizationAvatar={!!currentOrg && !currentOrg.isPersonal}
+        planLabel={planLabel}
+        navItems={navItems}
+        pathname={location.pathname}
+        rightContent={
+          <div className="flex items-center gap-3">
+            <NotificationPopover />
+            <UserMenu
+              user={user}
+              accounts={accounts}
+              switchingToAccountId={switchingToAccountId}
+              onSwitchAccount={handleSwitchAccount}
+              onFeedbackClick={() => setFeedbackOpen(true)}
+              onLogout={logout}
+            />
+          </div>
+        }
+      />
 
       <main className="flex-1 overflow-auto">
-        <Outlet />
+        <div className="mx-auto w-full max-w-6xl">
+          <Outlet />
+        </div>
       </main>
 
       <FeedbackDialog
