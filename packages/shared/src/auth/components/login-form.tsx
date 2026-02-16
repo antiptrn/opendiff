@@ -130,7 +130,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
 
       pendingProviderRef.current = null;
     };
-  }, [startProviderLogin]);
+  }, [startProviderLogin, turnstileSiteKey]);
 
   const handleProviderLogin = (provider: Exclude<LoginProvider, null>) => {
     setLoadingProvider(provider);
