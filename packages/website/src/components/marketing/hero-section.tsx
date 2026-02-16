@@ -50,10 +50,12 @@ export function HeroSection() {
             Arm your team with AI-powered code reviews to catch bugs before they ship to production.
           </p>
           <div className="flex items-center justify-center gap-4 lg:mt-9 md:mt-9 mt-7">
-            <Button asChild>
+            <Button size="lg" asChild>
               <Link to={import.meta.env.VITE_APP_URL || ""}>Get started now</Link>
             </Button>
-            <Button variant="secondary">Why OpenDiff?</Button>
+            <Button size="lg" variant="secondary">
+              Why OpenDiff?
+            </Button>
           </div>
         </div>
       </div>

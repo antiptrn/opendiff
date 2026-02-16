@@ -22,10 +22,10 @@ export function ConsolePage() {
   return (
     <div className="p-8">
       <h1 className="text-2xl mb-6">Dashboard</h1>
-      <div className="grid gap-6">
+      <div className="grid gap-2">
         {error && <ErrorAlert>{error.message}</ErrorAlert>}
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-4">
           {isLoading ? (
             <>
               {["Repositories", "Reviews Completed", "Issues Found", "Issues Fixed"].map(
@@ -97,7 +97,7 @@ export function ConsolePage() {
           <SelectTrigger
             size="lg"
             variant="ghost"
-            className="w-fit -ml-4 -mb-2.5 !bg-transparent !ring-0 hover:text-muted-foreground"
+            className="w-fit -ml-4 !bg-transparent !ring-0 hover:text-muted-foreground"
           >
             <SelectValue />
           </SelectTrigger>
