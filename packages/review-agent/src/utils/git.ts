@@ -2,6 +2,7 @@ import { appendFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
 import type { GitHubClient } from "../github/client";
+import { withRetry } from "./retry";
 import { cleanupUserSkills, hydrateSkills } from "./skill-hydrator";
 
 /** Patterns that should never be committed by the bot */
@@ -54,11 +55,15 @@ export async function withClonedRepo<T>(
     const cloneUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
     const git = simpleGit(tempDir);
 
-    await git.clone(cloneUrl, ".", {
-      "--branch": branch,
-      "--depth": "1",
-      "--single-branch": null,
-    });
+    await withRetry(
+      () =>
+        git.clone(cloneUrl, ".", {
+          "--branch": branch,
+          "--depth": "1",
+          "--single-branch": null,
+        }),
+      "git clone"
+    );
 
     if (opts.mode === "read-write") {
       await git.addConfig("user.email", `${opts.botUsername}[bot]@users.noreply.github.com`);
