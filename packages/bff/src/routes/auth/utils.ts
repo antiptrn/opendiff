@@ -27,15 +27,22 @@ export async function verifyTurnstileToken({
     return false;
   }
 
+  // SECURITY: Require a valid IP address to prevent token replay attacks across different IPs.
+  // Cloudflare Turnstile binds tokens to the client IP, so we must provide it for proper validation.
+  if (!ip) {
+    console.error(
+      "[SECURITY ERROR] Turnstile verification called without a valid IP address. " +
+      "This allows token replay attacks. Failing verification."
+    );
+    return false;
+  }
+
   try {
     const body = new URLSearchParams({
       secret: TURNSTILE_SECRET_KEY,
       response: token,
+      remoteip: ip,
     });
-
-    if (ip) {
-      body.set("remoteip", ip);
-    }
 
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 10000);

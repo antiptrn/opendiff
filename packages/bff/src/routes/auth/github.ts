@@ -22,10 +22,24 @@ const githubRoutes = new Hono();
 
 githubRoutes.get("/", async (c) => {
   const turnstileToken = c.req.query("turnstileToken");
-  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
+
+  // SECURITY: Extract client IP from trusted proxy headers.
+  // The BFF MUST be deployed behind Cloudflare or a trusted proxy that sets cf-connecting-ip.
+  // This is critical to prevent turnstile token replay attacks across different IPs.
+  const cfConnectingIp = c.req.header("cf-connecting-ip");
+  const xForwardedFor = c.req.header("x-forwarded-for");
+  const clientIp = cfConnectingIp || xForwardedFor?.split(",")[0]?.trim() || "";
+
+  if (!clientIp) {
+    console.warn(
+      "[SECURITY WARNING] Failed to extract client IP from cf-connecting-ip or x-forwarded-for headers. " +
+      "Turnstile verification will fail. Ensure the BFF is deployed behind Cloudflare or a trusted proxy."
+    );
+  }
+
   const isHuman = await verifyTurnstileToken({
     token: turnstileToken,
-    ip: clientIp.split(",")[0]?.trim(),
+    ip: clientIp,
   });
 
   if (!isHuman) {
