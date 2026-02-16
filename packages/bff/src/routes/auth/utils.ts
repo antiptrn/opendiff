@@ -19,7 +19,8 @@ export async function verifyTurnstileToken({
   ip?: string;
 }): Promise<boolean> {
   if (!TURNSTILE_SECRET_KEY) {
-    throw new Error("TURNSTILE_SECRET_KEY is not configured - Turnstile verification cannot proceed");
+    // Bypass verification when TURNSTILE_SECRET_KEY is not configured (backward compatibility)
+    return true;
   }
 
   if (!token) {
