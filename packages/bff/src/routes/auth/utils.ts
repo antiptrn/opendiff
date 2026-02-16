@@ -105,25 +105,3 @@ export function sanitizeRedirectUrl(url: string | null | undefined): string | nu
     return null;
   }
 }
-
-/**
- * Hono middleware to verify Turnstile token for human verification.
- * Extracts the token from query params and client IP from headers,
- * then verifies with Cloudflare Turnstile. Redirects to login on failure.
- */
-export async function turnstileMiddleware(c: any, next: () => Promise<void>) {
-  const turnstileToken = c.req.query("turnstileToken");
-  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
-  const isHuman = await verifyTurnstileToken({
-    token: turnstileToken,
-    ip: clientIp.split(",")[0]?.trim(),
-  });
-
-  if (!isHuman) {
-    return c.redirect(
-      `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`
-    );
-  }
-
-  await next();
-}
