@@ -1,14 +1,14 @@
 export function TermsOfServicePage() {
   return (
     <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto pb-20">
-      <h1 className="text-4xl font-bold tracking-tight mb-2">
+      <h1 className="text-4xl font-medium tracking-tight mb-2">
         Terms of Service
       </h1>
       <p className="text-muted-foreground mb-12">
         Last updated: February 15, 2026
       </p>
 
-      <div className="prose prose-invert max-w-none space-y-10 text-muted-foreground [&_h2]:text-foreground [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mb-4 [&_h3]:text-foreground [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_li]:leading-7 [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-muted-foreground">
+      <div className="prose prose-invert max-w-none space-y-10 text-muted-foreground [&_h2]:text-foreground [&_h2]:text-2xl [&_h2]:font-medium [&_h2]:tracking-tight [&_h2]:mb-4 [&_h3]:text-foreground [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_li]:leading-7 [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-muted-foreground">
         <div>
           <h2>1. Acceptance of Terms</h2>
           <p>
