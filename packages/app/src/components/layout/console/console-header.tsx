@@ -61,7 +61,7 @@ export function ConsoleHeader({
           <div className="flex min-w-0 items-center gap-2">
             <p className="truncate text-lg">{organizationName || email || "Console workspace"}</p>
             <Badge className="bg-background dark:bg-muted" variant="secondary">
-              {planLabel}
+              {planLabel.charAt(0).toUpperCase() + planLabel.slice(1).toLowerCase()}
             </Badge>
           </div>
         </div>
@@ -84,7 +84,7 @@ export function ConsoleHeader({
                   className={cn(
                     "px-3 relative text-muted-foreground hover:text-foreground",
                     isActive &&
-                      "text-foreground after:absolute after:-bottom-2 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-primary"
+                    "text-foreground after:absolute after:-bottom-2 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-primary"
                   )}
                 >
                   <Link key={item.href} to={item.href}>
