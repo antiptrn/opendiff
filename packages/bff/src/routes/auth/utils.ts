@@ -55,8 +55,20 @@ export async function verifyTurnstileToken({
         return false;
       }
 
-      const result = (await response.json()) as { success?: boolean };
-      return !!result.success;
+      // Validate content-type before parsing JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return false;
+      }
+
+      // Explicitly handle JSON parsing errors
+      try {
+        const result = (await response.json()) as { success?: boolean };
+        return !!result.success;
+      } catch {
+        // JSON parsing failed
+        return false;
+      }
     } finally {
       clearTimeout(timeoutId);
     }
