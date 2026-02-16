@@ -1,6 +1,7 @@
 /**
  * Retry a function with exponential backoff.
- * Delays between retries: 1s, 2s, 4s, 8s, ... (capped at 30s).
+ * Delays between retries: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ... (capped at 30s).
+ * Default maxRetries=5 means up to 5 attempts with delays of: 1s, 2s, 4s, 8s between them.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
