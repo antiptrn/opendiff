@@ -4,11 +4,56 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
 export const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID ?? "";
 export const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET ?? "";
+export const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY ?? "";
 export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
 export const OAUTH_CALLBACK_BASE_URL = process.env.OAUTH_CALLBACK_BASE_URL || "";
 export const PREVIEW_PR_NUMBER = process.env.PREVIEW_PR_NUMBER
   ? Number.parseInt(process.env.PREVIEW_PR_NUMBER, 10)
   : null;
+
+export async function verifyTurnstileToken({
+  token,
+  ip,
+}: {
+  token: string | null | undefined;
+  ip?: string;
+}): Promise<boolean> {
+  if (!TURNSTILE_SECRET_KEY) {
+    return true;
+  }
+
+  if (!token) {
+    return false;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      secret: TURNSTILE_SECRET_KEY,
+      response: token,
+    });
+
+    if (ip) {
+      body.set("remoteip", ip);
+    }
+
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = (await response.json()) as { success?: boolean };
+    return !!result.success;
+  } catch {
+    return false;
+  }
+}
 
 export function getBaseUrl(c: {
   req: { url: string; header: (name: string) => string | undefined };

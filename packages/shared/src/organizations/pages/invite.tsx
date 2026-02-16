@@ -28,7 +28,7 @@ interface InviteDetails {
 /** Page for viewing and accepting an organization invite via a unique token. */
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>();
-  const { user, accounts, isLoading: isAuthLoading, login, switchAccount } = useAuth();
+  const { user, accounts, isLoading: isAuthLoading, switchAccount } = useAuth();
   const { afterAuthUrl } = useNavigationConfig();
 
   const [invite, setInvite] = useState<InviteDetails | null>(null);
@@ -189,8 +189,10 @@ export default function InvitePage() {
               <p className="text-sm text-muted-foreground text-center">
                 Please sign in with GitHub to accept this invite.
               </p>
-              <Button onClick={() => login()} className="w-full">
-                Sign in with GitHub
+              <Button asChild className="w-full">
+                <Link to={`/login?redirectUrl=${encodeURIComponent(`/invite/${token || ""}`)}`}>
+                  Sign in
+                </Link>
               </Button>
             </div>
           ) : (

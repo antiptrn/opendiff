@@ -11,11 +11,25 @@ import {
   PREVIEW_PR_NUMBER,
   getBaseUrl,
   sanitizeRedirectUrl,
+  verifyTurnstileToken,
 } from "./utils";
 
 const microsoftRoutes = new Hono();
 
-microsoftRoutes.get("/", (c) => {
+microsoftRoutes.get("/", async (c) => {
+  const turnstileToken = c.req.query("turnstileToken");
+  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
+  const isHuman = await verifyTurnstileToken({
+    token: turnstileToken,
+    ip: clientIp.split(",")[0]?.trim(),
+  });
+
+  if (!isHuman) {
+    return c.redirect(
+      `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`
+    );
+  }
+
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
   const redirectUri = `${callbackBase}/auth/microsoft/callback`;
   const scope = "openid email profile User.Read";
