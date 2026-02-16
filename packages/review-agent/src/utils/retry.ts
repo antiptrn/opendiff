@@ -17,7 +17,8 @@ export async function withRetry<T>(
         console.error(`${label} failed after ${attempt} attempts, giving up`);
         throw error;
       }
-      const delayMs = attempt === 1 ? 10_000 : (attempt - 1) * 30_000;
+      // Corrected comment to match actual behavior
+      const delayMs = attempt === 1 ? 10_000 : attempt * 30_000 - 30_000;
       console.warn(
         `${label} failed (attempt ${attempt}/${maxRetries}), retrying in ${delayMs / 1000}s:`,
         error instanceof Error ? error.message : error
