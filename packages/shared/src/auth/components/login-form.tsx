@@ -7,6 +7,9 @@ import { useAuth } from "../hooks/use-auth";
 
 type LoginProvider = "github" | "google" | "microsoft" | null;
 
+// Global flag to track if the Turnstile script has been injected
+let turnstileScriptInjected = false;
+
 declare global {
   interface Window {
     turnstile?: {
@@ -41,6 +44,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const pendingProviderRef = useRef<LoginProvider>(null);
+  const eventListenerRef = useRef<{ script: HTMLScriptElement; listener: () => void } | null>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   const startProviderLogin = useCallback(
@@ -103,26 +107,42 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
       });
     };
 
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
-    );
+    // Only inject the script once across all component instances
+    if (!turnstileScriptInjected) {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
+      );
 
-    if (existingScript) {
-      if (window.turnstile) {
-        renderWidget();
+      if (existingScript) {
+        if (window.turnstile) {
+          renderWidget();
+        } else {
+          existingScript.addEventListener("load", renderWidget, { once: true });
+          eventListenerRef.current = { script: existingScript, listener: renderWidget };
+        }
       } else {
-        existingScript.addEventListener("load", renderWidget, { once: true });
+        const script = document.createElement("script");
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        script.async = true;
+        script.defer = true;
+        script.addEventListener("load", renderWidget, { once: true });
+        eventListenerRef.current = { script, listener: renderWidget };
+        document.head.appendChild(script);
       }
-    } else {
-      const script = document.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true;
-      script.defer = true;
-      script.addEventListener("load", renderWidget, { once: true });
-      document.head.appendChild(script);
+
+      turnstileScriptInjected = true;
+    } else if (window.turnstile) {
+      // Script already injected and loaded, just render the widget
+      renderWidget();
     }
 
     return () => {
+      // Clean up event listener if it exists
+      if (eventListenerRef.current) {
+        eventListenerRef.current.script.removeEventListener("load", eventListenerRef.current.listener);
+        eventListenerRef.current = null;
+      }
+
       if (turnstileWidgetIdRef.current && window.turnstile) {
         window.turnstile.remove(turnstileWidgetIdRef.current);
         turnstileWidgetIdRef.current = null;
