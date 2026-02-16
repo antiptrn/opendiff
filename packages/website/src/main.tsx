@@ -9,7 +9,7 @@ import "./index.css";
 import App from "./app.tsx";
 
 import { PricingPage } from "@/features/billing/pages/pricing";
-import { TermsOfServicePage } from "@/features/legal";
+import { PrivacyPolicyPage, TermsOfServicePage } from "@/features/legal";
 // Features
 import { HomePage } from "@/features/marketing";
 
@@ -26,6 +26,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: "pricing", element: <PricingPage /> },
+      { path: "privacy", element: <PrivacyPolicyPage /> },
       { path: "terms", element: <TermsOfServicePage /> },
     ],
   },
