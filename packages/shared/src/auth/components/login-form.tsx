@@ -136,7 +136,13 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
     setLoadingProvider(provider);
     setTurnstileError(null);
 
-    if (!turnstileSiteKey) {
+    // Check if Turnstile is configured via environment variable
+    if (!turnstileSiteKey || turnstileSiteKey.trim() === "") {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(
+          "VITE_TURNSTILE_SITE_KEY is not configured. Proceeding with login without human verification."
+        );
+      }
       startProviderLogin(provider);
       return;
     }
