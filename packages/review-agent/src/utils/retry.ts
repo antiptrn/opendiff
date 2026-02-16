@@ -23,6 +23,4 @@ export async function withRetry<T>(
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-
-  throw new Error(`${label} failed after ${maxRetries} attempts`);
 }
