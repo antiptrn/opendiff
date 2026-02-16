@@ -1,4 +1,5 @@
 import { unlinkSync, writeFileSync } from "node:fs";
+import { withRetry } from "./retry";
 
 interface ApplyPatchAndPushOptions {
   tempDir: string;
@@ -22,7 +23,7 @@ export async function applyPatchAndPush(options: ApplyPatchAndPushOptions): Prom
 
   await git.add(".");
   const commitResult = await git.commit(commitMessage);
-  await git.push("origin", branch);
+  await withRetry(() => git.push("origin", branch), "git push");
 
   return commitResult.commit;
 }
