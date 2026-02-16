@@ -11,7 +11,7 @@ export function FAQSection() {
   return (
     <>
       <Separator className="lg:mt-16 md:mt-16 mt-8" />
-      <div className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8">
+      <div id="faq" className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8">
         <div className="lg:w-full md:w-full w-full">
           <h1 className="lg:text-5xl md:text-5xl text-3xl leading-tight">
             Frequently Asked Questions
