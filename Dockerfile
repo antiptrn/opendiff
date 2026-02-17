@@ -1,5 +1,5 @@
 # ── Base: install workspace dependencies ─────────────────────────
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1.1.29-alpine AS base
 
 WORKDIR /app
 
