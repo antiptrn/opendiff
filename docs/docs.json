@@ -1,0 +1,32 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "OpenDiff",
+  "theme": "mint",
+  "colors": {
+    "primary": "#2563eb",
+    "light": "#dbeafe",
+    "dark": "#1d4ed8"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "index",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Project",
+            "pages": [
+              "architecture"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
