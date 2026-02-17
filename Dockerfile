@@ -1,5 +1,5 @@
 # ── Base: install workspace dependencies ─────────────────────────
-FROM oven/bun:1.1.29-alpine AS base
+FROM oven/bun:1 AS base
 
 WORKDIR /app
 
@@ -51,7 +51,7 @@ EXPOSE 8080
 # ── Agent ────────────────────────────────────────────────────────
 FROM base AS agent
 
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN bun run --cwd packages/review-agent build
 
 ENV NODE_ENV=production
