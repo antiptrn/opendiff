@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useThemeCookieSync } from "components/hooks";
 import { ClipboardCheck, FolderGit, LayoutGrid, Loader2, Settings, Shield } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "shared/auth";
+import { NavigationScrollToTop } from "shared/navigation";
 import { useOrganization } from "shared/organizations";
 import { ConsoleHeader, type ConsoleHeaderNavItem } from "./console-header";
 import { FeedbackDialog } from "./feedback-dialog";
@@ -27,6 +28,8 @@ export function ConsoleLayout() {
   } = useOrganization();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const mainRef = useRef<HTMLElement | null>(null);
+  const getMainElement = useCallback(() => mainRef.current, []);
 
   // Sync theme with cookie for cross-origin persistence
   useThemeCookieSync({ cookieDomain: import.meta.env.VITE_THEME_COOKIE_DOMAIN });
@@ -159,6 +162,7 @@ export function ConsoleLayout() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <NavigationScrollToTop getContainer={getMainElement} />
       <ConsoleHeader
         email={user.email}
         organizationName={currentOrg?.name || orgDetails?.name}
@@ -182,7 +186,7 @@ export function ConsoleLayout() {
         }
       />
 
-      <main className="flex-1 overflow-auto">
+      <main ref={mainRef} className="flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-6xl">
           <Outlet />
         </div>
