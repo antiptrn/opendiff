@@ -1,13 +1,28 @@
 {
-  "name": "vscode-extension",
+  "name": "opendiff-local-review",
   "displayName": "OpenDiff",
   "description": "Review local code changes with AI before pushing",
+  "icon": "opendiff-icon.png",
+  "keywords": ["code-review", "git", "pull-request", "ai", "diff", "coderabbit", "greptile", "bugbot", "opendiff"],
   "version": "0.1.0",
   "publisher": "opendiff",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antiptrn/opendiff.git",
+    "directory": "packages/vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/antiptrn/opendiff/issues"
+  },
+  "homepage": "https://github.com/antiptrn/opendiff/tree/main/packages/vscode-extension",
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": ["Linters", "Other"],
+  "extensionKind": ["workspace"],
+  "markdown": "github",
+  "qna": "marketplace",
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -32,7 +47,7 @@
       "properties": {
         "opendiff.serverUrl": {
           "type": "string",
-          "default": "http://localhost:3001",
+          "default": "https://api.opendiff.dev",
           "description": "URL of the OpenDiff BFF server"
         },
         "opendiff.sensitivity": {
