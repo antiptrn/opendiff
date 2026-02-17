@@ -9,6 +9,7 @@ import "./index.css";
 import App from "./app.tsx";
 
 import { PricingPage } from "@/features/billing/pages/pricing";
+import { ChangelogPage } from "@/features/changelog";
 import { PrivacyPolicyPage, TermsOfServicePage } from "@/features/legal";
 // Features
 import { HomePage } from "@/features/marketing";
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: "changelog", element: <ChangelogPage /> },
       { path: "pricing", element: <PricingPage /> },
       { path: "privacy", element: <PrivacyPolicyPage /> },
       { path: "terms", element: <TermsOfServicePage /> },

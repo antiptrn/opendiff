@@ -1,10 +1,12 @@
 import { Link } from "react-router-dom";
 
 const footerLinks = [
+  { label: "Changelog", href: "/changelog" },
   { label: "FAQ", href: "/#faq" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Contact", href: "mailto:support@opendiff.dev" },
+  { label: "Status", href: "https://status.opendiff.dev" },
 ];
 
 export function Footer() {
