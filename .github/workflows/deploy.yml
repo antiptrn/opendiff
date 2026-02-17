@@ -27,16 +27,69 @@ jobs:
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main
 
-      - name: Stop existing services
-        run: bash $DEPLOY_DIR/scripts/stop.sh prod
-
-      - name: Build and start containers
+      - name: Build containers (keep old services running)
         env:
           RUNNER_TRACKING_ID: ""
-        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml build bff website app agent
 
       - name: Run migrations
         run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
+
+      - name: Deploy website and wait for health
+        run: |
+          cd $DEPLOY_DIR
+          docker compose -f docker-compose.prod.yml up -d --no-deps website
+          for i in {1..30}; do
+            if curl -fsS http://localhost:5173/ >/dev/null; then
+              echo "website healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "website failed health check"
+          exit 1
+
+      - name: Deploy app and wait for health
+        run: |
+          cd $DEPLOY_DIR
+          docker compose -f docker-compose.prod.yml up -d --no-deps app
+          for i in {1..30}; do
+            if curl -fsS http://localhost:5174/ >/dev/null; then
+              echo "app healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "app failed health check"
+          exit 1
+
+      - name: Deploy agent and wait for health
+        run: |
+          cd $DEPLOY_DIR
+          docker compose -f docker-compose.prod.yml up -d --no-deps agent
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3000/health >/dev/null; then
+              echo "agent healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "agent failed health check"
+          exit 1
+
+      - name: Deploy bff and wait for health
+        run: |
+          cd $DEPLOY_DIR
+          docker compose -f docker-compose.prod.yml up -d --no-deps bff
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3001/ >/dev/null; then
+              echo "bff healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "bff failed health check"
+          exit 1
 
       - name: Notify Slack
         if: always()
