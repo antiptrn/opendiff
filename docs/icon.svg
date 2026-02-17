@@ -1,4 +1,4 @@
-<svg className="size-8 text-foreground dark:invert" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 40 1395 902" role="presentation" aria-hidden="true">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1395 961" preserveAspectRatio="xMidYMid meet" role="presentation" aria-hidden="true">
 <style>
     .icon { fill: #000; }
     @media (prefers-color-scheme: dark) {
