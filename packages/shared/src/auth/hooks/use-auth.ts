@@ -80,26 +80,35 @@ export function useAuth() {
   const user = localStorageUser ?? authData?.activeUser ?? null;
   const accounts = storage.accounts;
 
-  const login = (redirectUrl?: string) => {
+  const login = (redirectUrl?: string, turnstileToken?: string) => {
     const url = new URL(`${API_URL}/auth/github`);
     if (redirectUrl) {
       url.searchParams.set("redirectUrl", redirectUrl);
     }
-    window.location.href = url.toString();
-  };
-
-  const loginWithGoogle = (redirectUrl?: string) => {
-    const url = new URL(`${API_URL}/auth/google`);
-    if (redirectUrl) {
-      url.searchParams.set("redirectUrl", redirectUrl);
+    if (turnstileToken) {
+      url.searchParams.set("turnstileToken", turnstileToken);
     }
     window.location.href = url.toString();
   };
 
-  const loginWithMicrosoft = (redirectUrl?: string) => {
+  const loginWithGoogle = (redirectUrl?: string, turnstileToken?: string) => {
+    const url = new URL(`${API_URL}/auth/google`);
+    if (redirectUrl) {
+      url.searchParams.set("redirectUrl", redirectUrl);
+    }
+    if (turnstileToken) {
+      url.searchParams.set("turnstileToken", turnstileToken);
+    }
+    window.location.href = url.toString();
+  };
+
+  const loginWithMicrosoft = (redirectUrl?: string, turnstileToken?: string) => {
     const url = new URL(`${API_URL}/auth/microsoft`);
     if (redirectUrl) {
       url.searchParams.set("redirectUrl", redirectUrl);
+    }
+    if (turnstileToken) {
+      url.searchParams.set("turnstileToken", turnstileToken);
     }
     window.location.href = url.toString();
   };

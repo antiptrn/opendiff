@@ -10,12 +10,20 @@ import {
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getTurnstileErrorRedirect,
   sanitizeRedirectUrl,
+  verifyTurnstileRequest,
 } from "./utils";
 
 const googleRoutes = new Hono();
 
-googleRoutes.get("/", (c) => {
+googleRoutes.get("/", async (c) => {
+  const isHuman = await verifyTurnstileRequest(c);
+
+  if (!isHuman) {
+    return c.redirect(getTurnstileErrorRedirect());
+  }
+
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
   const redirectUri = `${callbackBase}/auth/google/callback`;
   const scope = "openid email profile";

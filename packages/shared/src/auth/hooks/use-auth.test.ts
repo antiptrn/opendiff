@@ -146,6 +146,16 @@ describe("useAuth", () => {
     expect(window.location.href).toContain("redirectUrl=%2Fconsole");
   });
 
+  it("login includes turnstile token when provided", () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.login("/console", "turnstile-token");
+    });
+
+    expect(window.location.href).toContain("turnstileToken=turnstile-token");
+  });
+
   it("refreshAccountToken returns the account for github provider", async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: createWrapper() });
 
