@@ -5,6 +5,7 @@ import type { ChangelogEntry } from "../types";
 interface ChangelogFrontmatter {
   date?: string;
   title?: string;
+  version?: string;
 }
 
 function parseDateFromFilename(filePath: string): Date | null {
@@ -18,20 +19,16 @@ function parseDateFromFilename(filePath: string): Date | null {
 }
 
 function parseVersionLabel(markdown: string): string {
-  const explicitVersion = markdown.match(/^version:\s*(.+)$/im)?.[1]?.trim();
-  if (explicitVersion) {
-    return explicitVersion;
-  }
-
   const heading = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
   const versionInHeading = heading.match(/v\d+\.\d+\.\d+/i)?.[0];
   return versionInHeading || "unknown";
 }
 
 function parseFrontmatter(markdown: string): { metadata: ChangelogFrontmatter; body: string } {
-  const match = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
+  const normalized = markdown.replace(/\r\n/g, "\n");
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!match) {
-    return { metadata: {}, body: markdown };
+    return { metadata: {}, body: normalized };
   }
 
   const metadata: ChangelogFrontmatter = {};
@@ -50,9 +47,12 @@ function parseFrontmatter(markdown: string): { metadata: ChangelogFrontmatter; b
     if (key === "title") {
       metadata.title = value;
     }
+    if (key === "version") {
+      metadata.version = value;
+    }
   }
 
-  const body = markdown.slice(match[0].length);
+  const body = normalized.slice(match[0].length);
   return { metadata, body };
 }
 
@@ -94,9 +94,9 @@ const rawEntries = import.meta.glob("../../../../../changelog/entries/*.md", {
 const entries: ChangelogEntry[] = Object.entries(rawEntries)
   .map(([path, markdown]) => {
     const fileName = path.split("/").at(-1) || path;
-    const version = parseVersionLabel(markdown);
     const { metadata, body } = parseFrontmatter(markdown);
     const cleanedBody = stripLegacyReleaseLine(body);
+    const version = metadata.version || parseVersionLabel(cleanedBody);
     const filenameDate = parseDateFromFilename(fileName);
 
     return {
