@@ -16,7 +16,7 @@ COPY packages/website/package.json ./packages/website/
 COPY packages/app/package.json ./packages/app/
 COPY packages/vscode-extension/package.json ./packages/vscode-extension/
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 COPY . .
 
