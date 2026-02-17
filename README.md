@@ -32,6 +32,11 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 | [`vscode-extension`](./packages/vscode-extension) | VS Code extension for local code review | VS Code API |
 | [`assets`](./packages/assets) | Shared static assets (fonts, icons) | - |
 
+Content sources used by the website:
+
+- Blog articles: [`packages/articles/README.md`](./packages/articles/README.md)
+- Changelog entries: [`packages/changelog/README.md`](./packages/changelog/README.md)
+
 ## Getting Started
 
 ### Prerequisites
