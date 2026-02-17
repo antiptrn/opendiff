@@ -2,10 +2,18 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "OpenDiff",
   "theme": "mint",
+  "appearance": {
+    "default": "dark"
+  },
+  "favicon": "/icon.svg",
+  "logo": {
+    "light": "/icon.svg",
+    "dark": "/icon.svg"
+  },
   "colors": {
-    "primary": "#2563eb",
-    "light": "#dbeafe",
-    "dark": "#1d4ed8"
+    "primary": "#ffffff",
+    "light": "#a3a3a3",
+    "dark": "#ffffff"
   },
   "navigation": {
     "tabs": [
