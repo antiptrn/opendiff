@@ -1,4 +1,4 @@
-<img width="4500" height="1500" alt="gh_banner" src="https://github.com/user-attachments/assets/2a0628f6-a66f-448e-b109-5d741597b86d" />
+<img width="1200" height="400" alt="github_image" src="https://github.com/user-attachments/assets/8eaad8e5-bfc9-47c4-b818-f31fefd11ed5" />
 
 # OpenDiff
 
