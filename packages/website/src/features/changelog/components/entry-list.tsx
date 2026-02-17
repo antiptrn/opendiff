@@ -25,6 +25,11 @@ export function EntryList({ entries }: EntryListProps) {
   const visibleEntries = useMemo(() => entries.slice(0, visibleCount), [entries, visibleCount]);
 
   useEffect(() => {
+    const nextVisibleCount = Math.min(CHANGELOG_CHUNK_SIZE, entries.length || CHANGELOG_CHUNK_SIZE);
+    setVisibleCount(nextVisibleCount);
+  }, [entries.length]);
+
+  useEffect(() => {
     const node = sentinelRef.current;
     if (!node || !hasMore) {
       return;

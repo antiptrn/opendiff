@@ -8,14 +8,29 @@ interface ChangelogFrontmatter {
   version?: string;
 }
 
+function parseDateValue(value: string): Date | null {
+  const trimmed = value.trim();
+  const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnly) {
+    const year = Number.parseInt(dateOnly[1], 10);
+    const month = Number.parseInt(dateOnly[2], 10) - 1;
+    const day = Number.parseInt(dateOnly[3], 10);
+    const localDate = new Date(year, month, day);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  }
+
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function parseDateFromFilename(filePath: string): Date | null {
   const match = filePath.match(/(\d{4}-\d{2}-\d{2})\.md$/);
   if (!match) {
     return null;
   }
 
-  const parsed = new Date(match[1]);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDateValue(match[1]);
 }
 
 function parseVersionLabel(markdown: string): string {
@@ -62,8 +77,7 @@ function parseDate(markdown: string, metadata: ChangelogFrontmatter): Date | nul
     return null;
   }
 
-  const date = new Date(dateLine);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseDateValue(dateLine);
 }
 
 function parseTitle(markdown: string, fallbackVersion: string): string {
