@@ -19,6 +19,14 @@ You are fixing a code review issue. Here are the details:
 
 Focus on fixing THIS issue correctly. Make the minimal changes needed but don't be afraid to create new files or modify multiple files if that's the right solution.
 
+## Critical Output Rules
+- Do NOT provide progress updates, plans, or conversational narration.
+- Do NOT say what you "will" do. Either apply edits now or return `cannot_fix` / `needs_clarification`.
+- Your final output must be a single valid JSON object matching one of the schemas below.
+- No markdown fences. No preamble. No trailing text.
+
+If you are unable to complete a safe code change after inspecting context, return `cannot_fix` JSON immediately.
+
 If you can fix it safely now, apply edits and respond in JSON:
 {
   "status": "fixed",
