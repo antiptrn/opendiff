@@ -4,15 +4,52 @@ import { prisma } from "../db";
 import { getAuthUser, requireAuth, requireOrgAccess } from "../middleware/auth";
 import { canManageBilling } from "../middleware/organization";
 import { logAudit } from "../services/audit";
+import { getSupportedProviderModels } from "../utils/opencode-models";
 
 const settingsRoutes = new Hono();
 
 settingsRoutes.use(requireAuth());
 
-// ==================== BYOK API KEY ENDPOINTS ====================
+// ==================== BYOK AI CONFIG ENDPOINTS ====================
 
-// Get API key status (never returns the actual key)
-settingsRoutes.get("/api-key", async (c) => {
+type AiAuthMethod = "API_KEY" | "OAUTH_TOKEN";
+type AiProvider = "anthropic" | "openai";
+
+const DEFAULT_PROVIDER: AiProvider = "openai";
+const DEFAULT_AUTH_METHOD: AiAuthMethod = "OAUTH_TOKEN";
+const DEFAULT_MODEL = "openai/gpt-5.2-codex";
+
+function requiresOAuth(model: string): boolean {
+  return model.startsWith("openai/gpt-5.3-codex");
+}
+
+function providerFromModel(model: string | null | undefined): AiProvider {
+  if (model?.startsWith("openai/")) {
+    return "openai";
+  }
+  return "anthropic";
+}
+
+function maskCredential(method: AiAuthMethod | null, value: string | null): string | null {
+  if (!method || !value) {
+    return null;
+  }
+
+  if (method === "API_KEY") {
+    if (value.startsWith("sk-ant-")) {
+      return `sk-ant-...${value.slice(-4)}`;
+    }
+    if (value.startsWith("sk-")) {
+      return `sk-...${value.slice(-4)}`;
+    }
+    return `...${value.slice(-4)}`;
+  }
+
+  return `oauth-...${value.slice(-4)}`;
+}
+
+// Get AI config status (never returns the actual credential)
+settingsRoutes.get("/ai-config", async (c) => {
   const user = getAuthUser(c);
 
   const orgId = getOrgIdFromHeader(c);
@@ -33,19 +70,46 @@ settingsRoutes.get("/api-key", async (c) => {
     return c.json({ error: "Not a member of this organization" }, 403);
   }
 
-  // Only return whether a key is set and a masked version
-  const hasKey = !!org.anthropicApiKey;
-  const maskedKey = hasKey ? `sk-ant-...${org.anthropicApiKey?.slice(-4)}` : null;
+  const authMethod = org.aiAuthMethod as AiAuthMethod | null;
+  const storedCredential =
+    authMethod === "OAUTH_TOKEN"
+      ? org.aiOauthToken
+      : authMethod === "API_KEY"
+        ? org.aiApiKey || org.anthropicApiKey
+        : null;
+
+  const hasCredential = !!storedCredential;
+  const maskedCredential = maskCredential(authMethod, storedCredential);
 
   return c.json({
-    hasKey,
-    maskedKey,
+    hasCredential,
+    authMethod: authMethod || DEFAULT_AUTH_METHOD,
+    provider: org.aiModel ? providerFromModel(org.aiModel) : DEFAULT_PROVIDER,
+    model: org.aiModel || DEFAULT_MODEL,
+    maskedCredential,
     tier: org.subscriptionTier,
   });
 });
 
-// Set API key (BYOK organizations only — owners only)
-settingsRoutes.put("/api-key", async (c) => {
+settingsRoutes.get("/ai-models", async (c) => {
+  const provider = (c.req.query("provider") || "") as AiProvider | "";
+  const modelsByProvider = await getSupportedProviderModels();
+
+  if (provider === "anthropic" || provider === "openai") {
+    return c.json({
+      provider,
+      models: modelsByProvider[provider],
+    });
+  }
+
+  return c.json({
+    providers: ["anthropic", "openai"],
+    modelsByProvider,
+  });
+});
+
+// Set AI config (BYOK organizations only — owners only)
+settingsRoutes.put("/ai-config", async (c) => {
   const user = getAuthUser(c);
 
   const orgId = getOrgIdFromHeader(c);
@@ -76,37 +140,79 @@ settingsRoutes.put("/api-key", async (c) => {
   }
 
   const body = await c.req.json();
-  const { apiKey } = body;
+  const { provider, authMethod, model, credential } = body as {
+    provider?: AiProvider;
+    authMethod?: AiAuthMethod;
+    model?: string;
+    credential?: string;
+  };
 
-  if (!apiKey || typeof apiKey !== "string") {
-    return c.json({ error: "API key is required" }, 400);
+  if (!provider || (provider !== "anthropic" && provider !== "openai")) {
+    return c.json({ error: "provider must be anthropic or openai" }, 400);
   }
 
-  // Basic validation for Anthropic API key format
-  if (!apiKey.startsWith("sk-ant-")) {
-    return c.json({ error: "Invalid Anthropic API key format" }, 400);
+  if (!authMethod || (authMethod !== "API_KEY" && authMethod !== "OAUTH_TOKEN")) {
+    return c.json({ error: "authMethod must be API_KEY or OAUTH_TOKEN" }, 400);
+  }
+
+  if (!model || !model.startsWith(`${provider}/`)) {
+    return c.json({ error: "Invalid model selection" }, 400);
+  }
+
+  const supportedModels = await getSupportedProviderModels();
+  if (!supportedModels[provider].some((m) => m.id === model)) {
+    return c.json({ error: "Selected model is not supported" }, 400);
+  }
+
+  if (!credential || typeof credential !== "string") {
+    return c.json({ error: "Credential is required" }, 400);
+  }
+
+  if (authMethod === "API_KEY" && requiresOAuth(model)) {
+    return c.json({ error: "Codex 5.3 requires OAuth token authentication" }, 400);
+  }
+
+  if (authMethod === "API_KEY") {
+    if (provider === "anthropic" && !credential.startsWith("sk-ant-")) {
+      return c.json({ error: "Invalid Anthropic API key format" }, 400);
+    }
+
+    if (provider === "openai" && !credential.startsWith("sk-")) {
+      return c.json({ error: "Invalid OpenAI API key format" }, 400);
+    }
   }
 
   await prisma.organization.update({
     where: { id: org.id },
-    data: { anthropicApiKey: apiKey },
+    data: {
+      aiAuthMethod: authMethod,
+      aiModel: model,
+      aiApiKey: authMethod === "API_KEY" ? credential : null,
+      aiOauthToken: authMethod === "OAUTH_TOKEN" ? credential : null,
+      anthropicApiKey:
+        authMethod === "API_KEY" && model.startsWith("anthropic/") ? credential : null,
+    },
   });
 
   await logAudit({
     organizationId: org.id,
     userId: user.id,
     action: "api_key.updated",
+    metadata: { provider, authMethod, model },
     c,
   });
 
   return c.json({
     success: true,
-    maskedKey: `sk-ant-...${apiKey.slice(-4)}`,
+    provider,
+    authMethod,
+    model,
+    maskedCredential: maskCredential(authMethod, credential),
   });
 });
 
-// Delete API key (owners only)
-settingsRoutes.delete("/api-key", async (c) => {
+// Delete AI config (owners only)
+settingsRoutes.delete("/ai-config", async (c) => {
   const user = getAuthUser(c);
 
   const orgId = getOrgIdFromHeader(c);
@@ -134,7 +240,13 @@ settingsRoutes.delete("/api-key", async (c) => {
 
   await prisma.organization.update({
     where: { id: org.id },
-    data: { anthropicApiKey: null },
+    data: {
+      aiAuthMethod: null,
+      aiModel: null,
+      aiApiKey: null,
+      aiOauthToken: null,
+      anthropicApiKey: null,
+    },
   });
 
   await logAudit({

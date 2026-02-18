@@ -1,10 +1,11 @@
-/** Review utility functions: prompt construction, sensitivity levels, and response parsing. */
-import type { FilePayload, ReviewResult as LocalReviewResult } from "shared/types";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
+import type { FilePayload, ReviewResult } from "shared/types";
+import type { AiRuntimeConfig } from "../utils/opencode";
+import { runOpencodePrompt } from "../utils/opencode";
 
-export type LocalReviewFile = FilePayload;
-
-/** Return the review prompt section describing the sensitivity level for the given percentage. */
-export function getSensitivitySection(sensitivity: number): string {
+function getSensitivitySection(sensitivity: number): string {
   const level = Math.max(0, Math.min(100, sensitivity));
 
   if (level <= 20) {
@@ -22,18 +23,11 @@ export function getSensitivitySection(sensitivity: number): string {
   return `\n## Review Sensitivity: Very Strict (${level}%)\n\nComprehensive review: all security concerns, bugs, edge cases, performance, anti-patterns, style, naming, types, documentation. Flag anything that could be improved.`;
 }
 
-/** Build the full system prompt for a local code review given files, title, and sensitivity. */
-export function buildLocalReviewPrompt(
-  files: LocalReviewFile[],
-  title: string,
-  sensitivity: number
-): string {
+function buildLocalReviewPrompt(files: FilePayload[], title: string, sensitivity: number): string {
   const sensitivitySection = getSensitivitySection(sensitivity);
-
   const filesChanged = files
     .map((f) => `- ${f.filename}${f.patch ? " (has diff)" : ""}`)
     .join("\n");
-
   const diffs = files
     .filter((f) => f.patch)
     .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
@@ -143,21 +137,17 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
 Now, read the changed files and provide your review as JSON.`;
 }
 
-/** Parse the raw text response from the review agent into a structured LocalReviewResult. */
-export function parseLocalReviewResponse(text: string): LocalReviewResult {
+function parseLocalReviewResponse(text: string): ReviewResult {
   if (!text) {
     throw new Error("No response from review agent");
   }
 
   let jsonText = text.trim();
-
-  // Strip markdown code fences if present
   const fenceMatch = jsonText.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/);
   if (fenceMatch) {
     jsonText = fenceMatch[1].trim();
   }
 
-  // Extract the outermost JSON object
   const jsonStart = jsonText.search(/\{\s*"/);
   if (jsonStart !== -1) {
     const jsonEnd = jsonText.lastIndexOf("}");
@@ -166,10 +156,45 @@ export function parseLocalReviewResponse(text: string): LocalReviewResult {
     }
   }
 
-  const result = JSON.parse(jsonText) as LocalReviewResult;
+  const result = JSON.parse(jsonText) as ReviewResult;
   if (!result.summary || !Array.isArray(result.issues) || !result.verdict) {
     throw new Error("Invalid response structure");
   }
 
   return result;
+}
+
+export async function runLocalReview(input: {
+  files: FilePayload[];
+  title: string;
+  sensitivity: number;
+  aiConfig?: AiRuntimeConfig | null;
+}): Promise<{ review: ReviewResult; tokensUsed: number }> {
+  const workingDir = mkdtempSync(`${tmpdir()}/opendiff-local-`);
+
+  try {
+    const realWorkingDir = realpathSync(workingDir);
+    for (const file of input.files) {
+      const filePath = resolve(realWorkingDir, file.filename);
+      if (!filePath.startsWith(`${realWorkingDir}/`)) {
+        throw new Error("Invalid filename");
+      }
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, file.content);
+    }
+
+    const prompt = buildLocalReviewPrompt(input.files, input.title, input.sensitivity);
+    const response = await runOpencodePrompt({
+      cwd: workingDir,
+      prompt,
+      mode: "read_only",
+      aiConfig: input.aiConfig,
+      title: "Local code review",
+    });
+
+    const review = parseLocalReviewResponse(response.text);
+    return { review, tokensUsed: response.tokensUsed };
+  } finally {
+    rmSync(workingDir, { recursive: true, force: true });
+  }
 }

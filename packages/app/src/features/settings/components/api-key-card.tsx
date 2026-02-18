@@ -1,4 +1,11 @@
-import { useApiKeyStatus, useDeleteApiKey, useUpdateApiKey } from "@/features/settings";
+import {
+  type AiAuthMethod,
+  type AiProvider,
+  useAiConfigStatus,
+  useAiModels,
+  useDeleteAiConfig,
+  useUpdateAiConfig,
+} from "@/features/settings";
 import { Button } from "components/components/ui/button";
 import {
   Card,
@@ -8,9 +15,16 @@ import {
   CardTitle,
 } from "components/components/ui/card";
 import { Input } from "components/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/components/ui/select";
 import { Skeleton } from "components/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 interface ApiKeyCardProps {
@@ -18,118 +32,230 @@ interface ApiKeyCardProps {
   orgId?: string | null;
 }
 
-/**
- * Card component for managing Anthropic API key (Self-sufficient plan)
- */
-export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [showInput, setShowInput] = useState(false);
+const PROVIDER_LABELS: Record<AiProvider, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+};
 
-  const { data: apiKeyStatus, isLoading } = useApiKeyStatus(token, orgId);
-  const updateApiKey = useUpdateApiKey(token, orgId);
-  const deleteApiKey = useDeleteApiKey(token, orgId);
+const DEFAULT_PROVIDER: AiProvider = "openai";
+const DEFAULT_AUTH_METHOD: AiAuthMethod = "OAUTH_TOKEN";
+const DEFAULT_MODEL = "openai/gpt-5.2-codex";
+
+function requiresOAuth(modelId: string): boolean {
+  return modelId.startsWith("openai/gpt-5.3-codex");
+}
+
+export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
+  const [credentialInput, setCredentialInput] = useState("");
+  const [showInput, setShowInput] = useState(false);
+  const [provider, setProvider] = useState<AiProvider>(DEFAULT_PROVIDER);
+  const [authMethod, setAuthMethod] = useState<AiAuthMethod>(DEFAULT_AUTH_METHOD);
+  const [model, setModel] = useState<string>(DEFAULT_MODEL);
+
+  const { data: aiConfigStatus, isLoading } = useAiConfigStatus(token, orgId);
+  const { data: modelsData, isLoading: isLoadingModels } = useAiModels(provider, token, orgId);
+  const updateAiConfig = useUpdateAiConfig(token, orgId);
+  const deleteAiConfig = useDeleteAiConfig(token, orgId);
+
+  const modelOptions = modelsData?.models ?? [];
+
+  useEffect(() => {
+    if (!aiConfigStatus) {
+      return;
+    }
+
+    setProvider(aiConfigStatus.provider || DEFAULT_PROVIDER);
+    setAuthMethod(aiConfigStatus.authMethod || DEFAULT_AUTH_METHOD);
+    setModel(aiConfigStatus.model || DEFAULT_MODEL);
+  }, [aiConfigStatus]);
+
+  useEffect(() => {
+    if (modelOptions.length === 0) {
+      return;
+    }
+
+    const hasCurrentModel = modelOptions.some((option) => option.id === model);
+    if (!hasCurrentModel) {
+      const defaultOption = modelOptions.find((option) => option.id === DEFAULT_MODEL);
+      setModel(defaultOption?.id || modelOptions[0].id);
+    }
+  }, [modelOptions, model]);
+
+  useEffect(() => {
+    if (authMethod === "API_KEY" && requiresOAuth(model)) {
+      setAuthMethod("OAUTH_TOKEN");
+    }
+  }, [authMethod, model]);
+
+  const credentialPlaceholder = useMemo(() => {
+    return authMethod === "API_KEY" ? "sk-..." : "oauth token";
+  }, [authMethod]);
+
+  const helperText = useMemo(() => {
+    if (authMethod === "OAUTH_TOKEN") {
+      return "OAuth token can be used with selected Anthropic or OpenAI models.";
+    }
+
+    if (provider === "anthropic") {
+      return "Enter an Anthropic API key (starts with sk-ant-...).";
+    }
+
+    return "Enter an OpenAI API key (starts with sk-...).";
+  }, [authMethod, model]);
 
   const handleSave = async () => {
-    if (!apiKeyInput.trim()) return;
+    if (!credentialInput.trim()) {
+      return;
+    }
+
     try {
-      await updateApiKey.mutateAsync(apiKeyInput);
-      setApiKeyInput("");
+      await updateAiConfig.mutateAsync({
+        provider,
+        authMethod,
+        model,
+        credential: credentialInput.trim(),
+      });
+      setCredentialInput("");
       setShowInput(false);
-      toast.success("API key saved");
+      toast.success("AI configuration saved");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save API key");
+      toast.error(error instanceof Error ? error.message : "Failed to save AI configuration");
     }
   };
 
   const handleDelete = async () => {
     try {
-      await deleteApiKey.mutateAsync();
-      toast.success("API key removed");
+      await deleteAiConfig.mutateAsync();
+      toast.success("AI configuration removed");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to remove API key");
+      toast.error(error instanceof Error ? error.message : "Failed to remove AI configuration");
     }
   };
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Anthropic API Key</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton muted className="h-12 w-full rounded-3xl" />
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Anthropic API Key</CardTitle>
+        <CardTitle>AI Credentials</CardTitle>
         <CardDescription>
-          Your Self-sufficient plan requires your own Anthropic API key. You pay Anthropic directly
-          for API usage.
+          Self-sufficient plans use your own provider credentials. Choose auth method and model.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {apiKeyStatus?.hasKey && !showInput ? (
+        {isLoading ? (
+          <Skeleton muted className="h-12 w-full rounded-3xl" />
+        ) : aiConfigStatus?.hasCredential && !showInput ? (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-6">
-              <Input
-                type="password"
-                value={apiKeyStatus.maskedKey || ""}
-                className="bg-background"
-                readOnly
-                disabled
-              />
-              <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">
+                Provider: {PROVIDER_LABELS[aiConfigStatus.provider || "anthropic"]}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Method: {aiConfigStatus.authMethod === "OAUTH_TOKEN" ? "OAuth token" : "API token"}
+              </div>
+              <div className="text-sm text-muted-foreground">Model: {aiConfigStatus.model}</div>
+              <div className="flex items-center gap-2 mb-4">
+                <Input
+                  type="password"
+                  value={aiConfigStatus.maskedCredential || ""}
+                  className="bg-background"
+                  readOnly
+                  disabled
+                />
+                <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
+              </div>
             </div>
+
             <div className="flex gap-2">
-              <Button onClick={() => setShowInput(true)}>Update Key</Button>
-              <Button variant="outline" onClick={handleDelete} disabled={deleteApiKey.isPending}>
-                {deleteApiKey.isPending && <Loader2 className="size-4 animate-spin mr-2" />}
-                Remove Key
+              <Button onClick={() => setShowInput(true)}>Update</Button>
+              <Button variant="outline" onClick={handleDelete} disabled={deleteAiConfig.isPending}>
+                {deleteAiConfig.isPending && <Loader2 className="size-4 animate-spin mr-2" />}
+                Remove
               </Button>
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex gap-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Provider</div>
+                <Select value={provider} onValueChange={(v) => setProvider(v as AiProvider)}>
+                  <SelectTrigger className="w-full transition-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Auth Method</div>
+                <Select value={authMethod} onValueChange={(v) => setAuthMethod(v as AiAuthMethod)}>
+                  <SelectTrigger className="w-full transition-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="API_KEY" disabled={requiresOAuth(model)}>
+                      API token
+                    </SelectItem>
+                    <SelectItem value="OAUTH_TOKEN">OAuth token</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Model</div>
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger className="w-full transition-none">
+                    <SelectValue
+                      placeholder={isLoadingModels ? "Loading models..." : "Select model"}
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {modelOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-3">
               <Input
                 type="password"
-                placeholder="sk-ant-..."
+                placeholder={credentialPlaceholder}
                 className="bg-background"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
+                value={credentialInput}
+                onChange={(e) => setCredentialInput(e.target.value)}
               />
-              <Button onClick={handleSave} disabled={!apiKeyInput.trim() || updateApiKey.isPending}>
-                {updateApiKey.isPending && <Loader2 className="size-4 animate-spin" />}
-                {updateApiKey.isPending ? "Saving..." : "Save"}
-              </Button>
-              {showInput && (
+              <div className="flex gap-3 mt-4">
                 <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setShowInput(false);
-                    setApiKeyInput("");
-                  }}
+                  className="transition-none"
+                  onClick={handleSave}
+                  disabled={!credentialInput.trim() || !model || updateAiConfig.isPending}
                 >
-                  Cancel
+                  {updateAiConfig.isPending && <Loader2 className="size-4 animate-spin" />}
+                  {updateAiConfig.isPending ? "Saving..." : "Save"}
                 </Button>
-              )}
+                {showInput && (
+                  <Button
+                    className="transition-none"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowInput(false);
+                      setCredentialInput("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground mt-5 -mb-1">
-              Get your API key from{" "}
-              <a
-                href="https://console.anthropic.com/settings/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                console.anthropic.com
-              </a>
-            </p>
+
+            <p className="text-sm text-muted-foreground">{helperText}</p>
           </div>
         )}
       </CardContent>

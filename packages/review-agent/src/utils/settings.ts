@@ -3,6 +3,12 @@ import { buildIssueFingerprint } from "./issue-fingerprint";
 
 export type { RepositorySettings };
 
+export interface RuntimeAiConfig {
+  authMethod: "API_KEY" | "OAUTH_TOKEN";
+  model: string;
+  credential: string;
+}
+
 const SETTINGS_API_URL = process.env.SETTINGS_API_URL;
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
 
@@ -63,6 +69,51 @@ export async function getCustomReviewRules(owner: string, repo: string): Promise
     return data.rules || null;
   } catch (error) {
     console.warn(`Error fetching custom rules for ${owner}/${repo}:`, error);
+    return null;
+  }
+}
+
+export async function getRuntimeAiConfig(
+  owner: string,
+  repo: string
+): Promise<RuntimeAiConfig | null> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${SETTINGS_API_URL}/api/internal/ai-config/${owner}/${repo}`, {
+      headers: {
+        "X-API-Key": REVIEW_AGENT_API_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      authMethod?: "API_KEY" | "OAUTH_TOKEN";
+      model?: string;
+      credential?: string;
+      useDefault?: boolean;
+    };
+
+    if (data.useDefault) {
+      return null;
+    }
+
+    if (!data.authMethod || !data.model || !data.credential) {
+      return null;
+    }
+
+    return {
+      authMethod: data.authMethod,
+      model: data.model,
+      credential: data.credential,
+    };
+  } catch (error) {
+    console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);
     return null;
   }
 }
