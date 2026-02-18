@@ -98,6 +98,15 @@ FRONTEND_URL=http://localhost:5174
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
 PORT=3001
 
+# Redis (recommended for shared rate limiting)
+REDIS_URL=redis://localhost:6379
+
+# Optional: in production, keep false unless your proxy headers are trusted
+RATE_LIMIT_TRUST_PROXY_HEADERS=false
+
+# Optional: cooldown after Redis failures before retrying Redis (milliseconds)
+REDIS_RATE_LIMIT_COOLDOWN_MS=10000
+
 # Payment Provider ("polar" or "stripe")
 PAYMENT_PROVIDER=polar
 
@@ -134,6 +143,12 @@ R2_SECRET_ACCESS_KEY=xxx
 R2_BUCKET_NAME=opendiff
 R2_PUBLIC_URL=https://cdn.example.com
 ```
+
+Rate limiting notes:
+
+- Redis-backed rate limits are enabled when `REDIS_URL` is configured.
+- In production, requests should come through Cloudflare (or another trusted proxy) so `CF-Connecting-IP` is available.
+- If you do not fully trust proxy headers, keep `RATE_LIMIT_TRUST_PROXY_HEADERS=false`.
 
 #### App Configuration (`packages/app/.env`)
 

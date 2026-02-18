@@ -1,15 +1,22 @@
 # bff
 
-To install dependencies:
+Backend API for OpenDiff (auth, billing, repositories, settings, notifications).
+
+## Setup
 
 ```bash
+cp .env.example .env
 bun install
 ```
 
-To run:
+## Run
 
 ```bash
-bun run index.ts
+bun run dev
 ```
 
-This project was created using `bun init` in bun v1.1.29. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+## Rate Limiting
+
+- Configure `REDIS_URL` in `.env` to enable shared Redis-backed rate limiting across instances.
+- In production behind Cloudflare, `CF-Connecting-IP` is preferred for client IP detection.
+- Keep `RATE_LIMIT_TRUST_PROXY_HEADERS=false` unless your proxy chain is fully trusted.
