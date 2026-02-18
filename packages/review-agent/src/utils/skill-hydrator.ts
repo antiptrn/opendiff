@@ -50,7 +50,7 @@ async function fetchSkillsForRepo(owner: string, repo: string): Promise<Skill[]>
 }
 
 /**
- * Write user skills to the workspace's .claude/skills/ directory.
+ * Write user skills to the workspace's OpenCode skills directory (.claude/skills/).
  * User skills are prefixed with `user--` to avoid collisions with repo skills.
  */
 export async function hydrateSkills(
@@ -108,7 +108,7 @@ export async function cleanupUserSkills(workspacePath: string): Promise<void> {
 }
 
 /**
- * Detect repo-owned skills from the workspace's .claude/skills/ directory.
+ * Detect repo-owned skills from the workspace's OpenCode skills directory (.claude/skills/).
  * Skips user-hydrated skills (prefixed with user--).
  */
 export async function detectRepoSkills(workspacePath: string): Promise<RepoSkill[]> {

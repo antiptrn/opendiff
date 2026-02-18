@@ -5,6 +5,9 @@ import { Hono } from "hono";
 import { CodeReviewAgent } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
+import { generateReviewSummary } from "./internal/generate-summary";
+import { runLocalReview } from "./internal/local-review";
+import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
@@ -12,6 +15,7 @@ import {
   type RepositorySettings,
   getCustomReviewRules,
   getRepositorySettings,
+  getRuntimeAiConfig,
   hasPendingClarificationLocks,
   recordReview,
   recordReviewComments,
@@ -92,6 +96,7 @@ interface WebhookContext {
   settings: RepositorySettings;
   handler: WebhookHandler;
   customRules: string | null;
+  triageAgent: TriageAgent;
 }
 
 async function initWebhookContext(payload: {
@@ -102,13 +107,14 @@ async function initWebhookContext(payload: {
   const repo = payload.repository.name;
 
   const settings = await getRepositorySettings(owner, repo);
+  const aiConfig = await getRuntimeAiConfig(owner, repo);
 
   const installationId = payload.installation?.id;
   const octokit = createOctokit(installationId);
   const githubClient = new GitHubClient(octokit);
-  const agent = new CodeReviewAgent();
+  const agent = new CodeReviewAgent(aiConfig);
   const formatter = new ReviewFormatter();
-  const triageAgent = new TriageAgent();
+  const triageAgent = new TriageAgent(aiConfig);
   const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
 
   const customRules = await getCustomReviewRules(owner, repo);
@@ -116,14 +122,147 @@ async function initWebhookContext(payload: {
     console.log(`Using custom review rules for ${owner}/${repo}`);
   }
 
-  return { owner, repo, settings, handler, customRules };
+  return { owner, repo, settings, handler, customRules, triageAgent };
 }
 
 const app = new Hono();
 
+function isAuthorizedInternalApiKey(headerValue: string | undefined): boolean {
+  if (!REVIEW_AGENT_API_KEY) {
+    return process.env.NODE_ENV !== "production";
+  }
+  return headerValue === REVIEW_AGENT_API_KEY;
+}
+
+async function createGitHubClientForRepo(owner: string, repo: string): Promise<GitHubClient> {
+  const privateKey = getPrivateKey();
+
+  if (GITHUB_APP_ID && privateKey) {
+    const appOctokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: { appId: GITHUB_APP_ID, privateKey },
+    });
+    const { data: installation } = await appOctokit.apps.getRepoInstallation({ owner, repo });
+    return new GitHubClient(createOctokitWithApp(installation.id));
+  }
+
+  if (GITHUB_TOKEN) {
+    return new GitHubClient(createOctokitWithToken());
+  }
+
+  throw new Error(
+    "No GitHub authentication configured. Set GITHUB_TOKEN or GITHUB_APP_ID + GITHUB_PRIVATE_KEY_PATH"
+  );
+}
+
 // Health check endpoint
 app.get("/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.get("/internal/provider-models", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!isAuthorizedInternalApiKey(apiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const modelsByProvider = await getProviderModelsCatalog();
+    return c.json({
+      providers: ["anthropic", "openai"],
+      modelsByProvider,
+    });
+  } catch (error) {
+    console.error("Failed to list provider models:", error);
+    return c.json({ error: "Failed to list provider models" }, 500);
+  }
+});
+
+app.post("/internal/local-review", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!isAuthorizedInternalApiKey(apiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = (await c.req.json()) as {
+    files?: Array<{ filename: string; content: string; patch: string }>;
+    title?: string;
+    sensitivity?: number;
+    aiConfig?: { authMethod: "API_KEY" | "OAUTH_TOKEN"; model: string; credential: string };
+  };
+
+  if (!Array.isArray(body.files) || body.files.length === 0) {
+    return c.json({ error: "files array is required" }, 400);
+  }
+  if (!body.title) {
+    return c.json({ error: "title is required" }, 400);
+  }
+
+  try {
+    const result = await runLocalReview({
+      files: body.files,
+      title: body.title,
+      sensitivity: body.sensitivity ?? 50,
+      aiConfig: body.aiConfig,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error("Local review failed:", error);
+    return c.json({ error: "Review failed" }, 500);
+  }
+});
+
+app.post("/internal/generate-summary", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!isAuthorizedInternalApiKey(apiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = (await c.req.json()) as {
+    owner?: string;
+    repo?: string;
+    pullNumber?: number;
+    headBranch?: string;
+    pullTitle?: string | null;
+    pullBody?: string | null;
+    pullAuthor?: string | null;
+    baseBranch?: string | null;
+    comments?: Array<{
+      body: string;
+      path: string | null;
+      line: number | null;
+      fixStatus: string | null;
+    }>;
+    aiConfig?: { authMethod: "API_KEY" | "OAUTH_TOKEN"; model: string; credential: string };
+  };
+
+  if (!body.owner || !body.repo || !body.pullNumber || !body.headBranch) {
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  try {
+    const github = await createGitHubClientForRepo(body.owner, body.repo);
+    const result = await generateReviewSummary(
+      {
+        owner: body.owner,
+        repo: body.repo,
+        pullNumber: body.pullNumber,
+        headBranch: body.headBranch,
+        pullTitle: body.pullTitle ?? null,
+        pullBody: body.pullBody ?? null,
+        pullAuthor: body.pullAuthor ?? null,
+        baseBranch: body.baseBranch ?? null,
+        comments: body.comments ?? [],
+      },
+      github,
+      body.aiConfig
+    );
+
+    return c.json(result);
+  } catch (error) {
+    console.error("Summary generation failed:", error);
+    return c.json({ error: "Summary generation failed" }, 500);
+  }
 });
 
 // Webhook endpoint
@@ -149,7 +288,8 @@ app.post("/webhook", async (c) => {
 
     if (triggerActions.includes(payload.action)) {
       try {
-        const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
+        const { owner, repo, settings, handler, customRules, triageAgent } =
+          await initWebhookContext(payload);
 
         if (!settings.effectiveEnabled) {
           console.log(
@@ -184,7 +324,7 @@ app.post("/webhook", async (c) => {
         const triageOptions = {
           enabled: triageEnabled,
           autofixEnabled: settings.autofixEnabled,
-          triageAgent: new TriageAgent(),
+          triageAgent,
           botUsername: BOT_USERNAME,
         };
 

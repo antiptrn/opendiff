@@ -1,14 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useThemeCookieSync } from "components/hooks";
 import { ClipboardCheck, FolderGit, LayoutGrid, Loader2, Settings, Shield } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "shared/auth";
+import { NavigationScrollToTop } from "shared/navigation";
 import { useOrganization } from "shared/organizations";
 import { ConsoleHeader, type ConsoleHeaderNavItem } from "./console-header";
 import { FeedbackDialog } from "./feedback-dialog";
 import { NotificationPopover } from "./notification-popover";
 import { UserMenu } from "./user-menu";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export function ConsoleLayout() {
   const { user, accounts, isLoading, logout, switchAccount, refreshAccountToken, removeAccount } =
@@ -27,20 +30,58 @@ export function ConsoleLayout() {
   } = useOrganization();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const mainRef = useRef<HTMLElement | null>(null);
+  const getMainElement = useCallback(() => mainRef.current, []);
 
   // Sync theme with cookie for cross-origin persistence
   useThemeCookieSync({ cookieDomain: import.meta.env.VITE_THEME_COOKIE_DOMAIN });
 
   // Track which account is being switched to (for loading state)
   const [switchingToAccountId, setSwitchingToAccountId] = useState<string | null>(null);
+  const prefetchedAiModelsOrgIdRef = useRef<string | null>(null);
+
+  // Prefetch AI model catalogs for settings while app is still in initial loading flows.
+  useEffect(() => {
+    if (!user?.access_token || !currentOrgId) {
+      return;
+    }
+
+    if (prefetchedAiModelsOrgIdRef.current === currentOrgId) {
+      return;
+    }
+
+    prefetchedAiModelsOrgIdRef.current = currentOrgId;
+
+    for (const provider of ["anthropic", "openai"] as const) {
+      queryClient.prefetchQuery({
+        queryKey: ["aiModels", provider, currentOrgId],
+        queryFn: async () => {
+          const response = await fetch(
+            `${API_URL}/api/settings/ai-models?provider=${encodeURIComponent(provider)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${user.access_token}`,
+                "X-Organization-Id": currentOrgId,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to prefetch AI models");
+          }
+
+          return response.json();
+        },
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+  }, [user?.access_token, currentOrgId, queryClient]);
 
   // Handle account switch with loading state and token refresh
   const handleSwitchAccount = useCallback(
     async (account: (typeof accounts)[0]) => {
       const accountId = String(account.visitorId || account.id);
       setSwitchingToAccountId(accountId);
-
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
       const tryFetchOrgs = async (token: string) => {
         const response = await fetch(`${API_URL}/api/organizations`, {
@@ -159,6 +200,7 @@ export function ConsoleLayout() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <NavigationScrollToTop getContainer={getMainElement} />
       <ConsoleHeader
         email={user.email}
         organizationName={currentOrg?.name || orgDetails?.name}
@@ -182,7 +224,7 @@ export function ConsoleLayout() {
         }
       />
 
-      <main className="flex-1 overflow-auto">
+      <main ref={mainRef} className="flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-6xl">
           <Outlet />
         </div>

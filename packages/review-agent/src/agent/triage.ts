@@ -1,29 +1,8 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { loadPrompt } from "@opendiff/prompts";
+import { simpleGit } from "simple-git";
+import type { AiRuntimeConfig } from "../utils/opencode";
+import { runOpencodePrompt } from "../utils/opencode";
 import type { CodeIssue } from "./types";
-
-function buildClaudeAgentEnv(): Record<string, string> {
-  // Claude Code "setup-token" produces a long-lived OAuth token (sk-ant-oat...).
-  // The Claude Agent SDK / Claude Code runtime expects this in CLAUDE_CODE_OAUTH_TOKEN.
-  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === "string") {
-      // If an OAuth token is provided, ensure we don't accidentally fall back to API key auth.
-      if (oauthToken && key === "ANTHROPIC_API_KEY") {
-        continue;
-      }
-      env[key] = value;
-    }
-  }
-
-  if (oauthToken) {
-    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
-  }
-
-  return env;
-}
 
 interface FixResult {
   fixed: boolean;
@@ -40,6 +19,8 @@ interface ParsedFixResponse {
 }
 
 export class TriageAgent {
+  constructor(private aiConfig: AiRuntimeConfig | null = null) {}
+
   async fixIssue(issue: CodeIssue, workingDir: string): Promise<FixResult> {
     const prompt = loadPrompt("fix-issue", {
       type: issue.type,
@@ -50,69 +31,27 @@ export class TriageAgent {
       suggestionLine: issue.suggestion ? `- Suggestion: ${issue.suggestion}` : "",
     });
 
-    let result = "";
-    let lastAssistantText = "";
-    let hasChanges = false;
-    let totalTokens = 0;
-
     try {
-      for await (const message of query({
+      const response = await runOpencodePrompt({
+        cwd: workingDir,
         prompt,
-        options: {
-          cwd: workingDir,
-          env: buildClaudeAgentEnv(),
-          allowedTools: ["Read", "Edit", "Write", "Glob", "Grep"],
-          permissionMode: "acceptEdits",
-          maxTurns: 20,
-          settingSources: ["user"],
-        },
-      })) {
-        // Track if assistant used edit/write tools and capture text output
-        if (message.type === "assistant") {
-          const assistantMsg = message as SDKAssistantMessage;
-          const content = assistantMsg.message?.content ?? [];
-          for (const block of content) {
-            if (block.type === "tool_use" && (block.name === "Edit" || block.name === "Write")) {
-              hasChanges = true;
-            }
-            if (block.type === "text" && block.text) {
-              lastAssistantText = block.text;
-            }
-          }
-        }
+        mode: "read_write",
+        aiConfig: this.aiConfig,
+        title: "Triage autofix",
+      });
 
-        // Capture the final result
-        if (message.type === "result") {
-          const resultMsg = message as SDKResultMessage;
-          if (resultMsg.subtype === "success") {
-            result = resultMsg.result || "";
-            // Capture token usage
-            const usage = resultMsg.usage;
-            if (usage) {
-              totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
-            }
-          } else {
-            // Error result — use SDK errors, last agent response, or fallback
-            const errorDetail =
-              resultMsg.errors?.join(", ") ||
-              lastAssistantText ||
-              "Agent encountered an error but provided no details";
-            return {
-              fixed: false,
-              explanation: errorDetail,
-            };
-          }
-        }
-      }
+      const git = simpleGit(workingDir);
+      const status = await git.status();
+      const hasChanges = status.files.length > 0;
 
-      const parsed = this.parseFixResponse(result || lastAssistantText);
+      const parsed = this.parseFixResponse(response.text);
       if (parsed?.status === "needs_clarification") {
         return {
           fixed: false,
           explanation: parsed.explanation,
           requiresClarification: true,
           clarificationQuestion: parsed.clarificationQuestion,
-          tokensUsed: totalTokens,
+          tokensUsed: response.tokensUsed,
         };
       }
 
@@ -120,27 +59,16 @@ export class TriageAgent {
         return {
           fixed: false,
           explanation: parsed.explanation,
-          tokensUsed: totalTokens,
+          tokensUsed: response.tokensUsed,
         };
       }
 
       return {
         fixed: hasChanges,
-        explanation: parsed?.explanation || result || "Changes applied",
-        tokensUsed: totalTokens,
+        explanation: parsed?.explanation || response.text || "Changes applied",
+        tokensUsed: response.tokensUsed,
       };
     } catch (error) {
-      // SDK has a bug where stream cleanup fails with "line.trim" error
-      // If we already have changes/result, ignore the cleanup error
-      if (hasChanges && error instanceof TypeError && String(error).includes("trim")) {
-        console.warn("Ignoring SDK stream cleanup error");
-        const parsed = this.parseFixResponse(result || lastAssistantText);
-        return {
-          fixed: true,
-          explanation: parsed?.explanation || result || "Changes applied",
-          tokensUsed: totalTokens,
-        };
-      }
       console.error("Triage agent error:", error);
       return {
         fixed: false,

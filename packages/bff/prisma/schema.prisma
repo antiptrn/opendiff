@@ -48,6 +48,11 @@ enum FixStatus {
   REJECTED
 }
 
+enum AiAuthMethod {
+  API_KEY
+  OAUTH_TOKEN
+}
+
 enum NotificationType {
   REVIEW_STARTED
   REVIEW_COMPLETED
@@ -124,6 +129,10 @@ model Organization {
   tokensUsedThisCycle   BigInt             @default(0)
   grantedTokens         BigInt             @default(0)  // Manually allocated tokens (independent of subscription)
   anthropicApiKey       String?
+  aiAuthMethod          AiAuthMethod?
+  aiApiKey              String?
+  aiOauthToken          String?
+  aiModel               String?
   customReviewRules     String?
   // Business info (for invoicing)
   isRegisteredBusiness  Boolean            @default(false)

@@ -385,7 +385,7 @@ describe("WebhookHandler", () => {
       expect(reviewedFiles).toHaveLength(0);
     });
 
-    it("should pass files without content (Agent SDK reads files itself)", async () => {
+    it("should pass files without content (OpenCode reads files itself)", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
         { filename: "file.ts", status: "added", patch: "+code" },
@@ -404,7 +404,7 @@ describe("WebhookHandler", () => {
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       expect(result.success).toBe(true);
-      // Content is undefined - Agent SDK reads files itself
+      // Content is undefined - OpenCode reads files itself
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
       expect(reviewedFiles[0].content).toBeUndefined();
       expect(reviewedFiles[0].filename).toBe("file.ts");

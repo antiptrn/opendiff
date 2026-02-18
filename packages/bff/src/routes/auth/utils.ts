@@ -13,6 +13,31 @@ export const PREVIEW_PR_NUMBER = process.env.PREVIEW_PR_NUMBER
 
 const TURNSTILE_VERIFY_ERROR_REDIRECT = `${FRONTEND_URL}/login?error=captcha_failed&message=${encodeURIComponent("Please complete human verification and try again.")}`;
 
+function isLocalFrontend(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
+function shouldBypassTurnstile(): boolean {
+  if (process.env.TURNSTILE_FORCE_ENABLED === "true") {
+    return false;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  if (process.env.NODE_ENV === "development" || process.env.BUN_ENV === "development") {
+    return true;
+  }
+
+  return isLocalFrontend(FRONTEND_URL);
+}
+
 interface TurnstileContext {
   req: {
     query: (name: string) => string | undefined;
@@ -37,6 +62,10 @@ export async function verifyTurnstileToken({
   token: string | null | undefined;
   ip?: string;
 }): Promise<boolean> {
+  if (shouldBypassTurnstile()) {
+    return true;
+  }
+
   if (!TURNSTILE_SECRET_KEY) {
     // Bypass verification when TURNSTILE_SECRET_KEY is not configured (backward compatibility)
     return true;

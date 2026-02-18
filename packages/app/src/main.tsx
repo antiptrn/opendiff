@@ -3,7 +3,7 @@ import { NotFound } from "components/components";
 import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
+import { Navigate, Outlet, RouterProvider, createBrowserRouter } from "react-router-dom";
 
 import "./index.css";
 import { ConsoleLayout } from "@/components/layout/console";
@@ -22,6 +22,7 @@ import { SettingsPage } from "@/features/settings";
 
 // Shared
 import { AuthCallbackPage, LoginPage, OnboardingPage } from "shared/auth";
+import { NavigationScrollToTop } from "shared/navigation";
 import {
   CreateOrganizationPage,
   InvitePage,
@@ -31,33 +32,51 @@ import { Toaster } from "sonner";
 
 const queryClient = new QueryClient();
 
+function AppRouteShell() {
+  return (
+    <>
+      <NavigationScrollToTop />
+      <Outlet />
+    </>
+  );
+}
+
 const router = createBrowserRouter([
-  // Standalone pages without header/footer
-  { path: "/login", element: <LoginPage /> },
-  { path: "/auth/callback", element: <AuthCallbackPage /> },
-  { path: "/onboarding", element: <OnboardingPage /> },
-  { path: "/create-organization", element: <CreateOrganizationPage /> },
-  { path: "/invite/:token", element: <InvitePage /> },
-  { path: "/checkout", element: <CheckoutPage /> },
-  { path: "/subscription/success", element: <SubscriptionSuccessPage /> },
   {
-    path: "/console",
-    element: <ConsoleLayout />,
+    path: "/",
+    element: <AppRouteShell />,
     children: [
-      { index: true, element: <ConsolePage /> },
-      { path: "repositories", element: <RepositoriesPage /> },
-      { path: "pull-requests", element: <PullRequestsListPage /> },
-      { path: "pull-requests/:id", element: <PullRequestDetailPage /> },
-      { path: "settings", element: <SettingsPage /> },
-      { path: "settings/:tab", element: <SettingsPage /> },
-      { path: "admin", element: <AdminPage /> },
-      // Legacy redirects
-      { path: "organization", element: <Navigate to="/console/settings/organization" replace /> },
-      { path: "billing", element: <Navigate to="/console/settings/billing" replace /> },
+      // Standalone pages without header/footer
+      { path: "login", element: <LoginPage /> },
+      { path: "auth/callback", element: <AuthCallbackPage /> },
+      { path: "onboarding", element: <OnboardingPage /> },
+      { path: "create-organization", element: <CreateOrganizationPage /> },
+      { path: "invite/:token", element: <InvitePage /> },
+      { path: "checkout", element: <CheckoutPage /> },
+      { path: "subscription/success", element: <SubscriptionSuccessPage /> },
+      {
+        path: "console",
+        element: <ConsoleLayout />,
+        children: [
+          { index: true, element: <ConsolePage /> },
+          { path: "repositories", element: <RepositoriesPage /> },
+          { path: "pull-requests", element: <PullRequestsListPage /> },
+          { path: "pull-requests/:id", element: <PullRequestDetailPage /> },
+          { path: "settings", element: <SettingsPage /> },
+          { path: "settings/:tab", element: <SettingsPage /> },
+          { path: "admin", element: <AdminPage /> },
+          // Legacy redirects
+          {
+            path: "organization",
+            element: <Navigate to="/console/settings/organization" replace />,
+          },
+          { path: "billing", element: <Navigate to="/console/settings/billing" replace /> },
+        ],
+      },
+      { index: true, element: <Navigate to="/console" replace /> },
+      { path: "*", element: <NotFound /> },
     ],
   },
-  { path: "/", element: <Navigate to="/console" replace /> },
-  { path: "*", element: <NotFound /> },
 ]);
 
 const rootElement = document.getElementById("root");

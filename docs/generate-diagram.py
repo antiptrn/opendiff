@@ -32,7 +32,7 @@ with Diagram(
 ):
     with Cluster("External"):
         github = Github("GitHub")
-        claude = Snowflake("Claude AI")
+        opencode = Snowflake("OpenCode")
         db = PostgreSQL("PostgreSQL")
 
     with Cluster("Backend"):
@@ -61,7 +61,7 @@ with Diagram(
     # Backend
     bff >> db
     agent >> bff
-    agent >> claude
+    agent >> opencode
     agent >> github
 
     # Webhooks

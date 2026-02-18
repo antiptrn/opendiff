@@ -239,13 +239,13 @@ export class WebhookHandler {
             return true;
           });
 
-          // Build file list with patches for the reviewer (Agent SDK reads files itself)
+          // Build file list with patches for the reviewer (OpenCode reads files itself)
           const filesToReview: FileToReview[] = codeFiles.map((file) => ({
             filename: file.filename,
             patch: file.patch,
           }));
 
-          // Run AI review with Agent SDK (agent will read files itself)
+          // Run AI review with OpenCode (agent will read files itself)
           const reviewResult = await this.agent.reviewFiles(
             filesToReview,
             {
@@ -378,7 +378,7 @@ export class WebhookHandler {
             };
           }
 
-          // Get AI response using Agent SDK
+          // Get AI response using OpenCode
           const response = await this.agent.respondToCommentWithIntent(
             conversation,
             tempDir,
@@ -549,7 +549,7 @@ export class WebhookHandler {
             body: c.body,
           }));
 
-          // Get AI response using Agent SDK
+          // Get AI response using OpenCode
           const response = await this.agent.respondToCommentWithIntent(
             conversation,
             tempDir,

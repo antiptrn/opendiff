@@ -62,7 +62,7 @@ OpenDiff is a Bun monorepo with these packages:
 | `bff` | Backend API — Hono, Prisma, PostgreSQL |
 | `app` | Console dashboard — React 19, Vite, Tailwind CSS v4 |
 | `website` | Marketing site — React 19, Vite, Tailwind CSS v4 |
-| `review-agent` | GitHub webhook handler and AI reviewer — Hono, Claude Agent SDK |
+| `review-agent` | GitHub webhook handler and AI reviewer — Hono, OpenCode SDK |
 | `github` | GitHub App auth and API utilities — Octokit |
 | `prompts` | Shared AI prompt templates |
 | `components` | Shared UI component library — Radix UI, shadcn |
