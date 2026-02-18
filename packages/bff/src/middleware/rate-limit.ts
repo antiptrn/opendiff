@@ -19,6 +19,8 @@ const CLEANUP_INTERVAL_MS = 60_000;
 const MAX_IN_MEMORY_BUCKETS = 100_000;
 let lastRedisFailureLogAt = 0;
 const REDIS_FAILURE_LOG_INTERVAL_MS = 15_000;
+let redisDisabledUntil = 0;
+const FALLBACK_IP = "unknown";
 const RATE_LIMIT_LUA = `
 local current = redis.call("INCR", KEYS[1])
 if current == 1 then
@@ -28,9 +30,36 @@ local ttl = redis.call("PTTL", KEYS[1])
 return {current, ttl}
 `;
 
+function parseBooleanEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "true";
+}
+
+function trustProxyHeaders(): boolean {
+  return parseBooleanEnv(process.env.RATE_LIMIT_TRUST_PROXY_HEADERS);
+}
+
+function isProductionEnv(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function getRedisCooldownMs(): number {
+  const raw = Number(process.env.REDIS_RATE_LIMIT_COOLDOWN_MS ?? "10000");
+  if (!Number.isFinite(raw) || raw < 0) {
+    return 10_000;
+  }
+
+  return raw;
+}
+
 function getClientIp(c: Context): string {
   const cfIp = c.req.header("CF-Connecting-IP");
   if (cfIp) return cfIp;
+
+  // In production, do not trust client-controlled forwarded IP headers by default.
+  if (isProductionEnv() && !trustProxyHeaders()) {
+    return FALLBACK_IP;
+  }
 
   const forwardedFor = c.req.header("X-Forwarded-For");
   if (forwardedFor) {
@@ -41,7 +70,7 @@ function getClientIp(c: Context): string {
   const realIp = c.req.header("X-Real-IP");
   if (realIp) return realIp;
 
-  return "unknown";
+  return FALLBACK_IP;
 }
 
 function maybeCleanup(now: number): void {
@@ -77,6 +106,11 @@ function maybeLogRedisFailure(error: unknown): void {
 }
 
 async function incrementRedisBucket(key: string, windowMs: number): Promise<Bucket | null> {
+  const now = Date.now();
+  if (redisDisabledUntil > now) {
+    return null;
+  }
+
   const redis = getRedisClient();
   if (!redis) {
     return null;
@@ -93,9 +127,17 @@ async function incrementRedisBucket(key: string, windowMs: number): Promise<Buck
       resetAt: Date.now() + normalizedTtl,
     };
   } catch (error) {
+    redisDisabledUntil = Date.now() + getRedisCooldownMs();
     maybeLogRedisFailure(error);
     return null;
   }
+}
+
+export function __resetRateLimitForTests(): void {
+  buckets.clear();
+  lastCleanupAt = 0;
+  lastRedisFailureLogAt = 0;
+  redisDisabledUntil = 0;
 }
 
 /**
