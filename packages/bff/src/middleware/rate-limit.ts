@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { getRedisClient } from "../services/redis";
 
 interface RateLimitOptions {
   windowMs: number;
@@ -15,6 +16,17 @@ interface Bucket {
 const buckets = new Map<string, Bucket>();
 let lastCleanupAt = 0;
 const CLEANUP_INTERVAL_MS = 60_000;
+const MAX_IN_MEMORY_BUCKETS = 100_000;
+let lastRedisFailureLogAt = 0;
+const REDIS_FAILURE_LOG_INTERVAL_MS = 15_000;
+const RATE_LIMIT_LUA = `
+local current = redis.call("INCR", KEYS[1])
+if current == 1 then
+  redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+local ttl = redis.call("PTTL", KEYS[1])
+return {current, ttl}
+`;
 
 function getClientIp(c: Context): string {
   const cfIp = c.req.header("CF-Connecting-IP");
@@ -43,12 +55,55 @@ function maybeCleanup(now: number): void {
   }
 }
 
+function setInMemoryBucket(key: string, bucket: Bucket): void {
+  if (buckets.size >= MAX_IN_MEMORY_BUCKETS && !buckets.has(key)) {
+    const oldestKey = buckets.keys().next().value;
+    if (oldestKey) {
+      buckets.delete(oldestKey);
+    }
+  }
+
+  buckets.set(key, bucket);
+}
+
+function maybeLogRedisFailure(error: unknown): void {
+  const now = Date.now();
+  if (now - lastRedisFailureLogAt < REDIS_FAILURE_LOG_INTERVAL_MS) {
+    return;
+  }
+
+  lastRedisFailureLogAt = now;
+  console.error("Redis rate limiter unavailable, falling back to in-memory buckets:", error);
+}
+
+async function incrementRedisBucket(key: string, windowMs: number): Promise<Bucket | null> {
+  const redis = getRedisClient();
+  if (!redis) {
+    return null;
+  }
+
+  try {
+    const result = (await redis.eval(RATE_LIMIT_LUA, 1, key, String(windowMs))) as [number, number];
+    const count = Number(result?.[0] ?? 0);
+    const ttlMs = Number(result?.[1] ?? windowMs);
+    const normalizedTtl = ttlMs > 0 ? ttlMs : windowMs;
+
+    return {
+      count,
+      resetAt: Date.now() + normalizedTtl,
+    };
+  } catch (error) {
+    maybeLogRedisFailure(error);
+    return null;
+  }
+}
+
 /**
- * In-memory rate limiter middleware.
+ * Redis-backed rate limiter middleware with in-memory fallback.
  *
  * Notes:
- * - This protects a single process. For horizontally scaled production setups,
- *   keep edge limits (Cloudflare) as the primary defense.
+ * - Redis is preferred for shared limits across instances.
+ * - If Redis is unavailable, falls back to process-local buckets.
  * - IP-based keying is used so it works before auth middleware runs.
  */
 export function rateLimit({ windowMs, max, methods, keyPrefix = "rl" }: RateLimitOptions) {
@@ -68,13 +123,27 @@ export function rateLimit({ windowMs, max, methods, keyPrefix = "rl" }: RateLimi
     }
 
     const now = Date.now();
-    maybeCleanup(now);
 
     const ip = getClientIp(c);
     const key = `${keyPrefix}:${ip}`;
-    const existing = buckets.get(key);
-    const resetAt = existing && existing.resetAt > now ? existing.resetAt : now + windowMs;
-    const nextCount = existing && existing.resetAt > now ? existing.count + 1 : 1;
+
+    const redisBucket = await incrementRedisBucket(key, windowMs);
+
+    if (!redisBucket) {
+      maybeCleanup(now);
+    }
+
+    const existing = redisBucket ? null : buckets.get(key);
+    const resetAt = redisBucket
+      ? redisBucket.resetAt
+      : existing && existing.resetAt > now
+        ? existing.resetAt
+        : now + windowMs;
+    const nextCount = redisBucket
+      ? redisBucket.count
+      : existing && existing.resetAt > now
+        ? existing.count + 1
+        : 1;
     const remaining = Math.max(0, max - nextCount);
 
     c.header("X-RateLimit-Limit", String(max));
@@ -87,7 +156,10 @@ export function rateLimit({ windowMs, max, methods, keyPrefix = "rl" }: RateLimi
       return c.json({ error: "Rate limit exceeded" }, 429);
     }
 
-    buckets.set(key, { count: nextCount, resetAt });
+    if (!redisBucket) {
+      setInMemoryBucket(key, { count: nextCount, resetAt });
+    }
+
     await next();
   };
 }
