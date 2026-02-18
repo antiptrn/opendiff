@@ -112,10 +112,13 @@ export async function getRuntimeAiConfig(
       model: data.model,
       credential: data.credential,
     };
-  } catch (error) {
-    console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);
-    return null;
+} catch (error) {
+  if (error instanceof Error && error.message.includes("AI credentials are not configured")) {
+    throw error;
   }
+  console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);
+  return null;
+}
 }
 
 export async function recordReview(data: {
