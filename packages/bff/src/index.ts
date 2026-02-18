@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { rateLimit } from "./middleware/rate-limit";
 
 // Import shared modules (db import triggers BigInt serialization side-effect)
 import "./db";
@@ -31,6 +32,65 @@ app.use(
   cors({
     origin: ALLOWED_ORIGINS,
     credentials: true,
+  })
+);
+
+app.use(
+  "/api/*",
+  rateLimit({
+    windowMs: 60_000,
+    max: 600,
+    keyPrefix: "api",
+  })
+);
+
+app.use(
+  "/auth/*",
+  rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    methods: ["POST"],
+    keyPrefix: "auth",
+  })
+);
+
+app.use(
+  "/api/reviews/local",
+  rateLimit({
+    windowMs: 5 * 60_000,
+    max: 10,
+    methods: ["POST"],
+    keyPrefix: "reviews-local",
+  })
+);
+
+app.use(
+  "/api/feedback",
+  rateLimit({
+    windowMs: 10 * 60_000,
+    max: 20,
+    methods: ["POST"],
+    keyPrefix: "feedback",
+  })
+);
+
+app.use(
+  "/api/webhooks/*",
+  rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    methods: ["POST"],
+    keyPrefix: "webhooks",
+  })
+);
+
+app.use(
+  "/api/polar/webhook",
+  rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    methods: ["POST"],
+    keyPrefix: "webhooks-legacy",
   })
 );
 
