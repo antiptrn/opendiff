@@ -1,3 +1,4 @@
+import { prisma } from "../db";
 import { getOrgAiRuntimeConfig } from "./ai-config";
 import { postToReviewAgent } from "./review-agent-client";
 
@@ -30,6 +31,17 @@ export async function generateReviewSummary(
   input: GenerateSummaryInput
 ): Promise<GenerateSummaryResult> {
   const aiConfig = await getOrgAiRuntimeConfig(input.orgId);
+
+  if (!aiConfig) {
+    const org = await prisma.organization.findUnique({
+      where: { id: input.orgId },
+      select: { subscriptionTier: true },
+    });
+
+    if (org?.subscriptionTier === "SELF_SUFFICIENT") {
+      throw new Error("AI credentials are not configured for this organization");
+    }
+  }
 
   return await postToReviewAgent<GenerateSummaryResult>("/internal/generate-summary", {
     ...input,

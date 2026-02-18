@@ -70,7 +70,8 @@ settingsRoutes.get("/ai-config", async (c) => {
     return c.json({ error: "Not a member of this organization" }, 403);
   }
 
-  const authMethod = org.aiAuthMethod as AiAuthMethod | null;
+  const authMethod =
+    (org.aiAuthMethod as AiAuthMethod | null) ?? (org.anthropicApiKey ? "API_KEY" : null);
   const storedCredential =
     authMethod === "OAUTH_TOKEN"
       ? org.aiOauthToken
