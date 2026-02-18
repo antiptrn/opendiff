@@ -129,7 +129,7 @@ const app = new Hono();
 
 function isAuthorizedInternalApiKey(headerValue: string | undefined): boolean {
   if (!REVIEW_AGENT_API_KEY) {
-    return true;
+    return process.env.NODE_ENV !== "production";
   }
   return headerValue === REVIEW_AGENT_API_KEY;
 }

@@ -101,7 +101,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
     }
 
     return "Enter an OpenAI API key (starts with sk-...).";
-  }, [authMethod, model]);
+  }, [authMethod, provider]);
 
   const handleSave = async () => {
     if (!credentialInput.trim()) {

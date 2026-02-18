@@ -55,6 +55,7 @@ function permissionForMode(mode: PermissionMode): Record<string, unknown> {
       "*": "deny",
       read: "allow",
       edit: "allow",
+      write: "allow",
       glob: "allow",
       grep: "allow",
       list: "allow",
@@ -193,23 +194,25 @@ export async function runOpencodePrompt(
 ): Promise<RunOpencodePromptResult> {
   return queueOp(async () => {
     const originalCwd = process.cwd();
-    process.chdir(input.cwd);
-
-    const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
-    const provider = input.aiConfig
-      ? providerConfigFromAiConfig(input.aiConfig)
-      : providerConfigFromEnv(model);
-    const config = {
-      ...(model ? { model } : {}),
-      ...(provider ? { provider } : {}),
-      permission: permissionForMode(input.mode),
-    } as Record<string, unknown>;
-
-    const opencode = await createOpencode({
-      config: config as any,
-    });
+    let opencode: Awaited<ReturnType<typeof createOpencode>> | null = null;
 
     try {
+      process.chdir(input.cwd);
+
+      const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
+      const provider = input.aiConfig
+        ? providerConfigFromAiConfig(input.aiConfig)
+        : providerConfigFromEnv(model);
+      const config = {
+        ...(model ? { model } : {}),
+        ...(provider ? { provider } : {}),
+        permission: permissionForMode(input.mode),
+      } as Record<string, unknown>;
+
+      opencode = await createOpencode({
+        config: config as any,
+      });
+
       const createResult = (await opencode.client.session.create({
         body: {
           title: input.title ?? "review-agent",
@@ -250,10 +253,12 @@ export async function runOpencodePrompt(
         tokensUsed: extractTokens(info),
       };
     } finally {
-      try {
-        opencode.server.close();
-      } catch {
-        // best effort
+      if (opencode) {
+        try {
+          opencode.server.close();
+        } catch {
+          // best effort
+        }
       }
       process.chdir(originalCwd);
     }

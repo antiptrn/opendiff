@@ -181,9 +181,15 @@ internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
     return c.json({ error: "Organization not on Self-sufficient tier", useDefault: true });
   }
 
-  const authMethod = org.aiAuthMethod;
-  const model = org.aiModel || "openai/gpt-5.2-codex";
-  const credential = authMethod === "OAUTH_TOKEN" ? org.aiOauthToken : org.aiApiKey;
+  const authMethod = org.aiAuthMethod ?? (org.anthropicApiKey ? "API_KEY" : null);
+  const model =
+    org.aiModel || (org.anthropicApiKey ? "anthropic/claude-sonnet-4-5" : "openai/gpt-5.2-codex");
+  const credential =
+    authMethod === "OAUTH_TOKEN"
+      ? org.aiOauthToken
+      : authMethod === "API_KEY"
+        ? org.aiApiKey || org.anthropicApiKey
+        : null;
 
   if (!authMethod || !credential) {
     return c.json({ error: "No AI credentials configured", useDefault: false });
