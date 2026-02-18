@@ -24,6 +24,9 @@ WORKDIR /app
 # Install git and SSL certificates for cloning repos over HTTPS
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# Install opencode CLI (required by @opencode-ai/sdk at runtime)
+RUN bun install -g opencode-ai
+
 # Create non-root user
 RUN addgroup --system --gid 1001 bunjs
 RUN adduser --system --uid 1001 agent
