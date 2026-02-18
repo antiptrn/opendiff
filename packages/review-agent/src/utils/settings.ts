@@ -104,7 +104,7 @@ export async function getRuntimeAiConfig(
     }
 
     if (!data.authMethod || !data.model || !data.credential) {
-      return null;
+      throw new Error("AI credentials are not configured for this organization");
     }
 
     return {
