@@ -18,7 +18,7 @@ type TabType = "account" | "appearance" | "skills" | "code-review" | "organizati
  */
 export function SettingsPage() {
   const { user, logout, setUser } = useAuth();
-  const { currentOrgId, currentOrg, currentSeat, hasSeat } = useOrganization();
+  const { currentOrgId, currentOrg } = useOrganization();
   const { tab: tabParam } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
 
@@ -28,11 +28,9 @@ export function SettingsPage() {
   const showOrganizationTab = !isPersonalOrg;
   const showBillingTab = isPersonalOrg || isTeamOrgOwner;
 
-  // Only show Code Review tab if user has an active subscription
-  const tier = hasSeat ? currentSeat?.tier : null;
-  const showCodeReviewTab = !!tier;
+  const showCodeReviewTab = true;
 
-  // Build valid tabs based on account type and subscription
+  // Build valid tabs based on account type
   const validTabs: TabType[] = [
     "appearance",
     "account",
