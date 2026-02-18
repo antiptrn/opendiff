@@ -6,7 +6,7 @@
 flowchart TB
     subgraph External["External Services"]
         GH[("GitHub API")]
-        Claude[("Claude AI")]
+        OpenCode[("OpenCode")]
         Polar[("Polar Payments")]
         Resend[("Resend Email")]
         S3[("S3/R2 Storage")]
@@ -59,7 +59,7 @@ flowchart TB
     BFF --> Polar
     BFF --> Prompts
     Agent --> BFF
-    Agent --> Claude
+    Agent --> OpenCode
     Agent --> GH
     Agent --> Prompts
 
@@ -80,7 +80,7 @@ flowchart TB
     class Website,App frontend
     class BFF,Agent backend
     class Components,Shared,Prompts,Assets shared
-    class GH,Claude,Polar,Resend,S3 external
+    class GH,OpenCode,Polar,Resend,S3 external
     class DB data
     class GitHub,Google,Microsoft auth
 ```
@@ -93,7 +93,7 @@ sequenceDiagram
     participant Agent as Review Agent
     participant BFF as BFF API
     participant DB as PostgreSQL
-    participant Claude as Claude AI
+    participant OpenCode as OpenCode
 
     GH->>Agent: Webhook (PR opened/updated)
     Agent->>BFF: Fetch repo settings & skills
@@ -104,8 +104,8 @@ sequenceDiagram
     Agent->>GH: Fetch PR diff & metadata
     GH-->>Agent: PR data
 
-    Agent->>Claude: Analyze code with context
-    Claude-->>Agent: Review comments
+    Agent->>OpenCode: Analyze code with context
+    OpenCode-->>Agent: Review comments
 
     Agent->>GH: Post review comments
     Agent->>BFF: Record review
@@ -218,7 +218,7 @@ erDiagram
 | **UI** | Radix UI, shadcn/ui, Framer Motion |
 | **Backend** | Hono, Bun, Prisma |
 | **Database** | PostgreSQL |
-| **AI** | Claude API, Claude Agent SDK |
+| **AI** | OpenCode SDK, Anthropic API |
 | **Auth** | GitHub, Google, Microsoft OAuth |
 | **Payments** | Polar, Stripe |
 | **Infrastructure** | S3/R2, Resend |

@@ -12,7 +12,7 @@ const services = [
     icon: Bot,
     title: "AI Tool Integration",
     description:
-      "Seamlessly integrate AI coding assistants like Copilot, Claude, and Cursor into your development workflow.",
+      "Seamlessly integrate AI coding assistants like OpenCode, Copilot, and Cursor into your development workflow.",
     features: ["IDE setup & configuration", "Custom prompt engineering", "Context optimization"],
   },
   {

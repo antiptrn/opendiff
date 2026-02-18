@@ -167,6 +167,7 @@ queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
     if (updated.count > 0) {
       triggeredSummary = true;
       generateReviewSummary({
+        orgId,
         owner,
         repo,
         pullNumber: review.pullNumber,

@@ -8,7 +8,7 @@ import { useManageSubscription, useOrganization } from "shared/organizations";
 export function CheckoutPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { currentOrgId } = useOrganization();
+  const { currentOrgId, currentOrg, isLoadingOrgs, hasFetchedOrgs } = useOrganization();
   const navigate = useNavigate();
   const hasStarted = useRef(false);
 
@@ -22,7 +22,12 @@ export function CheckoutPage() {
 
   const orgId = useMemo(() => {
     const orgs = user?.organizations ?? [];
-    if (!orgs.length) return null;
+    if (!orgs.length) {
+      if (currentOrgId && currentOrg?.role === "OWNER") {
+        return currentOrgId;
+      }
+      return null;
+    }
 
     const isOwner = (id: string | null | undefined) =>
       !!id && orgs.some((o) => o.id === id && o.role === "OWNER");
@@ -36,7 +41,7 @@ export function CheckoutPage() {
     // Fall back to any org the user owns (including personal org)
     const firstOwned = orgs.find((o) => o.role === "OWNER");
     return firstOwned?.id ?? null;
-  }, [user?.organizations, currentOrgId, requestedOrgId]);
+  }, [user?.organizations, currentOrgId, currentOrg?.role, requestedOrgId]);
 
   const manageSubscription = useManageSubscription(orgId);
 
@@ -50,6 +55,11 @@ export function CheckoutPage() {
       const orgQuery = requestedOrgId ? `&orgId=${encodeURIComponent(requestedOrgId)}` : "";
       const redirectUrl = `/checkout?tier=${tier}&billing=${billing}${orgQuery}`;
       navigate(`/login?redirectUrl=${encodeURIComponent(redirectUrl)}`, { replace: true });
+      return;
+    }
+
+    // Wait for org resolution before showing a hard error.
+    if (isLoadingOrgs || !hasFetchedOrgs) {
       return;
     }
 
@@ -80,7 +90,17 @@ export function CheckoutPage() {
         console.error("Failed to create checkout:", error);
         setErrorMessage(error instanceof Error ? error.message : "Failed to create checkout");
       });
-  }, [user, orgId, tier, billing, requestedOrgId, navigate, manageSubscription]);
+  }, [
+    user,
+    orgId,
+    tier,
+    billing,
+    requestedOrgId,
+    navigate,
+    manageSubscription,
+    isLoadingOrgs,
+    hasFetchedOrgs,
+  ]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">

@@ -177,3 +177,8 @@ dist
 
 # VS Code extension packages
 *.vsix
+
+# GitHub app private keys
+*.private-key
+*.private-key.*
+private-key.pem

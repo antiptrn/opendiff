@@ -6,7 +6,7 @@ export default function SplitImageCard() {
       <div className="p-8 flex w-1/2 flex-col items-start justify-start gap-4">
         <h5 className="text-4xl">Faster reviews, better code</h5>
         <p className="text-muted-foreground">
-          Powered by Claude, our industry-leading coding agent catches bugs before they ship to
+          Powered by OpenCode, our industry-leading coding agent catches bugs before they ship to
           production.
         </p>
       </div>

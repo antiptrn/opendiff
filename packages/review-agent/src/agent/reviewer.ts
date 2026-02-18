@@ -1,30 +1,7 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { loadPrompt } from "@opendiff/prompts";
+import type { AiRuntimeConfig } from "../utils/opencode";
+import { runOpencodePrompt } from "../utils/opencode";
 import type { FileToReview, ReviewResult } from "./types";
-
-function buildClaudeAgentEnv(): Record<string, string> {
-  // Claude Code "setup-token" produces a long-lived OAuth token (sk-ant-oat...).
-  // The Claude Agent SDK / Claude Code runtime expects this in CLAUDE_CODE_OAUTH_TOKEN.
-  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === "string") {
-      // If an OAuth token is provided, ensure we don't accidentally fall back to API key auth.
-      if (oauthToken && key === "ANTHROPIC_API_KEY") {
-        continue;
-      }
-      env[key] = value;
-    }
-  }
-
-  // Prefer Claude Code OAuth token over API key if both are present.
-  if (oauthToken) {
-    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
-  }
-
-  return env;
-}
 
 interface PRContext {
   prTitle: string;
@@ -39,6 +16,8 @@ export interface CommentIntentResult {
 }
 
 export class CodeReviewAgent {
+  constructor(private aiConfig: AiRuntimeConfig | null = null) {}
+
   private getReviewPrompt(
     files: FileToReview[],
     context: PRContext,
@@ -153,66 +132,16 @@ Flag anything that could be improved. The goal is to maintain the highest code q
   ): Promise<ReviewResult> {
     const prompt = this.getReviewPrompt(files, context, customRules);
 
-    let result = "";
-    let lastAssistantText = "";
-    let totalTokens = 0;
+    const response = await runOpencodePrompt({
+      cwd: workingDir,
+      prompt,
+      mode: "read_only",
+      aiConfig: this.aiConfig,
+      title: "Code review",
+    });
 
-    try {
-      for await (const message of query({
-        prompt,
-        options: {
-          cwd: workingDir,
-          env: buildClaudeAgentEnv(),
-          allowedTools: ["Read", "Glob", "Grep"],
-          permissionMode: "default",
-          maxTurns: 30,
-          settingSources: ["user"],
-        },
-      })) {
-        // Capture text from assistant messages (the actual model output)
-        if (message.type === "assistant") {
-          const assistantMsg = message as SDKAssistantMessage;
-          const content = assistantMsg.message?.content ?? [];
-          for (const block of content) {
-            if (block.type === "text" && block.text) {
-              lastAssistantText = block.text;
-            }
-          }
-        }
-
-        if (message.type === "result") {
-          const resultMsg = message as SDKResultMessage;
-          if (resultMsg.subtype === "success") {
-            // Prefer result.result, fall back to last assistant text
-            result = resultMsg.result || lastAssistantText || "";
-            // Capture token usage
-            const usage = resultMsg.usage;
-            if (usage) {
-              totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
-            }
-          } else {
-            throw new Error(resultMsg.errors?.join(", ") || "Review agent failed");
-          }
-        }
-      }
-    } catch (error) {
-      // SDK has a bug where stream cleanup fails with "line.trim" error
-      // If we already have a result, ignore the cleanup error
-      if (
-        (result || lastAssistantText) &&
-        error instanceof TypeError &&
-        String(error).includes("trim")
-      ) {
-        console.warn("Ignoring SDK stream cleanup error");
-        // Use whatever we captured
-        if (!result) result = lastAssistantText;
-      } else {
-        throw error;
-      }
-    }
-
-    const reviewResult = this.parseResponse(result);
-    reviewResult.tokensUsed = totalTokens;
+    const reviewResult = this.parseResponse(response.text);
+    reviewResult.tokensUsed = response.tokensUsed;
     return reviewResult;
   }
 
@@ -325,38 +254,15 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       conversation: conversationText,
     });
 
-    let result = "";
-
-    try {
-      for await (const message of query({
+    const result = (
+      await runOpencodePrompt({
+        cwd: workingDir,
         prompt,
-        options: {
-          cwd: workingDir,
-          env: buildClaudeAgentEnv(),
-          allowedTools: ["Read", "Glob", "Grep"],
-          permissionMode: "default",
-          maxTurns: 10,
-          settingSources: ["user"],
-        },
-      })) {
-        if (message.type === "result") {
-          const resultMsg = message as SDKResultMessage;
-          if (resultMsg.subtype === "success") {
-            result = resultMsg.result || "";
-          } else {
-            throw new Error(resultMsg.errors?.join(", ") || "Comment response agent failed");
-          }
-        }
-      }
-    } catch (error) {
-      // SDK has a bug where stream cleanup fails with "line.trim" error
-      // If we already have a result, ignore the cleanup error
-      if (result && error instanceof TypeError && String(error).includes("trim")) {
-        console.warn("Ignoring SDK stream cleanup error");
-      } else {
-        throw error;
-      }
-    }
+        mode: "read_only",
+        aiConfig: this.aiConfig,
+        title: "Respond to comment",
+      })
+    ).text;
 
     if (!result) {
       throw new Error("Failed to get response");

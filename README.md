@@ -2,7 +2,7 @@
 
 # OpenDiff
 
-AI-powered code review platform that automatically reviews pull requests, detects anti-patterns, security issues, and code quality problems using Claude AI.
+AI-powered code review platform that automatically reviews pull requests, detects anti-patterns, security issues, and code quality problems using OpenCode.
 
 ## Overview
 
@@ -24,7 +24,7 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 | [`bff`](./packages/bff) | Backend API with auth, billing, and data management | Hono, Prisma, PostgreSQL, Cloudflare R2 |
 | [`app`](./packages/app) | Main console dashboard and management UI | React 19, Vite, Tailwind CSS v4 |
 | [`website`](./packages/website) | Marketing website and landing pages | React 19, Vite, Tailwind CSS v4 |
-| [`review-agent`](./packages/review-agent) | GitHub webhook handler and AI code reviewer | Hono, Claude Agent SDK, Octokit |
+| [`review-agent`](./packages/review-agent) | GitHub webhook handler and AI code reviewer | Hono, OpenCode SDK, Octokit |
 | [`prompts`](./packages/prompts) | Shared AI prompt templates with variable substitution | Bun |
 | [`components`](./packages/components) | Shared UI component library | Radix UI, shadcn, CVA |
 | [`shared`](./packages/shared) | Shared business logic, hooks, and services | React Query, React Router |
@@ -127,11 +127,6 @@ STRIPE_SELF_SUFFICIENT_YEARLY_PRICE_ID=price_xxx
 REVIEW_AGENT_API_KEY=xxx
 REVIEW_AGENT_WEBHOOK_URL=http://localhost:3000
 
-# Anthropic (AI summary generation)
-# Provide either ANTHROPIC_API_KEY (recommended) or CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)
-ANTHROPIC_API_KEY=sk-ant-xxx
-CLAUDE_CODE_OAUTH_TOKEN=
-
 # Cloudflare R2 Storage
 R2_ACCOUNT_ID=xxx
 R2_ACCESS_KEY_ID=xxx
@@ -218,10 +213,8 @@ GITHUB_PRIVATE_KEY_PATH=/path/to/private-key.pem
 # Or: Personal Access Token (alternative)
 # GITHUB_TOKEN=ghp_xxx
 
-# Anthropic
-# Provide either ANTHROPIC_API_KEY (recommended) or CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)
+# AI provider credentials used by OpenCode
 ANTHROPIC_API_KEY=sk-ant-xxx
-CLAUDE_CODE_OAUTH_TOKEN=
 
 # Bot configuration
 BOT_USERNAME=opendiff-bot
@@ -485,7 +478,7 @@ opendiff/
 │   │
 │   ├── review-agent/         # AI Code Reviewer
 │   │   └── src/
-│   │       ├── agent/            # Claude AI integration
+│   │       ├── agent/            # OpenCode integration
 │   │       │   ├── reviewer.ts   # Code review agent
 │   │       │   └── triage.ts     # Auto-fix agent
 │   │       ├── utils/

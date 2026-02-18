@@ -21,6 +21,10 @@ interface CodeReviewTabProps {
 export function CodeReviewTab({ user, orgId }: CodeReviewTabProps) {
   // User has GitHub access if signed in with GitHub or linked their GitHub account
   const hasGithubAccess = user?.auth_provider === "github" || user?.hasGithubLinked;
+  const githubAppSlug =
+    import.meta.env.VITE_GITHUB_APP_SLUG ||
+    (import.meta.env.DEV ? "opendiff-agent-local" : "opendiff-agent");
+  const installUrl = `https://github.com/apps/${githubAppSlug}/installations/new`;
 
   return (
     <div className="space-y-6">
@@ -36,11 +40,7 @@ export function CodeReviewTab({ user, orgId }: CodeReviewTabProps) {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <a
-                href="https://github.com/apps/opendiff-agent/installations/new"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={installUrl} target="_blank" rel="noopener noreferrer">
                 Install GitHub App
                 <ExternalLink className="size-4" />
               </a>

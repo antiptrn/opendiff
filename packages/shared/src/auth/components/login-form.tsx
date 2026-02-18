@@ -46,7 +46,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   const pendingProviderRef = useRef<LoginProvider>(null);
   const eventListenerRef = useRef<{ script: HTMLScriptElement; listener: () => void } | null>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-  const hasTurnstile = !!turnstileSiteKey?.trim();
+  const hasTurnstile = !import.meta.env.DEV && !!turnstileSiteKey?.trim();
 
   const startProviderLogin = useCallback(
     (provider: Exclude<LoginProvider, null>, turnstileToken?: string) => {
@@ -168,7 +168,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
     if (!hasTurnstile) {
       if (import.meta.env.DEV) {
         console.warn(
-          "VITE_TURNSTILE_SITE_KEY is not configured. Proceeding with login without human verification."
+          "Turnstile is disabled in development. Proceeding without human verification."
         );
       }
       startProviderLogin(provider);

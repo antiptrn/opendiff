@@ -1,11 +1,18 @@
 // Types
-export type { ApiKeyStatus, ReviewRulesStatus } from "./types";
+export type {
+  AiAuthMethod,
+  AiConfigStatus,
+  AiModelOption,
+  AiProvider,
+  ReviewRulesStatus,
+} from "./types";
 
 // Hooks
 export {
-  useApiKeyStatus,
-  useUpdateApiKey,
-  useDeleteApiKey,
+  useAiConfigStatus,
+  useAiModels,
+  useUpdateAiConfig,
+  useDeleteAiConfig,
   useReviewRules,
   useUpdateReviewRules,
   useSkills,
