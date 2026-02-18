@@ -25,7 +25,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Install opencode CLI (required by @opencode-ai/sdk at runtime)
-RUN bun install -g opencode-ai
+RUN bun install -g opencode-ai && chmod -R o+rX /root/.bun/install/global
 
 # Create non-root user
 RUN addgroup --system --gid 1001 bunjs
