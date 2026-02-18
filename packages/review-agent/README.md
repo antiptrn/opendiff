@@ -6,7 +6,7 @@ This package is part of the OpenDiff monorepo. For full platform setup, see the 
 
 ## What it does
 
-- Reviews pull requests with Claude when PRs are opened, synchronized, or marked ready for review.
+- Reviews pull requests with OpenCode when PRs are opened, synchronized, or marked ready for review.
 - Replies to PR comments when the bot is mentioned (inline review comments and issue comments on PRs).
 - Runs triage after reviews to attempt automated fixes.
 - Can push auto-fixes when `autofixEnabled` is enabled in repository settings.
@@ -25,10 +25,8 @@ Copy `.env.example` to `.env` and configure values.
 | Variable | Required | Notes |
 |---|---|---|
 | `GITHUB_WEBHOOK_SECRET` | Yes | Validates webhook signatures. |
-| `ANTHROPIC_API_KEY` | Yes* | Used by Claude Agent SDK for review and triage (API key auth). |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Yes* | Claude Code setup token (OAuth) from `claude setup-token`. Preferred over `ANTHROPIC_API_KEY` if both are set. |
-
-\* Provide either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`.
+| `OPENCODE_OAUTH_TOKEN` or (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) | Yes* | Default credential source used by OpenCode when org-level BYOK config is not set. |
+| `OPENAI_OAUTH_TOKEN`, `ANTHROPIC_OAUTH_TOKEN` | Optional | Provider-specific OAuth token overrides when not using `OPENCODE_OAUTH_TOKEN`. |
 | `GITHUB_APP_ID` + (`GITHUB_PRIVATE_KEY` or `GITHUB_PRIVATE_KEY_PATH`) | Recommended | Preferred GitHub auth mode. Required for `fix-accepted` callback. |
 | `GITHUB_TOKEN` | Fallback | Used only when GitHub App auth is not configured. |
 | `BOT_USERNAME` | Optional | Defaults to `opendiff-bot`. |
@@ -37,10 +35,13 @@ Copy `.env.example` to `.env` and configure values.
 | `SETTINGS_API_URL` | Recommended | BFF URL for repository settings, custom rules, and review recording. |
 | `REVIEW_AGENT_API_KEY` | Recommended | Shared secret for internal BFF routes and callback auth. |
 
+\* At least one default credential should be set for non-Self-sufficient organizations.
+
 Important behavior:
 
 - If `SETTINGS_API_URL` is missing, repository features are treated as disabled (`effectiveEnabled=false`).
 - If both GitHub App and token auth are set, GitHub App auth is preferred for webhook processing.
+- For Self-sufficient organizations, review-agent reads org-level auth method, model, and credential from BFF internal APIs.
 
 ## Local development
 

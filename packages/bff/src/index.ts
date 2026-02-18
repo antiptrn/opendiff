@@ -45,6 +45,7 @@ app.route("/api/organizations", organizationRoutes);
 app.route("/api/feedback", feedbackRoutes);
 app.route("/api/internal", internalRoutes);
 app.route("/api/stats", statsRoutes);
+app.route("/api", webhookRoutes);
 app.route("/api", accountRoutes);
 app.route("/api/settings", settingsRoutes);
 app.route("/api", reposRoutes);
@@ -52,7 +53,6 @@ app.route("/api", skillsRoutes);
 app.route("/api", subscriptionRoutes);
 app.route("/api", reviewRoutes);
 app.route("/api", notificationRoutes);
-app.route("/api", webhookRoutes);
 
 const port = Number(process.env.PORT) || 3000;
 console.log(`Server running on http://localhost:${port}`);

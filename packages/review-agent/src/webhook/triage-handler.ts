@@ -86,12 +86,12 @@ export async function handleTriageAfterReview(
         botUsername,
       },
       async (_tempDir, git) => {
-        // Process each issue one by one using the Claude Agent SDK
+        // Process each issue one by one using the OpenCode SDK
         for (const issue of fixableIssues) {
           console.log(`Processing issue: ${issue.type} in ${issue.file}:${issue.line}`);
 
           try {
-            // Use Claude Agent SDK to fix the issue - it has full access to read/write files
+            // Use OpenCode SDK to fix the issue - it has full access to read/write files
             const fix = await triageAgent.fixIssue(issue, _tempDir);
 
             if (!fix.fixed) {

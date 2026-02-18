@@ -174,3 +174,11 @@ dist
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# VS Code extension packages
+*.vsix
+
+# GitHub app private keys
+*.private-key
+*.private-key.*
+private-key.pem

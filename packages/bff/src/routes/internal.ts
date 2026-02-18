@@ -148,8 +148,8 @@ internalRoutes.get("/review-rules/:owner/:repo", async (c) => {
   return c.json({ rules: repoSettings.customReviewRules || null });
 });
 
-// Get API key for review agent (internal use only)
-internalRoutes.get("/api-key/:owner/:repo", async (c) => {
+// Get AI config for review agent (internal use only)
+internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
   const apiKey = c.req.header("X-API-Key");
 
@@ -181,11 +181,26 @@ internalRoutes.get("/api-key/:owner/:repo", async (c) => {
     return c.json({ error: "Organization not on Self-sufficient tier", useDefault: true });
   }
 
-  if (!org.anthropicApiKey) {
-    return c.json({ error: "No API key configured", useDefault: false });
+  const authMethod = org.aiAuthMethod ?? (org.anthropicApiKey ? "API_KEY" : null);
+  const model =
+    org.aiModel || (org.anthropicApiKey ? "anthropic/claude-sonnet-4-5" : "openai/gpt-5.2-codex");
+  const credential =
+    authMethod === "OAUTH_TOKEN"
+      ? org.aiOauthToken
+      : authMethod === "API_KEY"
+        ? org.aiApiKey || org.anthropicApiKey
+        : null;
+
+  if (!authMethod || !credential) {
+    return c.json({ error: "No AI credentials configured", useDefault: false });
   }
 
-  return c.json({ apiKey: org.anthropicApiKey });
+  return c.json({
+    authMethod,
+    model,
+    credential,
+    useDefault: false,
+  });
 });
 
 // Get autofix setting for review agent (internal use only)

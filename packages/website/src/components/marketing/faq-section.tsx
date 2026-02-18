@@ -11,7 +11,10 @@ export function FAQSection() {
   return (
     <>
       <Separator className="lg:mt-16 md:mt-16 mt-8" />
-      <div id="faq" className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8">
+      <div
+        id="faq"
+        className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8"
+      >
         <div className="lg:w-full md:w-full w-full">
           <h1 className="lg:text-5xl md:text-5xl text-3xl leading-tight">
             Frequently Asked Questions
@@ -28,8 +31,8 @@ export function FAQSection() {
               <AccordionTrigger>What is OpenDiff?</AccordionTrigger>
               <AccordionContent>
                 OpenDiff is an open-source, AI-powered code review tool. It integrates with your
-                GitHub repositories and uses Claude to review pull requests, catch bugs, and suggest
-                improvements before code ships to production.
+                GitHub repositories and uses OpenCode to review pull requests, catch bugs, and
+                suggest improvements before code ships to production.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem>
@@ -61,7 +64,7 @@ export function FAQSection() {
               <AccordionTrigger>Is OpenDiff free?</AccordionTrigger>
               <AccordionContent>
                 OpenDiff is open-source under AGPL-3.0. You can self-host it on your own
-                infrastructure and use your existing Anthropic API quota, so there&apos;s no
+                infrastructure and use your existing provider API quota, so there&apos;s no
                 additional subscription cost beyond what you already pay for API usage.
               </AccordionContent>
             </AccordionItem>
