@@ -209,7 +209,11 @@ export async function runOpencodePrompt(
         permission: permissionForMode(input.mode),
       } as Record<string, unknown>;
 
+      const configuredServerPort = process.env.OPENCODE_SERVER_PORT?.trim();
+      const serverPort = configuredServerPort ? Number(configuredServerPort) : 0;
+
       opencode = await createOpencode({
+        port: Number.isFinite(serverPort) ? serverPort : 0,
         config: config as any,
       });
 
