@@ -1,5 +1,5 @@
 import { SiGithub } from "@icons-pack/react-simple-icons";
-import { Icon, Separator } from "components/components";
+import { Logo } from "components/components";
 import { Button } from "components/components/ui/button";
 import { Fade as Hamburger } from "hamburger-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -95,8 +95,8 @@ export function Header() {
     setShowStars(true);
   }, [stars]);
   return (
-    <header className="absolute z-50 top-0 left-0 right-0">
-      <div className="mx-auto max-w-6xl lg:px-8 md:px-8 px-4 lg:py-4 md:py-4 py-2">
+    <header className="absolute flex w-full items-center justify-start z-50 top-0 left-0 right-0 h-18">
+      <div className="mx-auto w-full max-w-6xl lg:px-8 md:px-8 px-4 lg:py-4 md:py-4 py-2">
         <div className="flex items-center justify-between">
           <Button
             variant="ghost"
@@ -104,19 +104,17 @@ export function Header() {
             asChild
           >
             <Link to="/" aria-label="OpenDiff home">
-              <Icon />
+              <Logo />
             </Link>
           </Button>
-          <div className="hidden md:flex items-center justify-center gap-3">
+          <div className="hidden md:flex items-center justify-center gap-1">
             <DesktopNav />
-            <Separator orientation="vertical" className="h-6 !self-center mx-1" />
-            <Button size="sm" variant="ghost" asChild>
+            <Button size="sm" variant="ghost" className="text-foreground mr-2.5" asChild>
               <Link to={githubUrl} aria-label="OpenDiff on GitHub">
-                <SiGithub className="size-4 text-foreground" />
+                <SiGithub className="size-4" />
                 <span
-                  className={`tabular-nums transition-opacity duration-500 ease-out motion-reduce:transition-none ${
-                    showStars ? "opacity-100" : "opacity-0"
-                  }`}
+                  className={`tabular-nums transition-opacity duration-500 ease-out motion-reduce:transition-none ${showStars ? "opacity-100" : "opacity-0"
+                    }`}
                 >
                   {starsLabel}
                 </span>

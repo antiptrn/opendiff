@@ -8,7 +8,6 @@ import {
   Separator,
 } from "components";
 import { Tabs, TabsList, TabsTrigger } from "components/components/ui/tabs";
-import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { SubscriptionTier } from "shared/auth";
@@ -27,24 +26,14 @@ export function PricingPage() {
   };
 
   return (
-    <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+    <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto lg:pb-16 md:pb-16 pb-0">
       {/*
         <div
           aria-hidden="true"
           className="absolute z-0 -top-48 left-1/2 -translate-x-1/2 w-[60%] h-[250px] rounded-full bg-muted blur-3xl pointer-events-none"
         />*/}
       <div className="relative z-10 flex flex-col text-center items-center justify-center">
-        <Button
-          asChild
-          variant="secondary"
-          className="lg:mb-6 md:mb-6 mb-4 text-sm font-normal rounded-lg h-auto py-2 px-3.5 gap-2.5"
-        >
-          <a href="https://github.com/antiptrn/opendiff" target="_blank" rel="noopener noreferrer">
-            Deploy OpenDiff on your own infrastructure
-            <ExternalLink className="size-3.5 shrink-0" />
-          </a>
-        </Button>
-        <h5 className="font-normal max-w-[559px] text-[40px] md:text-[63px] leading-tight pb-1">
+        <h5 className="font-normal max-w-[609px] text-[40px] md:text-[63px] leading-tight pb-1">
           Built for developers
         </h5>
         <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-2.5 text-balance leading-7">
@@ -86,13 +75,12 @@ export function PricingPage() {
         </CardHeader>
         <CardContent>
           <Button asChild>
-            <Link to="mailto:support@opendiff.dev">Contact Sales</Link>
+            <Link to="mailto:sales@opendiff.dev">Contact Sales</Link>
           </Button>
         </CardContent>
       </Card>
       <Separator className="lg:mt-16 md:mt-16 mt-8 md:flex hidden" />
       <ComparisonTable isYearly={isYearly} onGetStarted={handleGetStarted} />
-      <Separator className="lg:mt-16 md:mt-16 mt-8" />
     </section>
   );
 }

@@ -30,7 +30,7 @@ export function BlogArticlePage() {
   }
 
   return (
-    <section className="mx-auto flex max-w-6xl flex-col items-start justify-start gap-8 px-4 py-t0 md:px-8 md:pt-28 lg:px-8 lg:pt-32">
+    <section className="mx-auto flex max-w-6xl flex-col items-start justify-start gap-16 px-4 md:px-8 lg:pt-40 md:pt-40 pt-32 lg:px-8 lg:pb-16 md:pb-16 pb-0">
       <BackToBlogLink />
       <div className="w-full">
         <p className="mb-6 text-sm text-muted-foreground">{formatDayLabel(article.publishedAt)}</p>
@@ -41,7 +41,6 @@ export function BlogArticlePage() {
       <div className="w-full">
         <ArticleContent content={article.content} />
       </div>
-      <Separator />
     </section>
   );
 }

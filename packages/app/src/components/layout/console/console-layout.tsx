@@ -210,7 +210,7 @@ export function ConsoleLayout() {
         navItems={navItems}
         pathname={location.pathname}
         rightContent={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <NotificationPopover />
             <UserMenu
               user={user}

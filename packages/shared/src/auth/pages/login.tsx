@@ -1,4 +1,4 @@
-import { Icon } from "components/components";
+import { Logo } from "components/components";
 import { Loader2 } from "lucide-react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useNavigationConfig } from "../../navigation";
@@ -31,7 +31,7 @@ export default function LoginPage() {
   return (
     <section className="p-8 flex flex-col items-center justify-center h-screen w-screen bg-card dark:bg-background">
       <Link to={import.meta.env.VITE_WEBSITE_URL || "/"} className="mb-6">
-        <Icon />
+        <Logo />
       </Link>
       {error && (
         <div className="text-red-500 mb-4 text-center max-w-md">

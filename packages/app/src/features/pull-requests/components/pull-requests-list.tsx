@@ -15,8 +15,8 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-start gap-3">
-        <GitPullRequest className="size-5 mt-2 text-foreground" />
+      <div className="flex items-center gap-3">
+        <GitPullRequest className="size-5 text-foreground" />
         <div className="min-w-0 flex flex-col">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-lg truncate">

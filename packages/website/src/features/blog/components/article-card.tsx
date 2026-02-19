@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { ArticleCardProps } from "../types";
+import { Card, CardContent, CardFooter, CardHeader } from "components";
 
 function formatDayLabel(value: Date | null): string {
   if (!value) {
@@ -17,18 +18,25 @@ export function ArticleCard({ article }: ArticleCardProps) {
   return (
     <Link
       to={`/blog/${article.slug}`}
-      className="group flex h-full flex-col gap-3 rounded-xl border border-border/80 bg-card/30 p-5 transition-colors hover:border-border hover:bg-card/60"
     >
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {formatDayLabel(article.publishedAt)}
-      </p>
-      <h2 className="text-xl tracking-tight text-foreground group-hover:text-primary">
-        {article.title}
-      </h2>
-      {article.description && (
-        <p className="text-sm leading-6 text-muted-foreground">{article.description}</p>
-      )}
-      <p className="mt-auto text-xs text-muted-foreground">By {article.author}</p>
+      <Card className="gap-0 h-full justify-between">
+        <CardHeader className="mb-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {formatDayLabel(article.publishedAt)}
+          </p>
+          <h2 className="text-xl tracking-tight text-foreground group-hover:text-primary">
+            {article.title}
+          </h2>
+        </CardHeader>
+        <CardContent className="h-full">
+          {article.description && (
+            <p className="text-sm leading-6 text-muted-foreground">{article.description}</p>
+          )}
+        </CardContent>
+        <CardFooter>
+          <p className="mt-auto text-xs text-muted-foreground">By {article.author}</p>
+        </CardFooter>
+      </Card>
     </Link>
   );
 }

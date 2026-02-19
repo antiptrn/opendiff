@@ -104,7 +104,7 @@ export function ReviewsChart({ token, orgId, metric = "reviews" }: ReviewsChartP
                 <span className="text-muted-foreground">{previousLabel}</span>
               </div>
             </div>
-            <div className="w-full p-6 rounded-3xl bg-background">
+            <div className="w-full p-6 bg-background">
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: -6 }}>
                   <defs>

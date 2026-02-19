@@ -90,7 +90,7 @@ export function PlanCard({
           value={isYearly ? Math.round(price * 2) / 2 : price}
           format={{ style: "currency", currency: "USD", maximumFractionDigits: isYearly ? 2 : 0 }}
           suffix="/month"
-          className="tracking-tighter text-2xl [&>span:last-child]:text-base [&>span:last-child]:font-normal [&>span:last-child]:text-muted-foreground"
+          className="text-2xl [&>span:last-child]:text-base [&>span:last-child]:font-normal [&>span:last-child]:text-muted-foreground"
         />
         <AnimatePresence initial={false}>
           {isYearly && plan.monthlyPrice > 0 && (

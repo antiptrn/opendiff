@@ -43,8 +43,8 @@ export function ArticleList({ articles }: ArticleListProps) {
   }
 
   return (
-    <section className="mt-6 flex w-full flex-col">
-      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:mt-2 lg:grid-cols-3">
+    <section className="mt-8 flex w-full flex-col">
+      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {visibleArticles.map((article) => (
           <ArticleCard key={article.slug} article={article} />
         ))}

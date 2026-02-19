@@ -25,7 +25,7 @@ export function DesktopNav() {
             size="sm"
             variant="ghost"
             asChild
-            className="text-muted-foreground pointer-events-auto"
+            className="text-foreground pointer-events-auto"
           >
             <a href={link.href} target="_blank" rel="noreferrer">
               {link.label}
@@ -38,7 +38,7 @@ export function DesktopNav() {
             size="sm"
             variant="ghost"
             asChild
-            className="text-muted-foreground pointer-events-auto"
+            className="text-foreground pointer-events-auto"
           >
             <Link to={link.href}>
               {link.label}

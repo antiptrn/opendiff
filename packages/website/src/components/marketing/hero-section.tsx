@@ -1,63 +1,56 @@
-import { SiGithub } from "@icons-pack/react-simple-icons";
-import { Button } from "components";
+import { SiAnthropic, SiCursor, SiGooglegemini, SiMinimax } from "@icons-pack/react-simple-icons";
+import { Button, Card } from "components";
 import { Link } from "react-router-dom";
 
 export function HeroSection() {
   return (
-    <div className="overflow-hidden w-full relative">
-      {/*
-        <div
-        aria-hidden="true"
-        className="absolute inset-0 not-dark:opacity-50 [background-image:repeating-linear-gradient(to_right,transparent,var(--muted)_calc(100%/8))] md:[background-image:repeating-linear-gradient(to_right,transparent,var(--muted)_calc(100%/14))] lg:[background-image:repeating-linear-gradient(to_right,transparent,var(--muted)_calc(100%/16))]"
-      />
-        */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,var(--background)_0%,var(--background)15%,transparent_45%)] pointer-events-none"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(ellipse_100%_90%_at_50%_50%,var(--background)10%,transparent_30%)] pointer-events-none"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_10%,var(--background)_70%)] pointer-events-none"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-[linear-gradient(to_right,var(--background)_0%,transparent_10%,transparent_90%,var(--background)_100%)] pointer-events-none"
-      />
+    <div className="overflow-hidden absolute inset-0 w-full relative">
       <div className="relative">
-        <div className="relative text-center w-full flex flex-col items-center justify-start px-8 lg:pt-40 md:pt-40 pt-32">
-          <Button
-            variant="secondary"
-            className="lg:mb-6 md:mb-6 mb-4 text-sm font-normal rounded-lg h-auto py-2 px-3.5 gap-2.5"
-            asChild
-          >
-            <a
-              href="https://github.com/antiptrn/opendiff"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <SiGithub className="size-3.5 shrink-0" />
-              Star OpenDiff on GitHub
-            </a>
-          </Button>
-          <h5 className="font-normal max-w-[609px] text-[40px] md:text-[58px] leading-tight pb-1">
-            Stop shipping slop—keep shipping fast
+        <div className="relative text-start w-full flex flex-row items-end pb-28 pt-44 justify-between px-8">
+          <h5 className="max-w-[659px] text-[40px] md:text-[80px] leading-[110%] lg:pb-0 md:pb-0 pb-6">
+            Ship better
+            <br />
+            <span className="text-muted-foreground">code faster</span>
           </h5>
-          <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
-            Arm your team with AI-powered code reviews to catch bugs before they ship to production.
-          </p>
-          <div className="flex items-center justify-center gap-4 lg:mt-9 md:mt-9 mt-7">
-            <Button size="lg" asChild>
-              <Link to={import.meta.env.VITE_APP_URL || ""}>Get started now</Link>
-            </Button>
-            <Button size="lg" variant="secondary">
-              Why OpenDiff?
-            </Button>
+          <div className="flex flex-col items-end justify-end gap-4 max-w-[409px]">
+            <p className="font-pixel lg:text-lg md:text-lg text-base text-muted-foreground lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
+              Arm your team with AI-powered code reviews and catch bugs before they ship to
+              production
+            </p>
+            <div className="flex items-start justify-start gap-4 lg:mt-4 md:mt-4 mt-4 mb-4">
+              <Button size="lg" asChild>
+                <Link to={import.meta.env.VITE_APP_URL || ""}>Get started now</Link>
+              </Button>
+              <Button size="lg" variant="secondary" asChild>
+                <a href="cursor:extension/opendiff.opendiff-local-review">
+                  <SiCursor className="size-4 shrink-0" />
+                  Install for Cursor
+                </a>
+              </Button>
+            </div>
           </div>
         </div>
+      </div>
+      <div className="w-full flex flex-row items-center justify-center px-8 pb-32 gap-8">
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <img src="icons/openai-icon.svg" alt="OpenAI" className="size-8 shrink-0 dark:invert" />
+        </Card>
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <img
+            src="icons/deepseek-icon.svg"
+            alt="Deepseek"
+            className="size-8 shrink-0 dark:invert"
+          />
+        </Card>
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <SiAnthropic className="size-8 shrink-0" />
+        </Card>
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <SiGooglegemini className="size-8 shrink-0" />
+        </Card>
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <SiMinimax className="size-8 shrink-0" />
+        </Card>
       </div>
     </div>
   );
