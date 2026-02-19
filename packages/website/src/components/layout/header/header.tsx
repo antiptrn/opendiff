@@ -113,8 +113,9 @@ export function Header() {
               <Link to={githubUrl} aria-label="OpenDiff on GitHub">
                 <SiGithub className="size-4" />
                 <span
-                  className={`tabular-nums transition-opacity duration-500 ease-out motion-reduce:transition-none ${showStars ? "opacity-100" : "opacity-0"
-                    }`}
+                  className={`tabular-nums transition-opacity duration-500 ease-out motion-reduce:transition-none ${
+                    showStars ? "opacity-100" : "opacity-0"
+                  }`}
                 >
                   {starsLabel}
                 </span>
