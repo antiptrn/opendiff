@@ -23,8 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "components/components/ui/card";
-import { Input } from "components/components/ui/input";
-import { Search } from "lucide-react";
+import { SearchBar } from "components/components/ui/search-bar";
 import { useEffect, useRef, useState } from "react";
 import type { useAuth } from "shared/auth";
 import { toast } from "sonner";
@@ -192,18 +191,13 @@ export function SkillsTab({ user }: SkillsTabProps) {
             Skills are intelligently applied instructions that the review agent follows when
             reviewing your code.
           </CardDescription>
-          <div className="relative w-full mt-3">
-            <Search
-              strokeWidth={2.5}
-              className="size-4.5 absolute left-5 top-1/2 -translate-y-1/2 text-foreground"
-            />
-            <Input
-              className="pl-12.5 bg-background"
-              placeholder="Search skills..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <SearchBar
+            containerClassName="mt-3"
+            className="bg-background"
+            placeholder="Search skills..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </CardHeader>
         <CardContent>
           <div className="max-h-80 overflow-y-auto mt-2">

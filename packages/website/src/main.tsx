@@ -11,6 +11,7 @@ import App from "./app.tsx";
 import { PricingPage } from "@/features/billing/pages/pricing";
 import { BlogArticlePage, BlogPage } from "@/features/blog";
 import { ChangelogPage } from "@/features/changelog";
+import { ComparisonArticlePage, ComparisonsPage } from "@/features/comparisons";
 import { PrivacyPolicyPage, TermsOfServicePage } from "@/features/legal";
 // Features
 import { HomePage } from "@/features/marketing";
@@ -29,6 +30,8 @@ const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: "blog", element: <BlogPage /> },
       { path: "blog/:slug", element: <BlogArticlePage /> },
+      { path: "comparisons", element: <ComparisonsPage /> },
+      { path: "comparisons/:slug", element: <ComparisonArticlePage /> },
       { path: "changelog", element: <ChangelogPage /> },
       { path: "pricing", element: <PricingPage /> },
       { path: "privacy", element: <PrivacyPolicyPage /> },

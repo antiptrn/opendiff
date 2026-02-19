@@ -4,13 +4,13 @@ import { Link } from "react-router-dom";
 
 export function HeroSection() {
   return (
-    <div className="overflow-hidden absolute inset-0 w-full relative">
+    <div id="overview" className="overflow-hidden absolute inset-0 w-full relative">
       <div className="relative">
-        <div className="relative text-start w-full flex flex-row items-end pb-28 pt-44 justify-between px-8">
+        <div className="relative text-start w-full flex flex-row items-end pb-16 pt-44 justify-between px-8">
           <h5 className="max-w-[659px] text-[40px] md:text-[80px] leading-[110%] lg:pb-0 md:pb-0 pb-6">
             Ship better
             <br />
-            <span className="text-muted-foreground">code faster</span>
+            <span className="text-muted-foreground">code, faster</span>
           </h5>
           <div className="flex flex-col items-end justify-end gap-4 max-w-[409px]">
             <p className="font-pixel lg:text-lg md:text-lg text-base text-muted-foreground lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
@@ -36,14 +36,14 @@ export function HeroSection() {
           <img src="icons/openai-icon.svg" alt="OpenAI" className="size-8 shrink-0 dark:invert" />
         </Card>
         <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
+          <SiAnthropic className="size-8 shrink-0" />
+        </Card>
+        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
           <img
             src="icons/deepseek-icon.svg"
             alt="Deepseek"
             className="size-8 shrink-0 dark:invert"
           />
-        </Card>
-        <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
-          <SiAnthropic className="size-8 shrink-0" />
         </Card>
         <Card className="w-full flex flex-row items-center justify-center !p-8 h-full">
           <SiGooglegemini className="size-8 shrink-0" />

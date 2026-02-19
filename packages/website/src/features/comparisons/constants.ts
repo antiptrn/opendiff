@@ -1,0 +1,1 @@
+export const COMPARISONS_CHUNK_SIZE = 6;

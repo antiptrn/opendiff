@@ -1,6 +1,6 @@
 import { Button, Logo } from "components/components";
 import type { MouseEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 type FooterLink = {
   label: string;
@@ -14,24 +14,26 @@ const footerSections: { title: string; links: FooterLink[] }[] = [
   {
     title: "Product",
     links: [
-      { label: "Overview", href: "/" },
+      { label: "Overview", href: "/#overview" },
       { label: "Pricing", href: "/pricing" },
-      { label: "Docs", href: "https://docs.opendiff.dev" },
+      { label: "FAQ", href: "/#faq" },
       { label: "Changelog", href: "/changelog" },
     ],
   },
   {
     title: "Company",
     links: [
+      { label: "Careers", href: "https://careers.opendiff.dev" },
       { label: "Blog", href: "/blog" },
-      { label: "Repository", href: "https://github.com/antiptrn/opendiff" },
-      { label: "Status", href: "https://status.opendiff.dev" },
+      { label: "GitHub", href: "https://github.com/antiptrn/opendiff" },
       { label: "Contact", href: "mailto:support@opendiff.dev" },
     ],
   },
   {
     title: "Resources",
     links: [
+      { label: "Docs", href: "https://docs.opendiff.dev" },
+      { label: "Comparisons", href: "/comparisons" },
       { label: "Cursor Extension", href: "cursor:extension/opendiff.opendiff-local-review" },
       {
         label: "VSCode Extension",
@@ -39,8 +41,6 @@ const footerSections: { title: string; links: FooterLink[] }[] = [
         fallbackHref:
           "https://marketplace.visualstudio.com/items?itemName=opendiff.opendiff-local-review",
       },
-      { label: "Privacy", href: "/privacy" },
-      { label: "Terms", href: "/terms" },
     ],
   },
 ];
@@ -86,6 +86,32 @@ function isExternalLink(href: string): boolean {
 }
 
 export function Footer() {
+  const location = useLocation();
+
+  const onHashLinkClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    const [path, rawHash] = href.split("#");
+    if (!rawHash) {
+      return;
+    }
+
+    const targetPath = path || location.pathname;
+    const targetHash = `#${rawHash}`;
+    if (location.pathname !== targetPath) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (location.hash !== targetHash) {
+      window.history.replaceState(null, "", `${targetPath}${targetHash}`);
+    }
+
+    const target = document.getElementById(decodeURIComponent(rawHash));
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
     <footer className="relative z-10 w-full border-t bg-background py-16 lg:mt-16 md:mt-16 mt-8">
       <div className="max-w-6xl mx-auto px-4 lg:px-8">
@@ -135,7 +161,16 @@ export function Footer() {
                           </a>
                         )
                       ) : (
-                        <Link to={link.href}>{link.label}</Link>
+                        <Link
+                          to={link.href}
+                          onClick={
+                            link.href.includes("#")
+                              ? (event) => onHashLinkClick(event, link.href)
+                              : undefined
+                          }
+                        >
+                          {link.label}
+                        </Link>
                       )}
                     </li>
                   ))}
@@ -145,7 +180,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-16 flex flex-col justify-between gap-4 border-t py-16 text-sm font-medium text-muted-foreground md:flex-row md:items-center md:text-left">
+        <div className="mt-16 flex flex-col justify-between gap-4 border-t pt-16 text-sm font-medium text-muted-foreground md:flex-row md:items-center md:text-left">
           <p className="order-2 lg:order-1">
             &copy; {new Date().getFullYear()} OpenDiff. All rights reserved.
           </p>

@@ -22,10 +22,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "components/components/ui/dialog";
-import { Input } from "components/components/ui/input";
+import { SearchBar } from "components/components/ui/search-bar";
 import { Skeleton } from "components/components/ui/skeleton";
 import { useDebounce } from "components/hooks";
-import { Loader2, Search } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
@@ -173,25 +173,22 @@ export function RepositoriesPage() {
     <div className="p-8">
       <div className="flex flex-row items-center justify-between w-full">
         <h1 className="text-2xl mb-6">Repositories</h1>
-        <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>Add Repository</Button>
+        <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
+          Add Repository
+        </Button>
       </div>
 
       <div className="space-y-6">
         {user?.access_token && (
           <div>
             <div className="flex gap-2 mb-4">
-              <div className="relative w-full max-w-120">
-                <Search
-                  strokeWidth={2.5}
-                  className="size-4.5 absolute left-5 top-1/2 -translate-y-1/2 text-foreground"
-                />
-                <Input
-                  className="pl-12.5 shadow-md dark:shadow-none"
-                  placeholder="Search repositories..."
-                  value={repoSearchQuery}
-                  onChange={(e) => setRepoSearchQuery(e.target.value)}
-                />
-              </div>
+              <SearchBar
+                containerClassName="max-w-120"
+                className="shadow-md dark:shadow-none"
+                placeholder="Search repositories..."
+                value={repoSearchQuery}
+                onChange={(e) => setRepoSearchQuery(e.target.value)}
+              />
             </div>
 
             {showSkeleton && (

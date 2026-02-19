@@ -1,8 +1,7 @@
 import {
   FAQSection,
   GettingStartedSection,
-  HeroSection,
-  OpenSourceSection,
+  HeroSection
 } from "@/components/marketing";
 
 export function HomePage() {
@@ -11,7 +10,6 @@ export function HomePage() {
       <div className="w-full mx-auto max-w-6xl text-start flex flex-col items-start justify-center">
         <HeroSection />
         <GettingStartedSection />
-        <OpenSourceSection />
         <FAQSection />
       </div>
     </section>
