@@ -7,8 +7,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "components/components/ui/dialog";
-import { Input } from "components/components/ui/input";
-import { Loader2, LogIn, Search } from "lucide-react";
+import { SearchBar } from "components/components/ui/search-bar";
+import { Loader2, LogIn } from "lucide-react";
 import { Link } from "react-router-dom";
 import { RepoListItem } from "./repo-list-item";
 
@@ -85,18 +85,12 @@ export function AddRepoDialog({
           </Button>
         ) : (
           <div className="space-y-3">
-            <div className="relative w-full">
-              <Search
-                strokeWidth={2.5}
-                className="size-4.5 absolute left-5 top-1/2 -translate-y-1/2 text-foreground"
-              />
-              <Input
-                className="pl-12.5 bg-background"
-                placeholder="Search repositories..."
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-              />
-            </div>
+            <SearchBar
+              className="bg-background"
+              placeholder="Search repositories..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
             <div className="max-h-80 bg-background overflow-y-auto rounded-xl py-2.5">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">

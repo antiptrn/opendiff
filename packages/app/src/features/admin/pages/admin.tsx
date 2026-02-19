@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "components/components/ui/card";
-import { Input } from "components/components/ui/input";
+import { SearchBar } from "components/components/ui/search-bar";
 import { Skeleton } from "components/components/ui/skeleton";
 import {
   Table,
@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "components/components/ui/table";
 import { useDebounce } from "components/hooks";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
@@ -244,18 +244,12 @@ export function AdminPage() {
         </CardHeader>
         <CardContent>
           <div className="mb-6">
-            <div className="relative w-full">
-              <Search
-                strokeWidth={2.5}
-                className="size-4.5 absolute left-5 top-1/2 -translate-y-1/2 text-foreground"
-              />
-              <Input
-                className="pl-12.5 bg-background"
-                placeholder="Search audit logs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+            <SearchBar
+              className="bg-background"
+              placeholder="Search audit logs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
 
           {/* Use key prop to reset pagination when search changes */}

@@ -109,7 +109,7 @@ export function Header() {
           </Button>
           <div className="hidden md:flex items-center justify-center gap-1">
             <DesktopNav />
-            <Button size="sm" variant="ghost" className="text-foreground mr-2.5" asChild>
+            <Button size="sm" variant="ghost" className="text-foreground mr-3" asChild>
               <Link to={githubUrl} aria-label="OpenDiff on GitHub">
                 <SiGithub className="size-4" />
                 <span

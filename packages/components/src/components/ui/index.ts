@@ -23,6 +23,7 @@ export * from "./label";
 export * from "./popover";
 export * from "./select";
 export * from "./separator";
+export * from "./search-bar";
 export * from "./skeleton";
 export * from "./slider";
 export * from "./sized-switch";

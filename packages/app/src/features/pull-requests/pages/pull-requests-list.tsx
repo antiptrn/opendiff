@@ -1,5 +1,4 @@
-import { Input } from "components/components/ui/input";
-import { Search } from "lucide-react";
+import { SearchBar } from "components/components/ui/search-bar";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "shared/auth";
@@ -38,21 +37,16 @@ export function PullRequestsListPage() {
       <h1 className="text-2xl mb-6">Pull Requests</h1>
 
       <div className="flex gap-2 mb-4">
-        <div className="relative min-w-120">
-          <Search
-            strokeWidth={2.5}
-            className="size-4.5 absolute left-5 top-1/2 -translate-y-1/2 text-foreground"
-          />
-          <Input
-            className="pl-12.5 shadow-md dark:shadow-none"
-            placeholder="Search pull requests..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
+        <SearchBar
+          containerClassName="min-w-120"
+          className="shadow-md dark:shadow-none"
+          placeholder="Search pull requests..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+        />
       </div>
 
       <PullRequestsList

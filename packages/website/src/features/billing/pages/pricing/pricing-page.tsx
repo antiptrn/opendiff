@@ -13,6 +13,8 @@ import { Link } from "react-router-dom";
 import type { SubscriptionTier } from "shared/auth";
 import { PlanCard, plans } from "shared/billing";
 import { ComparisonTable } from "./comparison-table";
+import { PageContainer } from "./page-container";
+import { PageHeader } from "./page-header";
 
 const APP_URL = import.meta.env.VITE_APP_URL || "http://localhost:5174";
 
@@ -26,20 +28,8 @@ export function PricingPage() {
   };
 
   return (
-    <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto lg:pb-16 md:pb-16 pb-0">
-      {/*
-        <div
-          aria-hidden="true"
-          className="absolute z-0 -top-48 left-1/2 -translate-x-1/2 w-[60%] h-[250px] rounded-full bg-muted blur-3xl pointer-events-none"
-        />*/}
-      <div className="relative z-10 flex flex-col text-center items-center justify-center">
-        <h5 className="font-normal max-w-[609px] text-[40px] md:text-[63px] leading-tight pb-1">
-          Built for developers
-        </h5>
-        <p className="lg:text-xl md:text-xl text-base text-muted-foreground max-w-[609px] mx-auto lg:mt-4 md:mt-4 mt-2.5 text-balance leading-7">
-          Flexible pricing for every team.
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader title="Built for developers" subtitle="Flexible pricing for every team." />
 
       {/* Billing cycle toggle */}
       <div className="relative z-10 flex items-center justify-center mb-8 lg:mt-9 md:mt-9 mt-7">
@@ -81,6 +71,6 @@ export function PricingPage() {
       </Card>
       <Separator className="lg:mt-16 md:mt-16 mt-8 md:flex hidden" />
       <ComparisonTable isYearly={isYearly} onGetStarted={handleGetStarted} />
-    </section>
+    </PageContainer>
   );
 }
