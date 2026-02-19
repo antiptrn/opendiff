@@ -3,13 +3,13 @@ import { Link } from "react-router-dom";
 
 export function BackToBlogLink() {
   return (
-    <Link to="/blog">
-      <Button
-        variant="ghost"
-        className="-ml-4 text-muted-foreground no-underline hover:no-underline"
-      >
+    <Button
+      variant="secondary"
+      asChild
+    >
+      <Link to="/blog">
         Back to blog
-      </Button>
-    </Link>
+      </Link>
+    </Button>
   );
 }

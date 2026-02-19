@@ -3,17 +3,15 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  Button,
-  Separator,
+  Button
 } from "components";
 
 export function FAQSection() {
   return (
     <>
-      <Separator className="lg:mt-16 md:mt-16 mt-8" />
       <div
         id="faq"
-        className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-16 md:mt-16 mt-8"
+        className="w-full flex lg:flex-row md:flex-col flex-col items-start justify-start lg:gap-16 md:gap-16 gap-8 px-8 lg:mt-32 md:mt-32 mt-16 lg:mb-16 md:mb-16 mb-0"
       >
         <div className="lg:w-full md:w-full w-full">
           <h1 className="lg:text-5xl md:text-5xl text-3xl leading-tight">
@@ -26,8 +24,8 @@ export function FAQSection() {
           </a>
         </div>
         <div className="w-full max-w-3xl mx-auto text-foreground items-center justify-start gap-4 overflow-hidden">
-          <Accordion multiple>
-            <AccordionItem>
+          <Accordion multiple defaultValue={["What is OpenDiff?"]}>
+            <AccordionItem value="What is OpenDiff?">
               <AccordionTrigger>What is OpenDiff?</AccordionTrigger>
               <AccordionContent>
                 OpenDiff is an open-source, AI-powered code review tool. It integrates with your
@@ -78,7 +76,6 @@ export function FAQSection() {
           </Accordion>
         </div>
       </div>
-      <Separator className="lg:mt-16 md:mt-16 mt-8" />
     </>
   );
 }

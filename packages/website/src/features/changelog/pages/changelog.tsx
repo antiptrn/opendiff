@@ -125,13 +125,12 @@ const entries: ChangelogEntry[] = Object.entries(rawEntries)
 
 export function ChangelogPage() {
   return (
-    <section className="mx-auto flex max-w-6xl flex-col items-start justify-start px-4 pt-20 md:px-8 md:pt-32 lg:px-8 lg:pt-32">
+    <section className="mx-auto flex max-w-6xl flex-col lg:pt-38 md:pt-38 pt-14 items-start justify-start px-4 md:px-8 lg:px-8">
       <div className="flex min-h-9 w-full flex-row items-start justify-start mb-4">
         <h1 className="lg:text-5xl md:text-5xl text-3xl mt-6 leading-tight">Changelog</h1>
       </div>
       <Separator />
       <EntryList entries={entries} />
-      <Separator />
     </section>
   );
 }

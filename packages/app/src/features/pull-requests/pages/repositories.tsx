@@ -171,7 +171,10 @@ export function RepositoriesPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl mb-6">Repositories</h1>
+      <div className="flex flex-row items-center justify-between w-full">
+        <h1 className="text-2xl mb-6">Repositories</h1>
+        <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>Add Repository</Button>
+      </div>
 
       <div className="space-y-6">
         {user?.access_token && (
@@ -189,7 +192,6 @@ export function RepositoriesPage() {
                   onChange={(e) => setRepoSearchQuery(e.target.value)}
                 />
               </div>
-              <Button onClick={() => setAddRepoDialogOpen(true)}>New</Button>
             </div>
 
             {showSkeleton && (

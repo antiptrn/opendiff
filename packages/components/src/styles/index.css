@@ -7,6 +7,14 @@
 @source "..";
 @source "../../../shared/src";
 
+@font-face {
+	font-family: "Geist Pixel";
+	src: url("../../../../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Square.woff2") format("woff2");
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -89,6 +97,7 @@
 	--font-interphases: "TT Interphases Pro", sans-serif;
 	--font-geist: "Geist Variable", sans-serif;
 	--font-geist-display: "Geist Variable", sans-serif;
+	--font-pixel: "Geist Pixel", monospace;
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -146,10 +155,13 @@
 		@apply font-geist bg-background text-foreground;
 	}
 	html {
-		@apply font-geist;
+		@apply font-pixel;
 	}
 	h1, h2, h3, h4, h5, h6 {
-		@apply tracking-tight font-geist-display;
+		@apply font-pixel;
+	}
+	div, p, a, span {
+		@apply font-pixel;
 	}
 }
 

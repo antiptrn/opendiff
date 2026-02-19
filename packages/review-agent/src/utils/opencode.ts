@@ -214,7 +214,7 @@ export async function runOpencodePrompt(
 
       opencode = await createOpencode({
         port: Number.isFinite(serverPort) ? serverPort : 0,
-        config: config as any,
+        config: config as Record<string, unknown>,
       });
 
       const createResult = (await opencode.client.session.create({

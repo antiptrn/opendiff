@@ -50,7 +50,7 @@ export function ComparisonTable({
             {plans.map((plan) => (
               <th
                 key={plan.tier}
-                className={`text-left text-lg font-normal rounded-t-2xl ${plan.popular ? "bg-card" : "bg-background"}`}
+                className={`text-left text-lg font-normal ${plan.popular ? "bg-card" : "bg-background"}`}
               >
                 <div className="px-6 pb-3 pt-6 flex items-center gap-3">
                   <h3>{plan.name}</h3>
@@ -63,7 +63,7 @@ export function ComparisonTable({
             {plans.map((plan) => (
               <th
                 key={plan.tier}
-                className={`text-left align-top text-2xl font-normal tracking-tighter ${plan.popular ? "bg-card" : "bg-background"}`}
+                className={`text-left align-top text-2xl font-normal ${plan.popular ? "bg-card" : "bg-background"}`}
               >
                 <div className="px-6 pb-6">
                   $
@@ -83,7 +83,7 @@ export function ComparisonTable({
               >
                 <div className="flex px-6 pb-6 w-full">
                   <Button
-                    variant={plan.popular ? "default" : "outline"}
+                    variant={plan.popular ? "default" : "secondary"}
                     className="w-full"
                     onClick={() => onGetStarted(plan.tier)}
                   >
@@ -108,7 +108,7 @@ export function ComparisonTable({
                 return (
                   <td
                     key={plans[i]?.tier}
-                    className={`text-sm ${isPopular ? "bg-card" : ""} ${isPopular && isLastRow ? "rounded-b-2xl" : ""}`}
+                    className={`text-sm ${isPopular ? "bg-card" : ""}`}
                   >
                     <div
                       className={`flex items-center px-6 ${isPopular && isLastRow ? "pt-3 pb-6" : ""}`}

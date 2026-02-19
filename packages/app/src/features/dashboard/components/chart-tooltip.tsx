@@ -12,7 +12,7 @@ export function ChartTooltip({ active, payload, label, labelFormatter }: ChartTo
   const displayLabel = labelFormatter ? labelFormatter(String(label)) : label;
 
   return (
-    <div className="rounded-xl bg-popover p-4 shadow-md dark:shadow-none">
+    <div className="bg-popover p-4 shadow-md dark:shadow-none">
       <p className="text-sm text-foreground">{displayLabel}</p>
       <div className="mt-1 space-y-1.5">
         {payload.map((entry) => (

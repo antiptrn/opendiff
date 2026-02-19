@@ -1,5 +1,5 @@
 import { Button, Popover, PopoverContent, PopoverTrigger } from "components/components";
-import { Bell, Check, CircleAlert, CircleCheck, FolderGit, Loader2, Play } from "lucide-react";
+import { Bell, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "shared/auth";
@@ -25,14 +25,6 @@ function formatTimeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-const typeIcon: Record<Notification["type"], typeof Play> = {
-  REVIEW_STARTED: Play,
-  REVIEW_COMPLETED: CircleCheck,
-  FIX_APPLIED: Check,
-  FIX_FAILED: CircleAlert,
-  REPO_ADDED: FolderGit,
-};
-
 function NotificationItem({
   notification,
   onVisible,
@@ -43,7 +35,6 @@ function NotificationItem({
   onClick: (n: Notification) => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
-  const Icon = typeIcon[notification.type];
 
   useEffect(() => {
     const el = ref.current;
@@ -67,11 +58,9 @@ function NotificationItem({
       ref={ref}
       type="button"
       onClick={() => onClick(notification)}
-      className={`w-full flex items-start gap-3 px-6 py-4 text-left transition-colors ${
-        !notification.readAt ? "bg-accent/20" : ""
-      }`}
+      className={`w-full flex items-start gap-3 px-5 py-4 text-left transition-colors ${!notification.readAt ? "bg-accent/20" : ""
+        }`}
     >
-      <Icon className="size-4 mt-1 shrink-0 text-foreground" strokeWidth={2.6} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5">
           <span className="text-base truncate">{notification.title}</span>
@@ -139,7 +128,7 @@ export function NotificationPopover() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost" className="relative rounded-full text-muted-foreground">
+        <Button size="icon" variant="ghost" className="relative text-muted-foreground">
           <Bell />
           {unreadCount > 0 && (
             <div className="absolute top-1.5 right-1.5 flex size-1.5 items-center justify-center rounded-full bg-blue-400" />

@@ -4,6 +4,7 @@ import type { NavLink } from "./types";
 export const DESKTOP_NAV_LINKS: NavLink[] = [
   { label: "Docs", href: "https://docs.opendiff.dev" },
   { label: "Blog", href: "/blog" },
+  { label: "Changelog", href: "/changelog" },
   { label: "Pricing", href: "/pricing" },
 ];
 

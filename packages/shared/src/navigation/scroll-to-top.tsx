@@ -14,6 +14,10 @@ export function NavigationScrollToTop({ getContainer }: NavigationScrollToTopPro
       return;
     }
 
+    if (location.pathname === "" && location.search === "") {
+      return;
+    }
+
     const container = getContainer?.();
     if (container) {
       container.scrollTo({ top: 0, left: 0, behavior: "auto" });

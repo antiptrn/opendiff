@@ -36,6 +36,9 @@ export function ConsoleHeader({
   onResourceHubClick,
   rightContent,
 }: ConsoleHeaderProps) {
+  let sanitizedPlanLabel = planLabel.charAt(0).toUpperCase() + planLabel.slice(1).toLowerCase();
+  sanitizedPlanLabel = sanitizedPlanLabel.replace("_", "-");
+
   return (
     <header className="shrink-0 border-b bg-card dark:bg-background">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-4 px-4 sm:px-6 lg:px-8">
@@ -61,7 +64,7 @@ export function ConsoleHeader({
           <div className="flex min-w-0 items-center gap-2">
             <p className="truncate text-lg">{organizationName || email || "Console workspace"}</p>
             <Badge className="bg-background dark:bg-muted" variant="secondary">
-              {planLabel.charAt(0).toUpperCase() + planLabel.slice(1).toLowerCase()}
+              {sanitizedPlanLabel}
             </Badge>
           </div>
         </div>
@@ -71,7 +74,7 @@ export function ConsoleHeader({
 
       <div>
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-2 sm:px-4 lg:px-6">
-          <nav className="scrollbar-none flex h-full min-w-0 flex-1 gap-1 items-center overflow-x-auto">
+          <nav className="-ml-1 scrollbar-none flex h-full min-w-0 flex-1 gap-1 items-center overflow-x-auto">
             {navItems.map((item) => {
               const isActive =
                 item.href === "/console" ? pathname === item.href : pathname.startsWith(item.href);
@@ -97,13 +100,15 @@ export function ConsoleHeader({
           </nav>
 
           <Button
-            disabled
             variant="ghost"
+            asChild
             className="ml-2 -mr-2 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={onResourceHubClick}
           >
-            <BookOpenText className="size-4" />
-            Resources
+            <Link target="_blank" rel="noreferrer" to="https://docs.opendiff.dev">
+              <BookOpenText className="size-4" />
+              Docs
+            </Link>
           </Button>
         </div>
       </div>
