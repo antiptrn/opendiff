@@ -104,7 +104,7 @@ export async function getRuntimeAiConfig(
     }
 
     if (!data.authMethod || !data.model || !data.credential) {
-      throw new Error("AI credentials are not configured for this organization");
+      return null;
     }
 
     return {
@@ -112,13 +112,10 @@ export async function getRuntimeAiConfig(
       model: data.model,
       credential: data.credential,
     };
-} catch (error) {
-  if (error instanceof Error && error.message.includes("AI credentials are not configured")) {
-    throw error;
+  } catch (error) {
+    console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);
+    return null;
   }
-  console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);
-  return null;
-}
 }
 
 export async function recordReview(data: {

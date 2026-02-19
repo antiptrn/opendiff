@@ -1,4 +1,3 @@
-import { prisma } from "../db";
 import { getOrgAiRuntimeConfig } from "./ai-config";
 import { postToReviewAgent } from "./review-agent-client";
 
@@ -32,16 +31,8 @@ export async function generateReviewSummary(
 ): Promise<GenerateSummaryResult> {
   const aiConfig = await getOrgAiRuntimeConfig(input.orgId);
 
-  if (!aiConfig) {
-    const org = await prisma.organization.findUnique({
-      where: { id: input.orgId },
-      select: { subscriptionTier: true },
-    });
-
-    if (org?.subscriptionTier === "SELF_SUFFICIENT") {
-      throw new Error("AI credentials are not configured for this organization");
-    }
-  }
+  // aiConfig is null when org hasn't configured BYOK credentials — fall through
+  // to let the review-agent use platform-default credentials from env vars.
 
   return await postToReviewAgent<GenerateSummaryResult>("/internal/generate-summary", {
     ...input,

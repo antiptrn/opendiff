@@ -66,9 +66,8 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
   let totalTokens = 0;
   const aiConfig = await getOrgAiRuntimeConfig(orgId);
 
-  if (!aiConfig && membership.organization.subscriptionTier === "SELF_SUFFICIENT") {
-    return c.json({ error: "AI credentials are not configured for this organization" }, 400);
-  }
+  // aiConfig is null when org hasn't configured BYOK credentials — the
+  // review-agent will fall back to platform-default credentials from env vars.
 
   try {
     const response = await postToReviewAgent<{

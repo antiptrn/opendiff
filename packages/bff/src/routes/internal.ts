@@ -192,7 +192,7 @@ internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
         : null;
 
   if (!authMethod || !credential) {
-    return c.json({ error: "No AI credentials configured", useDefault: false });
+    return c.json({ error: "No AI credentials configured", useDefault: true });
   }
 
   return c.json({
