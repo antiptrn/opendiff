@@ -173,6 +173,14 @@ settingsRoutes.put("/ai-config", async (c) => {
     return c.json({ error: "Credential is required" }, 400);
   }
 
+  if (refreshToken !== undefined && typeof refreshToken !== "string") {
+    return c.json({ error: "refreshToken must be a string" }, 400);
+  }
+
+  if (accountId !== undefined && typeof accountId !== "string") {
+    return c.json({ error: "accountId must be a string" }, 400);
+  }
+
   if (authMethod === "API_KEY" && requiresOAuth(model)) {
     return c.json({ error: "Codex 5.3 requires OAuth token authentication" }, 400);
   }

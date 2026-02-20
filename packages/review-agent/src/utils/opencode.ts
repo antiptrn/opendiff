@@ -214,7 +214,7 @@ export async function runOpencodePrompt(
       ) {
         tempAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-byok-"));
         const opencodeDir = path.join(tempAuthDir, "opencode");
-        fs.mkdirSync(opencodeDir, { recursive: true });
+        fs.mkdirSync(opencodeDir, { recursive: true, mode: 0o700 });
 
         const authJson = {
           openai: {
@@ -227,7 +227,8 @@ export async function runOpencodePrompt(
         };
         fs.writeFileSync(
           path.join(opencodeDir, "auth.json"),
-          JSON.stringify(authJson, null, 2)
+          JSON.stringify(authJson, null, 2),
+          { mode: 0o600 }
         );
 
         originalXdgDataHome = process.env.XDG_DATA_HOME;
