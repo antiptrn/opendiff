@@ -39,6 +39,11 @@ export default function LoginPage() {
         </div>
       )}
       <LoginForm addAccount={addAccount} redirectUrl={redirectUrl} />
+      <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center p-8 gap-4">
+        <p className="text-xs text-muted-foreground">
+          By signing in you agree to our <Link to={`${import.meta.env.VITE_WEBSITE_URL}/terms`} className="text-muted-foreground hover:text-primary underline underline-offset-3">Terms of service</Link> and <Link to={`${import.meta.env.VITE_WEBSITE_URL}/privacy`} className="text-muted-foreground hover:text-primary underline underline-offset-3">Privacy policy</Link>.
+        </p>
+      </div>
     </section>
   );
 }

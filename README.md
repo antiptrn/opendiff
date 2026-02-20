@@ -1,8 +1,11 @@
 <img width="1200" height="400" alt="github_image" src="https://github.com/user-attachments/assets/8eaad8e5-bfc9-47c4-b818-f31fefd11ed5" />
 
 # OpenDiff
+[![X (Twitter)](https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/opendiffdotdev)
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/antiptrn)
+[![Website](https://img.shields.io/badge/Website-0A66C2?style=for-the-badge&logo=googlechrome&logoColor=white)](https://opendiff.dev)
 
-AI-powered code review platform that automatically reviews pull requests, detects anti-patterns, security issues, and code quality problems using OpenCode.
+AI code review platform that automatically reviews pull requests and recursively fixes review issues. Powered by OpenCode.
 
 ## Overview
 
@@ -15,7 +18,8 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 - **Custom Review Rules** - Configure per-repository review guidelines and coding standards
 
 ## Architecture
-> **[View detailed architecture documentation →](./ARCHITECTURE.md)**
+
+**[View detailed architecture documentation →](./ARCHITECTURE.md)**
 
 ## Packages
 
@@ -32,11 +36,6 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 | [`vscode-extension`](./packages/vscode-extension) | VS Code extension for local code review | VS Code API |
 | [`assets`](./packages/assets) | Shared static assets (fonts, icons) | - |
 
-Content sources used by the website:
-
-- Blog articles: [`packages/articles/README.md`](./packages/articles/README.md)
-- Changelog entries: [`packages/changelog/README.md`](./packages/changelog/README.md)
-
 ## Getting Started
 
 ### Prerequisites
@@ -44,7 +43,6 @@ Content sources used by the website:
 - [Bun](https://bun.sh) v1.1.29+
 - [PostgreSQL](https://www.postgresql.org/) 15+
 - [GitHub App](https://docs.github.com/en/apps) credentials
-- [Anthropic API Key](https://console.anthropic.com/)
 
 ### Installation
 

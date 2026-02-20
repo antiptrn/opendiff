@@ -128,7 +128,7 @@ export function Footer() {
             </p>
             <Button asChild variant="secondary" size="sm" className="mt-6">
               <Link target="_blank" rel="noreferrer" to="https://status.opendiff.dev">
-                <div className="size-1.5 bg-green-400" />
+                <div className="size-1.5 bg-green-400 mr-1" />
                 All systems operational
               </Link>
             </Button>
