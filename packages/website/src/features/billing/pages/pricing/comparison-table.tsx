@@ -41,7 +41,7 @@ export function ComparisonTable({
               className="bg-background text-left align-top text-2xl font-normal tracking-tight"
             >
               <div className="max-w-[16ch] py-6">
-                <h3>Compare plans</h3>
+                <p>Compare plans</p>
                 <p className="text-muted-foreground mt-3 text-base">
                   Find the perfect plan for your team.
                 </p>
@@ -53,7 +53,7 @@ export function ComparisonTable({
                 className={`text-left text-lg font-normal ${plan.popular ? "bg-card" : "bg-background"}`}
               >
                 <div className="px-6 pb-3 pt-6 flex items-center gap-3">
-                  <h3>{plan.name}</h3>
+                  <p>{plan.name}</p>
                   {plan.popular && <Badge variant="secondary">Popular</Badge>}
                 </div>
               </th>
@@ -84,7 +84,7 @@ export function ComparisonTable({
                 <div className="flex px-6 pb-6 w-full">
                   <Button
                     variant={plan.popular ? "default" : "secondary"}
-                    className="w-full"
+                    className="w-full font-normal"
                     onClick={() => onGetStarted(plan.tier)}
                   >
                     Get started

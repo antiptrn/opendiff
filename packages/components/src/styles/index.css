@@ -154,13 +154,7 @@
 	body {
 		@apply font-geist bg-background text-foreground;
 	}
-	html {
-		@apply font-pixel;
-	}
 	h1, h2, h3, h4, h5, h6 {
-		@apply font-pixel;
-	}
-	div, p, a, span {
 		@apply font-pixel;
 	}
 }

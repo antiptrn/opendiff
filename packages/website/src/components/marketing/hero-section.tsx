@@ -13,7 +13,7 @@ export function HeroSection() {
             <span className="text-muted-foreground">code, faster</span>
           </h5>
           <div className="flex flex-col items-end justify-end gap-4 max-w-[409px]">
-            <p className="font-pixel lg:text-lg md:text-lg text-base text-muted-foreground lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
+            <p className="text-right lg:text-lg md:text-lg text-base text-muted-foreground lg:mt-4 md:mt-4 mt-3 text-balance leading-7">
               Arm your team with AI-powered code reviews and catch bugs before they ship to
               production
             </p>

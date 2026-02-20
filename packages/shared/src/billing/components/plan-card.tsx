@@ -80,7 +80,7 @@ export function PlanCard({
   return (
     <Card className={cn("p-6 flex flex-col gap-0 overflow-visible", className)}>
       <div className="flex items-center gap-3">
-        <h3 className="text-lg">{plan.name}</h3>
+        <p className="text-lg">{plan.name}</p>
         {plan.popular && <Badge variant="secondary">Popular</Badge>}
       </div>
       <p className="text-base text-muted-foreground mt-2">{plan.description}</p>

@@ -23,7 +23,7 @@ export default function FeatureCard({
       )}
     >
       <div className="flex flex-col items-start justify-start gap-3">
-        <h5 className="text-xl">{title}</h5>
+        <p className="text-xl">{title}</p>
         <p className="text-muted-foreground text-lg">{description}</p>
       </div>
       <div
