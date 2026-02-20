@@ -25,21 +25,19 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Install opencode CLI (required by @opencode-ai/sdk at runtime)
-RUN bun install -g opencode-ai && chmod -R o+rX /root/.bun/install/global
-
-# Create non-root user
-RUN addgroup --system --gid 1001 bunjs
-RUN adduser --system --uid 1001 agent
+# Install into a shared prefix so the non-root user can access the binary.
+ENV BUN_INSTALL=/usr/local
+RUN bun install -g opencode-ai
 
 # Copy built files and production dependencies
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 
-# Set ownership
-RUN chown -R agent:bunjs /app
+# Set ownership (oven/bun image provides a built-in 'bun' user at uid 1000)
+RUN chown -R bun:bun /app
 
-USER agent
+USER bun
 
 # Environment variables (to be provided at runtime)
 ENV NODE_ENV=production
