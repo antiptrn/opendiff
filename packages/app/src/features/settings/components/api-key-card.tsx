@@ -47,6 +47,8 @@ function requiresOAuth(modelId: string): boolean {
 
 export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
   const [credentialInput, setCredentialInput] = useState("");
+  const [refreshTokenInput, setRefreshTokenInput] = useState("");
+  const [accountIdInput, setAccountIdInput] = useState("");
   const [showInput, setShowInput] = useState(false);
   const [provider, setProvider] = useState<AiProvider>(DEFAULT_PROVIDER);
   const [authMethod, setAuthMethod] = useState<AiAuthMethod>(DEFAULT_AUTH_METHOD);
@@ -88,12 +90,12 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
   }, [authMethod, model]);
 
   const credentialPlaceholder = useMemo(() => {
-    return authMethod === "API_KEY" ? "sk-..." : "oauth token";
+    return authMethod === "API_KEY" ? "sk-..." : "Access token";
   }, [authMethod]);
 
   const helperText = useMemo(() => {
     if (authMethod === "OAUTH_TOKEN") {
-      return "OAuth token can be used with selected Anthropic or OpenAI models.";
+      return "Enter your access token, refresh token, and account ID from your ChatGPT session.";
     }
 
     if (provider === "anthropic") {
@@ -114,8 +116,16 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
         authMethod,
         model,
         credential: credentialInput.trim(),
+        ...(authMethod === "OAUTH_TOKEN" && refreshTokenInput.trim()
+          ? { refreshToken: refreshTokenInput.trim() }
+          : {}),
+        ...(authMethod === "OAUTH_TOKEN" && accountIdInput.trim()
+          ? { accountId: accountIdInput.trim() }
+          : {}),
       });
       setCredentialInput("");
+      setRefreshTokenInput("");
+      setAccountIdInput("");
       setShowInput(false);
       toast.success("AI configuration saved");
     } catch (error) {
@@ -163,6 +173,26 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 />
                 <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
               </div>
+              {aiConfigStatus.authMethod === "OAUTH_TOKEN" && (
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">
+                    Refresh Token:{" "}
+                    {aiConfigStatus.hasRefreshToken ? (
+                      <span className="text-green-600 dark:text-green-400">Set</span>
+                    ) : (
+                      <span className="text-yellow-600 dark:text-yellow-400">Not set</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Account ID:{" "}
+                    {aiConfigStatus.hasAccountId ? (
+                      <span className="text-green-600 dark:text-green-400">Set</span>
+                    ) : (
+                      <span className="text-yellow-600 dark:text-yellow-400">Not set</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -199,7 +229,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                     <SelectItem value="API_KEY" disabled={requiresOAuth(model)}>
                       API token
                     </SelectItem>
-                    <SelectItem value="OAUTH_TOKEN">OAuth token</SelectItem>
+                    <SelectItem value="OAUTH_TOKEN">OAuth Token</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -224,13 +254,42 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
             </div>
 
             <div className="space-y-3">
-              <Input
-                type="password"
-                placeholder={credentialPlaceholder}
-                className="bg-background"
-                value={credentialInput}
-                onChange={(e) => setCredentialInput(e.target.value)}
-              />
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">
+                  {authMethod === "OAUTH_TOKEN" ? "Access Token" : "API Key"}
+                </div>
+                <Input
+                  type="password"
+                  placeholder={credentialPlaceholder}
+                  className="bg-background"
+                  value={credentialInput}
+                  onChange={(e) => setCredentialInput(e.target.value)}
+                />
+              </div>
+              {authMethod === "OAUTH_TOKEN" && (
+                <>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Refresh Token</div>
+                    <Input
+                      type="password"
+                      placeholder="Refresh token"
+                      className="bg-background"
+                      value={refreshTokenInput}
+                      onChange={(e) => setRefreshTokenInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Account ID</div>
+                    <Input
+                      type="text"
+                      placeholder="Account ID"
+                      className="bg-background"
+                      value={accountIdInput}
+                      onChange={(e) => setAccountIdInput(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex gap-3 mt-4">
                 <Button
                   className="transition-none"
@@ -247,6 +306,8 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                     onClick={() => {
                       setShowInput(false);
                       setCredentialInput("");
+                      setRefreshTokenInput("");
+                      setAccountIdInput("");
                     }}
                   >
                     Cancel

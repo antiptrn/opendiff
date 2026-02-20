@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { createOpencode } from "@opencode-ai/sdk";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
@@ -8,6 +11,8 @@ export interface AiRuntimeConfig {
   authMethod: AiAuthMethod;
   model: string;
   credential: string;
+  refreshToken?: string;
+  accountId?: string;
 }
 
 interface RunOpencodePromptInput {
@@ -195,9 +200,39 @@ export async function runOpencodePrompt(
   return queueOp(async () => {
     const originalCwd = process.cwd();
     let opencode: Awaited<ReturnType<typeof createOpencode>> | null = null;
+    let tempAuthDir: string | null = null;
+    let originalXdgDataHome: string | undefined;
 
     try {
       process.chdir(input.cwd);
+
+      // For BYOK OAuth users with refresh token, create a temp auth.json
+      // so the opencode CodexAuthPlugin can authenticate via the Codex auth flow
+      if (
+        input.aiConfig?.authMethod === "OAUTH_TOKEN" &&
+        input.aiConfig.refreshToken
+      ) {
+        tempAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-byok-"));
+        const opencodeDir = path.join(tempAuthDir, "opencode");
+        fs.mkdirSync(opencodeDir, { recursive: true });
+
+        const authJson = {
+          openai: {
+            type: "oauth",
+            access: input.aiConfig.credential,
+            refresh: input.aiConfig.refreshToken,
+            accountId: input.aiConfig.accountId || "",
+            expires: 0,
+          },
+        };
+        fs.writeFileSync(
+          path.join(opencodeDir, "auth.json"),
+          JSON.stringify(authJson, null, 2)
+        );
+
+        originalXdgDataHome = process.env.XDG_DATA_HOME;
+        process.env.XDG_DATA_HOME = tempAuthDir;
+      }
 
       const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
       const provider = input.aiConfig
@@ -264,6 +299,21 @@ export async function runOpencodePrompt(
           // best effort
         }
       }
+
+      // Restore XDG_DATA_HOME and clean up temp auth dir
+      if (tempAuthDir) {
+        if (originalXdgDataHome !== undefined) {
+          process.env.XDG_DATA_HOME = originalXdgDataHome;
+        } else {
+          delete process.env.XDG_DATA_HOME;
+        }
+        try {
+          fs.rmSync(tempAuthDir, { recursive: true, force: true });
+        } catch {
+          // best effort
+        }
+      }
+
       process.chdir(originalCwd);
     }
   });

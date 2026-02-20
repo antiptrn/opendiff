@@ -132,6 +132,8 @@ model Organization {
   aiAuthMethod          AiAuthMethod?
   aiApiKey              String?
   aiOauthToken          String?
+  aiOauthRefreshToken   String?
+  aiOauthAccountId      String?
   aiModel               String?
   customReviewRules     String?
   // Business info (for invoicing)

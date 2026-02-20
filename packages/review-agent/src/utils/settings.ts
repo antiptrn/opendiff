@@ -7,6 +7,8 @@ export interface RuntimeAiConfig {
   authMethod: "API_KEY" | "OAUTH_TOKEN";
   model: string;
   credential: string;
+  refreshToken?: string;
+  accountId?: string;
 }
 
 const SETTINGS_API_URL = process.env.SETTINGS_API_URL;
@@ -96,6 +98,8 @@ export async function getRuntimeAiConfig(
       authMethod?: "API_KEY" | "OAUTH_TOKEN";
       model?: string;
       credential?: string;
+      refreshToken?: string;
+      accountId?: string;
       useDefault?: boolean;
     };
 
@@ -111,6 +115,8 @@ export async function getRuntimeAiConfig(
       authMethod: data.authMethod,
       model: data.model,
       credential: data.credential,
+      ...(data.refreshToken ? { refreshToken: data.refreshToken } : {}),
+      ...(data.accountId ? { accountId: data.accountId } : {}),
     };
   } catch (error) {
     console.warn(`Error fetching AI config for ${owner}/${repo}:`, error);

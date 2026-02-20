@@ -89,6 +89,8 @@ settingsRoutes.get("/ai-config", async (c) => {
     model: org.aiModel || DEFAULT_MODEL,
     maskedCredential,
     tier: org.subscriptionTier,
+    hasRefreshToken: !!org.aiOauthRefreshToken,
+    hasAccountId: !!org.aiOauthAccountId,
   });
 });
 
@@ -141,11 +143,13 @@ settingsRoutes.put("/ai-config", async (c) => {
   }
 
   const body = await c.req.json();
-  const { provider, authMethod, model, credential } = body as {
+  const { provider, authMethod, model, credential, refreshToken, accountId } = body as {
     provider?: AiProvider;
     authMethod?: AiAuthMethod;
     model?: string;
     credential?: string;
+    refreshToken?: string;
+    accountId?: string;
   };
 
   if (!provider || (provider !== "anthropic" && provider !== "openai")) {
@@ -190,6 +194,8 @@ settingsRoutes.put("/ai-config", async (c) => {
       aiModel: model,
       aiApiKey: authMethod === "API_KEY" ? credential : null,
       aiOauthToken: authMethod === "OAUTH_TOKEN" ? credential : null,
+      aiOauthRefreshToken: authMethod === "OAUTH_TOKEN" ? (refreshToken || null) : null,
+      aiOauthAccountId: authMethod === "OAUTH_TOKEN" ? (accountId || null) : null,
       anthropicApiKey:
         authMethod === "API_KEY" && model.startsWith("anthropic/") ? credential : null,
     },
@@ -246,6 +252,8 @@ settingsRoutes.delete("/ai-config", async (c) => {
       aiModel: null,
       aiApiKey: null,
       aiOauthToken: null,
+      aiOauthRefreshToken: null,
+      aiOauthAccountId: null,
       anthropicApiKey: null,
     },
   });

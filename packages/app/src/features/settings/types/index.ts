@@ -14,6 +14,8 @@ export interface AiConfigStatus {
   model: string;
   maskedCredential: string | null;
   tier: string;
+  hasRefreshToken: boolean;
+  hasAccountId: boolean;
 }
 
 // Custom review rules types

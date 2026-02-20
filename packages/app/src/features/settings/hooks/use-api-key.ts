@@ -37,6 +37,8 @@ export function useUpdateAiConfig(token?: string, orgId?: string | null) {
       authMethod: AiAuthMethod;
       model: string;
       credential: string;
+      refreshToken?: string;
+      accountId?: string;
     }) => {
       const response = await fetch(`${API_URL}/api/settings/ai-config`, {
         method: "PUT",
