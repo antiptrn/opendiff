@@ -52,7 +52,8 @@ EXPOSE 8080
 FROM base AS agent
 
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN bun install -g opencode-ai && chmod -R o+rX /root/.bun/install/global
+ENV BUN_INSTALL=/usr/local
+RUN bun install -g opencode-ai
 RUN bun run --cwd packages/review-agent build
 
 ENV NODE_ENV=production
