@@ -6,6 +6,8 @@ export interface AiRuntimeConfig {
   authMethod: AiAuthMethod;
   model: string;
   credential: string;
+  refreshToken?: string;
+  accountId?: string;
 }
 
 export async function getOrgAiRuntimeConfig(orgId: string): Promise<AiRuntimeConfig | null> {
@@ -16,6 +18,8 @@ export async function getOrgAiRuntimeConfig(orgId: string): Promise<AiRuntimeCon
       aiModel: true,
       aiApiKey: true,
       aiOauthToken: true,
+      aiOauthRefreshToken: true,
+      aiOauthAccountId: true,
       anthropicApiKey: true,
     },
   });
@@ -33,6 +37,8 @@ export async function getOrgAiRuntimeConfig(orgId: string): Promise<AiRuntimeCon
       authMethod,
       model: org.aiModel,
       credential: org.aiOauthToken,
+      ...(org.aiOauthRefreshToken ? { refreshToken: org.aiOauthRefreshToken } : {}),
+      ...(org.aiOauthAccountId ? { accountId: org.aiOauthAccountId } : {}),
     };
   }
 

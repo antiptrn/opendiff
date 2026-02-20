@@ -200,6 +200,12 @@ internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
     model,
     credential,
     useDefault: false,
+    ...(authMethod === "OAUTH_TOKEN" && org.aiOauthRefreshToken
+      ? { refreshToken: org.aiOauthRefreshToken }
+      : {}),
+    ...(authMethod === "OAUTH_TOKEN" && org.aiOauthAccountId
+      ? { accountId: org.aiOauthAccountId }
+      : {}),
   });
 });
 
