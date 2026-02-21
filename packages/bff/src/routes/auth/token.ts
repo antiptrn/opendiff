@@ -1,5 +1,6 @@
 /** Token refresh and user info endpoints for all OAuth providers (GitHub, Google, Microsoft). */
 import { Hono } from "hono";
+import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
 import {
@@ -199,6 +200,7 @@ tokenRoutes.post("/refresh", async (c) => {
 
     return c.json({ error: "Unknown auth provider" }, 400);
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Token refresh error:", error);
     return c.json({ error: "Token refresh failed" }, 500);
   }

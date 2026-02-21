@@ -1,5 +1,6 @@
 /** Microsoft OAuth flow: initiates authorization and handles the callback for sign-in. */
 import { Hono } from "hono";
+import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
 import { logAudit } from "../../services/audit";
@@ -183,6 +184,7 @@ microsoftRoutes.get("/callback", async (c) => {
     }
     return c.redirect(callbackUrl.toString());
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Microsoft OAuth error:", error);
     return c.redirect(`${FRONTEND_URL}/login?error=auth_failed`);
   }

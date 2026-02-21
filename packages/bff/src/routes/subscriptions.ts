@@ -3,6 +3,7 @@ import { SubscriptionTier } from "@prisma/client";
 import { Hono } from "hono";
 import { findDbUser, getOrgIdFromHeader, getUserFromToken } from "../auth";
 import { prisma } from "../db";
+import { Sentry } from "../utils/sentry";
 import { getAuthUser, requireAuth } from "../middleware/auth";
 import {
   TIER_HIERARCHY,
@@ -99,6 +100,7 @@ subscriptionRoutes.post("/subscription/sync", requireAuth(), async (c) => {
       message: "No active subscription found",
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error syncing subscription:", error);
     return c.json({ error: "Failed to sync subscription" }, 500);
   }
@@ -232,6 +234,7 @@ subscriptionRoutes.post("/subscription/create", async (c) => {
         });
         // Fall through to create new checkout below
       } else {
+        Sentry.captureException(error);
         console.error("Error updating subscription:", error);
         return c.json({ error: "Failed to update subscription" }, 500);
       }
@@ -256,6 +259,7 @@ subscriptionRoutes.post("/subscription/create", async (c) => {
       requiresAuth: !user,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error creating checkout:", error);
     return c.json({ error: "Failed to create checkout" }, 500);
   }
@@ -349,6 +353,7 @@ subscriptionRoutes.get("/billing", requireAuth(), async (c) => {
 
     return c.json({ subscription, orders: formattedOrders });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching billing data:", error);
     // Still return subscription info even if orders fail
     return c.json({ subscription, orders: [] });
@@ -402,6 +407,7 @@ subscriptionRoutes.get("/billing/invoice/:orderId", requireAuth(), async (c) => 
 
     return c.json({ invoiceUrl });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching invoice:", error);
     return c.json({ error: "Failed to fetch invoice" }, 500);
   }
@@ -450,6 +456,7 @@ subscriptionRoutes.post("/subscription/cancel", requireAuth(), async (c) => {
       return c.json({ success: true, message: "Subscription is already set to cancel" });
     }
 
+    Sentry.captureException(error);
     console.error("Error canceling subscription:", error);
     return c.json({ error: "Failed to cancel subscription" }, 500);
   }
@@ -494,6 +501,7 @@ subscriptionRoutes.post("/subscription/resubscribe", requireAuth(), async (c) =>
 
     return c.json({ success: true, message: "Subscription reactivated" });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error resubscribing:", error);
     return c.json({ error: "Failed to reactivate subscription" }, 500);
   }

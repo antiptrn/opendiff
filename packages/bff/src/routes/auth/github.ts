@@ -1,5 +1,6 @@
 /** GitHub OAuth flow: initiates authorization and handles the callback for sign-in and account linking. */
 import { Hono } from "hono";
+import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
 import { logAudit } from "../../services/audit";
@@ -165,6 +166,7 @@ githubRoutes.get("/callback", async (c) => {
             authProvider = "google";
           }
         } catch (e) {
+          Sentry.captureException(e);
           console.error("Failed to refresh Google token during GitHub link:", e);
         }
       } else if (existingUser.microsoftRefreshToken) {
@@ -188,6 +190,7 @@ githubRoutes.get("/callback", async (c) => {
             authProvider = "microsoft";
           }
         } catch (e) {
+          Sentry.captureException(e);
           console.error("Failed to refresh Microsoft token during GitHub link:", e);
         }
       }
@@ -312,6 +315,7 @@ githubRoutes.get("/callback", async (c) => {
     }
     return c.redirect(callbackUrl.toString());
   } catch (error) {
+    Sentry.captureException(error);
     console.error("GitHub OAuth error:", error);
     const errorRedirect = linkOperation
       ? `${FRONTEND_URL}/console/settings?error=github_link_failed`

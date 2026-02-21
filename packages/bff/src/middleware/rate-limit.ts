@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { Sentry } from "../utils/sentry";
 import { getRedisClient } from "../services/redis";
 
 interface RateLimitOptions {
@@ -102,6 +103,7 @@ function maybeLogRedisFailure(error: unknown): void {
   }
 
   lastRedisFailureLogAt = now;
+  Sentry.captureException(error);
   console.error("Redis rate limiter unavailable, falling back to in-memory buckets:", error);
 }
 

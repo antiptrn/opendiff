@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../middleware/auth";
+import { Sentry } from "../utils/sentry";
 
 const statsRoutes = new Hono();
 
@@ -183,6 +184,7 @@ statsRoutes.get("/", requireAuth(), async (c) => {
       issuesFixed,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching stats:", error);
     return c.json({ error: "Failed to fetch stats" }, 500);
   }
@@ -368,6 +370,7 @@ statsRoutes.get("/reviews-over-time", requireAuth(), async (c) => {
       previousEnd: previousEnd.toISOString(),
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching review time series:", error);
     return c.json({ error: "Failed to fetch data" }, 500);
   }

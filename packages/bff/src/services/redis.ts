@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import { Sentry } from "../utils/sentry";
 
 const REDIS_URL = process.env.REDIS_URL?.trim();
 
@@ -18,10 +19,12 @@ export function getRedisClient(): Redis | null {
       });
 
       redisClient.on("error", (error: unknown) => {
+        Sentry.captureException(error);
         console.error("Redis client error:", error);
       });
     } catch (error) {
       redisInitFailed = true;
+      Sentry.captureException(error);
       console.error("Failed to initialize Redis client:", error);
       return null;
     }

@@ -3,6 +3,7 @@ import { getOrgIdFromHeader } from "../auth";
 import { prisma } from "../db";
 import { getAuthUser, requireAuth } from "../middleware/auth";
 import { paymentProvider } from "../payments";
+import { Sentry } from "../utils/sentry";
 import { logAudit } from "../services/audit";
 
 const accountRoutes = new Hono();
@@ -156,6 +157,7 @@ accountRoutes.delete("/account", async (c) => {
           await paymentProvider.cancelSubscription(org.subscriptionId);
           console.log(`Cancelled subscription for org ${org.slug} during account deletion`);
         } catch (error) {
+          Sentry.captureException(error);
           console.error(`Failed to cancel subscription for org ${org.slug}:`, error);
           // Continue with deletion even if subscription cancellation fails
         }
@@ -167,6 +169,7 @@ accountRoutes.delete("/account", async (c) => {
       try {
         await paymentProvider.cancelSubscription(fullUser.subscriptionId);
       } catch (error) {
+        Sentry.captureException(error);
         console.error("Failed to cancel legacy user subscription:", error);
       }
     }
@@ -212,6 +215,7 @@ accountRoutes.delete("/account", async (c) => {
 
     return c.json({ success: true, message: "Account deleted successfully" });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to delete account:", error);
     return c.json(
       { error: error instanceof Error ? error.message : "Failed to delete account" },

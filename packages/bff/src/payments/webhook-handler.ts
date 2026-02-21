@@ -7,6 +7,7 @@ import {
   SubscriptionStatus as PrismaSubscriptionStatus,
   SubscriptionTier,
 } from "@prisma/client";
+import { Sentry } from "../utils/sentry";
 import { getPaymentProviderName, paymentProvider } from "./index";
 import type { NormalizedCheckout, NormalizedSubscription, WebhookEvent } from "./types";
 
@@ -67,6 +68,7 @@ async function handleCheckoutCompleted(checkout: NormalizedCheckout) {
         tier = paymentProvider.getTierFromProductId(sub.productId);
         seatCount = sub.quantity;
       } catch (e) {
+        Sentry.captureException(e);
         console.error(`[${getPaymentProviderName()}] Failed to fetch subscription details:`, e);
       }
     }
@@ -443,6 +445,7 @@ export async function processWebhook(
     await handleWebhookEvent(event);
     return { success: true, message: "Webhook processed" };
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Webhook processing error:", error);
     throw error;
   }

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { prisma } from "../db";
 import { getOrgQuotaPool } from "../middleware/organization";
 import { createNotification } from "../services/notifications";
+import { Sentry } from "../utils/sentry";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 
 /** Timing-safe comparison of two strings to prevent timing attacks. */
@@ -85,6 +86,7 @@ internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
       reason: hasSeat ? "User has an active seat" : "User does not have a seat assigned",
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error checking seat:", error);
     return c.json({ error: "Failed to check seat" }, 500);
   }
@@ -304,6 +306,7 @@ internalRoutes.post("/fixes/:fixId/applied", async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error(`Failed to mark fix ${fixId} as applied:`, error);
     return c.json({ error: "Fix not found" }, 404);
   }
@@ -347,6 +350,7 @@ internalRoutes.post("/fixes/:fixId/failed", async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error(`Failed to mark fix ${fixId} as failed:`, error);
     return c.json({ error: "Fix not found" }, 404);
   }
@@ -621,6 +625,7 @@ internalRoutes.post("/reviews", async (c) => {
 
     return c.json({ id: review.id, created: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error recording review:", error);
     return c.json({ error: "Failed to record review" }, 500);
   }

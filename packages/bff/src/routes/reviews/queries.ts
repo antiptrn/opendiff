@@ -4,6 +4,7 @@ import { prisma } from "../../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../../middleware/auth";
 import { generateReviewSummary } from "../../utils/generate-summary";
 import { fetchPRMetadata, fetchPRMetadataBatch } from "../../utils/github-metadata";
+import { Sentry } from "../../utils/sentry";
 
 const queryRoutes = new Hono();
 
@@ -190,6 +191,7 @@ queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
           });
         })
         .catch(async (err) => {
+          Sentry.captureException(err);
           console.error(`Failed to generate summary for review ${id}:`, err);
           await prisma.review.update({
             where: { id },
@@ -367,6 +369,7 @@ queryRoutes.post("/reviews/:reviewId/fixes/:fixId/accept", requireAuth(), async 
       line: fix.comment.line,
     });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Failed to notify agent of fix acceptance:", err);
     return c.json(
       { error: "Failed to apply fix — the review agent is unreachable. Try again later." },

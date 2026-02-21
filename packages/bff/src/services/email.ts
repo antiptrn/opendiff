@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { Sentry } from "../utils/sentry";
 
 // Only initialize Resend if API key is available
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -97,12 +98,14 @@ If you didn't expect this invitation, you can safely ignore this email.
     });
 
     if (error) {
+      Sentry.captureException(error);
       console.error("Failed to send invite email:", error);
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to send invite email:", error);
     return { success: false, error: String(error) };
   }

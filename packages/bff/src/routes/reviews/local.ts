@@ -7,6 +7,7 @@ import { getAuthUser, requireAuth } from "../../middleware/auth";
 import { getOrgQuotaPool } from "../../middleware/organization";
 import { getOrgAiRuntimeConfig } from "../../utils/ai-config";
 import { postToReviewAgent } from "../../utils/review-agent-client";
+import { Sentry } from "../../utils/sentry";
 
 const localRoutes = new Hono();
 
@@ -78,6 +79,7 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
     review = response.review;
     totalTokens = response.tokensUsed || 0;
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Local review agent error:", error);
     return c.json({ error: "Review failed" }, 500);
   }
@@ -115,6 +117,7 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
 
     return c.json(review);
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to persist local review response:", error);
     return c.json({ error: "Failed to persist review response" }, 500);
   }

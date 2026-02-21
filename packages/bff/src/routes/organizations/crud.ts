@@ -1,6 +1,7 @@
 /** Organization CRUD operations: list, create, get, update, delete, and avatar management. */
 import { Hono } from "hono";
 import { prisma } from "../../db";
+import { Sentry } from "../../utils/sentry";
 import { getAuthUser, requireAuth } from "../../middleware/auth";
 import {
   canDeleteOrg,
@@ -370,6 +371,7 @@ crudRoutes.post("/:orgId/avatar", requireAuth(), async (c) => {
         try {
           await deleteFile(oldKey);
         } catch (e) {
+          Sentry.captureException(e);
           console.error("Failed to delete old avatar:", e);
         }
       }
@@ -399,6 +401,7 @@ crudRoutes.post("/:orgId/avatar", requireAuth(), async (c) => {
 
     return c.json({ avatarUrl });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error uploading avatar:", error);
     return c.json({ error: "Failed to upload avatar" }, 500);
   }
@@ -449,6 +452,7 @@ crudRoutes.delete("/:orgId/avatar", requireAuth(), async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error deleting avatar:", error);
     return c.json({ error: "Failed to delete avatar" }, 500);
   }

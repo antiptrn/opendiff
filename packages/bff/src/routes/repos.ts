@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../middleware/auth";
 import { logAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
+import { Sentry } from "../utils/sentry";
 import { fetchRepoMetadata } from "../utils/github-metadata";
 
 // Helper function to fetch a file from GitHub
@@ -152,6 +153,7 @@ reposRoutes.get("/settings", async (c) => {
       }))
     );
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching activated repos:", error);
     return c.json({ error: "Failed to fetch settings" }, 500);
   }
@@ -335,6 +337,7 @@ reposRoutes.get("/org/repos", requireAuth(), async (c) => {
       })
     );
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching org repos:", error);
     return c.json({ error: "Failed to fetch repos" }, 500);
   }
@@ -402,6 +405,7 @@ reposRoutes.get("/org/repos/:owner/:repo", requireAuth(), async (c) => {
       effectiveEnabled: r.enabled,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching org repo:", error);
     return c.json({ error: "Failed to fetch repo" }, 500);
   }
@@ -515,6 +519,7 @@ reposRoutes.post("/org/repos/:owner/:repo/sync-readme", requireAuth(), async (c)
       contributing,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error fetching docs:", error);
     return c.json({ error: "Failed to fetch docs" }, 500);
   }

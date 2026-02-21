@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { Sentry } from "../utils/sentry";
 
 const webhookRoutes = new Hono();
 
@@ -36,6 +37,7 @@ webhookRoutes.post("/webhooks/:provider", async (c) => {
 
     return c.json({ received: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error(`${provider} webhook handler error:`, error);
     return c.json({ error: "Webhook handler failed" }, 500);
   }
@@ -59,6 +61,7 @@ webhookRoutes.post("/polar/webhook", async (c) => {
 
     return c.json({ received: true });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Polar webhook handler error:", error);
     return c.json({ error: "Webhook handler failed" }, 500);
   }

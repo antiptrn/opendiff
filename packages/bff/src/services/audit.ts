@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import type { Context } from "hono";
+import { Sentry } from "../utils/sentry";
 
 const prisma = new PrismaClient();
 
@@ -68,6 +69,7 @@ export async function logAudit({
       },
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to write audit log:", error);
   }
 }

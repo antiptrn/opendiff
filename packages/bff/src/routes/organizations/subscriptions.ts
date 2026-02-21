@@ -1,6 +1,7 @@
 /** Subscription management: create, update, cancel, and reactivate organization subscriptions. */
 import { Hono } from "hono";
 import { prisma } from "../../db";
+import { Sentry } from "../../utils/sentry";
 import { getAuthUser, requireAuth } from "../../middleware/auth";
 import {
   canManageBilling,
@@ -216,6 +217,7 @@ subscriptionRoutes.post("/subscription", requireAuth(), async (c) => {
 
     return c.json({ checkoutUrl: checkout.checkoutUrl });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error managing subscription:", error);
     return c.json({ error: "Failed to process subscription" }, 500);
   }
@@ -267,6 +269,7 @@ subscriptionRoutes.post("/subscription/cancel", requireAuth(), async (c) => {
       message: "Subscription will be cancelled at the end of the billing period",
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error cancelling subscription:", error);
     return c.json({ error: "Failed to cancel subscription" }, 500);
   }
@@ -322,6 +325,7 @@ subscriptionRoutes.post("/subscription/reactivate", requireAuth(), async (c) => 
 
     return c.json({ success: true, message: "Subscription reactivated" });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error reactivating subscription:", error);
     return c.json({ error: "Failed to reactivate subscription" }, 500);
   }

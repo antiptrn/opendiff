@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { Sentry } from "./utils/sentry";
 
 export interface ProviderUser {
   id: number | string;
@@ -109,6 +110,7 @@ export async function findDbUserFromToken(token: string) {
         });
       }
     } catch (error) {
+      Sentry.captureException(error);
       console.error("Failed to connect to GitHub API:", error);
     }
   } else {
@@ -126,6 +128,7 @@ export async function findDbUserFromToken(token: string) {
         });
       }
     } catch (error) {
+      Sentry.captureException(error);
       console.error("Failed to connect to Google API:", error);
     }
   }

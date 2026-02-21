@@ -1,6 +1,7 @@
 /** Seat management: update seat count, preview proration, and assign/unassign/reassign seats to members. */
 import { Hono } from "hono";
 import { prisma } from "../../db";
+import { Sentry } from "../../utils/sentry";
 import { getAuthUser, requireAuth } from "../../middleware/auth";
 import {
   canManageBilling,
@@ -127,6 +128,7 @@ seatRoutes.post("/subscription/seats", requireAuth(), async (c) => {
       previousCount: org.seatCount,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Error updating seat count:", error);
 
     // Handle Stripe-specific errors
