@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { rateLimit } from "./middleware/rate-limit";
+import { Sentry, initSentry } from "./utils/sentry";
+
+// Initialise Sentry for error reporting
+initSentry();
 
 // Import shared modules (db import triggers BigInt serialization side-effect)
 import "./db";
@@ -26,6 +30,12 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || FRONTEND_URL)
   .map((o) => o.trim());
 
 const app = new Hono();
+
+app.onError((err, c) => {
+  Sentry.captureException(err);
+  console.error("Unhandled error:", err);
+  return c.json({ error: "Internal server error" }, 500);
+});
 
 app.use(
   "*",
