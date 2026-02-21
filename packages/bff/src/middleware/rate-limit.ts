@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
-import { Sentry } from "../utils/sentry";
 import { getRedisClient } from "../services/redis";
+import { Sentry } from "../utils/sentry";
 
 interface RateLimitOptions {
   windowMs: number;

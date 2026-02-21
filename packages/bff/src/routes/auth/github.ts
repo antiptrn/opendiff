@@ -1,9 +1,9 @@
 /** GitHub OAuth flow: initiates authorization and handles the callback for sign-in and account linking. */
 import { Hono } from "hono";
-import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
 import { logAudit } from "../../services/audit";
+import { Sentry } from "../../utils/sentry";
 import {
   FRONTEND_URL,
   GITHUB_CLIENT_ID,

@@ -1,9 +1,9 @@
 /** Microsoft OAuth flow: initiates authorization and handles the callback for sign-in. */
 import { Hono } from "hono";
-import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
 import { logAudit } from "../../services/audit";
+import { Sentry } from "../../utils/sentry";
 import {
   FRONTEND_URL,
   MICROSOFT_CLIENT_ID,

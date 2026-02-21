@@ -1,8 +1,8 @@
 /** Token refresh and user info endpoints for all OAuth providers (GitHub, Google, Microsoft). */
 import { Hono } from "hono";
-import { Sentry } from "../../utils/sentry";
 import { prisma } from "../../db";
 import { getUserOrganizations } from "../../middleware/organization";
+import { Sentry } from "../../utils/sentry";
 import {
   GITHUB_CLIENT_ID,
   GITHUB_CLIENT_SECRET,
