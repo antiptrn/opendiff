@@ -23,6 +23,7 @@
     "@octokit/webhooks": "^13.2.0",
     "@opencode-ai/sdk": "^1.2.6",
     "@opendiff/prompts": "workspace:*",
+    "@sentry/node": "^9.5.0",
     "hono": "^4.4.0",
     "shared": "workspace:*",
     "simple-git": "^3.30.0"

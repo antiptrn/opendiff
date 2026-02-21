@@ -9,10 +9,17 @@ import { generateReviewSummary } from "./internal/generate-summary";
 import { runLocalReview } from "./internal/local-review";
 import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
+import {
+  formatErrorComment,
+  formatQuotaExceededComment,
+  initSentry,
+  reportError,
+} from "./utils/errors";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import {
   type RepositorySettings,
+  checkTokenQuota,
   getCustomReviewRules,
   getRepositorySettings,
   getRuntimeAiConfig,
@@ -97,6 +104,7 @@ interface WebhookContext {
   handler: WebhookHandler;
   customRules: string | null;
   triageAgent: TriageAgent;
+  githubClient: GitHubClient;
 }
 
 async function initWebhookContext(payload: {
@@ -122,7 +130,31 @@ async function initWebhookContext(payload: {
     console.log(`Using custom review rules for ${owner}/${repo}`);
   }
 
-  return { owner, repo, settings, handler, customRules, triageAgent };
+  return { owner, repo, settings, handler, customRules, triageAgent, githubClient };
+}
+
+/**
+ * Best-effort attempt to post an error comment on a PR.
+ * Creates its own GitHub client from the webhook payload so that
+ * it works even when initWebhookContext has failed.
+ */
+async function postPRComment(
+  payload: { repository: { owner: { login: string }; name: string }; installation?: { id: number } },
+  prNumber: number,
+  body: string
+): Promise<void> {
+  try {
+    const octokit = createOctokit(payload.installation?.id);
+    const client = new GitHubClient(octokit);
+    await client.createIssueComment(
+      payload.repository.owner.login,
+      payload.repository.name,
+      prNumber,
+      body
+    );
+  } catch (err) {
+    console.error("Failed to post error comment on PR:", err);
+  }
 }
 
 const app = new Hono();
@@ -287,6 +319,7 @@ app.post("/webhook", async (c) => {
     const triggerActions = ["opened", "synchronize", "ready_for_review"];
 
     if (triggerActions.includes(payload.action)) {
+      const prNumber = payload.pull_request?.number as number | undefined;
       try {
         const { owner, repo, settings, handler, customRules, triageAgent } =
           await initWebhookContext(payload);
@@ -302,6 +335,22 @@ app.post("/webhook", async (c) => {
         if (payload.pull_request?.draft) {
           console.log("Skipping draft PR");
           return c.json({ status: "skipped", reason: "draft" });
+        }
+
+        // Pre-flight token quota check
+        const quota = await checkTokenQuota(owner, repo);
+        if (!quota.hasQuota) {
+          console.log(`Token quota exceeded for ${owner}/${repo}, skipping review`);
+          const errorId = reportError(new Error("Token quota exceeded"), {
+            owner,
+            repo,
+            pullNumber: prNumber,
+            action: "pull_request_quota_exceeded",
+          });
+          if (prNumber) {
+            await postPRComment(payload, prNumber, formatQuotaExceededComment(errorId));
+          }
+          return c.json({ status: "skipped", reason: "quota_exceeded" });
         }
 
         // Triage always runs when repo has reviews enabled; autofixEnabled controls push behavior
@@ -343,7 +392,15 @@ app.post("/webhook", async (c) => {
         }
 
         if (!result.success) {
-          console.error("Review failed:", result.error);
+          const errorId = reportError(new Error(result.error || "Review failed"), {
+            owner,
+            repo,
+            pullNumber: prNumber,
+            action: "pull_request_review",
+          });
+          if (prNumber) {
+            await postPRComment(payload, prNumber, formatErrorComment(errorId));
+          }
           return c.json({ error: result.error }, 500);
         }
 
@@ -365,7 +422,15 @@ app.post("/webhook", async (c) => {
         console.log(`Review submitted successfully: ${result.reviewId}`);
         return c.json({ status: "reviewed", reviewId: result.reviewId });
       } catch (error) {
-        console.error("Error processing webhook:", error);
+        const errorId = reportError(error, {
+          owner: payload.repository?.owner?.login,
+          repo: payload.repository?.name,
+          pullNumber: prNumber,
+          action: "pull_request_webhook",
+        });
+        if (prNumber) {
+          await postPRComment(payload, prNumber, formatErrorComment(errorId));
+        }
         return c.json({ error: "Internal error" }, 500);
       }
     }
@@ -380,6 +445,7 @@ app.post("/webhook", async (c) => {
       return c.json({ status: "ignored" });
     }
 
+    const commentPrNumber = payload.pull_request?.number as number | undefined;
     try {
       const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
 
@@ -390,6 +456,22 @@ app.post("/webhook", async (c) => {
         return c.json({ status: "skipped", reason: "disabled" });
       }
 
+      // Pre-flight token quota check
+      const quota = await checkTokenQuota(owner, repo);
+      if (!quota.hasQuota) {
+        console.log(`Token quota exceeded for ${owner}/${repo}, skipping comment reply`);
+        const errorId = reportError(new Error("Token quota exceeded"), {
+          owner,
+          repo,
+          pullNumber: commentPrNumber,
+          action: "review_comment_quota_exceeded",
+        });
+        if (commentPrNumber) {
+          await postPRComment(payload, commentPrNumber, formatQuotaExceededComment(errorId));
+        }
+        return c.json({ status: "skipped", reason: "quota_exceeded" });
+      }
+
       const result = await handler.handleReviewComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
@@ -398,7 +480,15 @@ app.post("/webhook", async (c) => {
       }
 
       if (!result.success) {
-        console.error("Comment reply failed:", result.error);
+        const errorId = reportError(new Error(result.error || "Comment reply failed"), {
+          owner,
+          repo,
+          pullNumber: commentPrNumber,
+          action: "review_comment_reply",
+        });
+        if (commentPrNumber) {
+          await postPRComment(payload, commentPrNumber, formatErrorComment(errorId));
+        }
         return c.json({ error: result.error }, 500);
       }
 
@@ -416,7 +506,15 @@ app.post("/webhook", async (c) => {
       console.log(`Comment reply posted: ${result.reviewId}`);
       return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
-      console.error("Error processing review comment:", error);
+      const errorId = reportError(error, {
+        owner: payload.repository?.owner?.login,
+        repo: payload.repository?.name,
+        pullNumber: commentPrNumber,
+        action: "review_comment_webhook",
+      });
+      if (commentPrNumber) {
+        await postPRComment(payload, commentPrNumber, formatErrorComment(errorId));
+      }
       return c.json({ error: "Internal error" }, 500);
     }
   }
@@ -430,6 +528,7 @@ app.post("/webhook", async (c) => {
       return c.json({ status: "ignored" });
     }
 
+    const issuePrNumber = payload.issue?.number as number | undefined;
     try {
       const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
 
@@ -440,6 +539,22 @@ app.post("/webhook", async (c) => {
         return c.json({ status: "skipped", reason: "disabled" });
       }
 
+      // Pre-flight token quota check
+      const quota = await checkTokenQuota(owner, repo);
+      if (!quota.hasQuota) {
+        console.log(`Token quota exceeded for ${owner}/${repo}, skipping issue comment reply`);
+        const errorId = reportError(new Error("Token quota exceeded"), {
+          owner,
+          repo,
+          pullNumber: issuePrNumber,
+          action: "issue_comment_quota_exceeded",
+        });
+        if (issuePrNumber) {
+          await postPRComment(payload, issuePrNumber, formatQuotaExceededComment(errorId));
+        }
+        return c.json({ status: "skipped", reason: "quota_exceeded" });
+      }
+
       const result = await handler.handleIssueComment(payload, BOT_USERNAME, customRules);
 
       if (result.skipped) {
@@ -448,7 +563,15 @@ app.post("/webhook", async (c) => {
       }
 
       if (!result.success) {
-        console.error("Comment reply failed:", result.error);
+        const errorId = reportError(new Error(result.error || "Comment reply failed"), {
+          owner,
+          repo,
+          pullNumber: issuePrNumber,
+          action: "issue_comment_reply",
+        });
+        if (issuePrNumber) {
+          await postPRComment(payload, issuePrNumber, formatErrorComment(errorId));
+        }
         return c.json({ error: result.error }, 500);
       }
 
@@ -466,7 +589,15 @@ app.post("/webhook", async (c) => {
       console.log(`Comment reply posted: ${result.reviewId}`);
       return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
-      console.error("Error processing issue comment:", error);
+      const errorId = reportError(error, {
+        owner: payload.repository?.owner?.login,
+        repo: payload.repository?.name,
+        pullNumber: issuePrNumber,
+        action: "issue_comment_webhook",
+      });
+      if (issuePrNumber) {
+        await postPRComment(payload, issuePrNumber, formatErrorComment(errorId));
+      }
       return c.json({ error: "Internal error" }, 500);
     }
   }
@@ -625,6 +756,9 @@ app.post("/callback/fix-accepted", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
+
+// Initialise Sentry for error reporting
+initSentry();
 
 // Start server
 console.log(`Starting review-agent on port ${PORT}...`);

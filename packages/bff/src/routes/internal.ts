@@ -90,6 +90,41 @@ internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
   }
 });
 
+// Pre-flight token quota check (called by review agent before starting a review)
+internalRoutes.get("/check-quota/:owner/:repo", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
+  if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { owner, repo } = c.req.param();
+
+  const repoSettings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+    include: { organization: true },
+  });
+
+  if (!repoSettings?.organization) {
+    // No org means no quota restrictions
+    return c.json({ hasQuota: true });
+  }
+
+  const org = repoSettings.organization;
+  const quotaPool = await getOrgQuotaPool(org.id);
+
+  if (quotaPool.total === -1) {
+    return c.json({ hasQuota: true, unlimited: true });
+  }
+
+  const hasQuota = quotaPool.used < quotaPool.total;
+  return c.json({
+    hasQuota,
+    used: quotaPool.used,
+    total: quotaPool.total,
+  });
+});
+
 // Get repository settings for review agent (internal use only)
 internalRoutes.get("/settings/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();

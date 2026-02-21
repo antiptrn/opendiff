@@ -53,6 +53,34 @@ export async function getRepositorySettings(
   }
 }
 
+export async function checkTokenQuota(
+  owner: string,
+  repo: string
+): Promise<{ hasQuota: boolean }> {
+  if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
+    return { hasQuota: true };
+  }
+
+  try {
+    const response = await fetch(
+      `${SETTINGS_API_URL}/api/internal/check-quota/${owner}/${repo}`,
+      {
+        headers: { "X-API-Key": REVIEW_AGENT_API_KEY },
+      }
+    );
+
+    if (!response.ok) {
+      // Default to allowing the review if the quota check fails
+      return { hasQuota: true };
+    }
+
+    const data = (await response.json()) as { hasQuota?: boolean };
+    return { hasQuota: data.hasQuota !== false };
+  } catch {
+    return { hasQuota: true };
+  }
+}
+
 export async function getCustomReviewRules(owner: string, repo: string): Promise<string | null> {
   if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
     return null;
