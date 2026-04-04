@@ -86,13 +86,49 @@ export async function handleTriageAfterReview(
         botUsername,
       },
       async (_tempDir, git) => {
+        const reviewComments = await github.getReviewComments(owner, repo, pullRequest.number);
+        const botComments = reviewComments.filter(
+          (c) => c.user === botUsername || c.user === `${botUsername}[bot]`
+        );
+        const threadContextByCommentId = new Map<number, string | undefined>();
+
         // Process each issue one by one using the OpenCode SDK
         for (const issue of fixableIssues) {
           console.log(`Processing issue: ${issue.type} in ${issue.file}:${issue.line}`);
 
           try {
+            const matchingComment = findMatchingComment(botComments, issue, new Set<number>());
+            let conversationContext: string | undefined;
+
+            if (matchingComment) {
+              if (!threadContextByCommentId.has(matchingComment.id)) {
+                try {
+                  const thread = await github.getReviewCommentThread(
+                    owner,
+                    repo,
+                    pullRequest.number,
+                    matchingComment.id
+                  );
+                  threadContextByCommentId.set(
+                    matchingComment.id,
+                    formatThreadContext(thread.comments)
+                  );
+                } catch (error) {
+                  console.warn(
+                    `Failed to load review thread context for comment ${matchingComment.id}:`,
+                    error
+                  );
+                  threadContextByCommentId.set(matchingComment.id, undefined);
+                }
+              }
+
+              conversationContext = threadContextByCommentId.get(matchingComment.id);
+            }
+
             // Use OpenCode SDK to fix the issue - it has full access to read/write files
-            const fix = await triageAgent.fixIssue(issue, _tempDir);
+            const fix = await triageAgent.fixIssue(issue, _tempDir, {
+              conversationContext,
+            });
 
             if (!fix.fixed) {
               if (fix.requiresClarification) {
@@ -178,9 +214,16 @@ export async function handleTriageAfterReview(
                 result.clarificationIssues,
                 bodyOnly
               );
-              await github.createIssueComment(owner, repo, pullRequest.number, summaryBody);
+              await upsertTriageSummaryComment(
+                github,
+                owner,
+                repo,
+                pullRequest.number,
+                botUsername,
+                summaryBody
+              );
               console.log(
-                `Posted triage summary: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped, ${result.clarificationIssues.length} needs clarification`
+                `Upserted triage summary: ${result.fixedIssues.length} fixed, ${result.skippedIssues.length} skipped, ${result.clarificationIssues.length} needs clarification`
               );
             }
           } else {
@@ -224,6 +267,23 @@ interface BotComment {
   user: string;
 }
 
+function formatThreadContext(
+  comments: Array<{ user: string; body: string; id: number }>
+): string | undefined {
+  const lines = comments
+    .map((comment) => {
+      const body = comment.body.trim();
+      return body ? `- ${comment.user}: ${body}` : "";
+    })
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return lines.slice(-8).join("\n");
+}
+
 // Find matching comment using flexible matching:
 // 1. Exact match: file + line
 // 2. Fuzzy match: file + issue message appears in comment body
@@ -256,6 +316,37 @@ function findMatchingComment(
   });
 
   return match;
+}
+
+function isRemediationSummaryComment(body: string): boolean {
+  return body.startsWith("## Remediation Summary");
+}
+
+async function upsertTriageSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  summaryBody: string
+): Promise<void> {
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  const existingSummary = [...issueComments]
+    .reverse()
+    .find(
+      (comment) =>
+        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
+        isRemediationSummaryComment(comment.body)
+    );
+
+  if (existingSummary) {
+    await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
+    console.log(`Updated triage summary comment ${existingSummary.id}`);
+    return;
+  }
+
+  await github.createIssueComment(owner, repo, pullNumber, summaryBody);
+  console.log("Posted triage summary comment");
 }
 
 async function replyToInlineComments(

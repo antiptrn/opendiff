@@ -7,6 +7,8 @@ interface PRContext {
   prTitle: string;
   prBody: string | null;
   sensitivity?: number; // 0-100 scale for review strictness
+  conversationContext?: string;
+  priorReviewContext?: string;
 }
 
 export interface CommentIntentResult {
@@ -24,6 +26,12 @@ export class CodeReviewAgent {
     customRules?: string | null
   ): string {
     const prBodySection = context.prBody ? `**Description:** ${context.prBody}` : "";
+    const conversationSection = context.conversationContext?.trim()
+      ? `\n## PR Conversation Context\n${context.conversationContext}\n`
+      : "";
+    const priorReviewSection = context.priorReviewContext?.trim()
+      ? `\n## Prior Review Findings\n${context.priorReviewContext}\n`
+      : "";
 
     const filesChanged = files
       .map((f) => `- ${f.filename}${f.patch ? " (has diff)" : ""}`)
@@ -44,6 +52,8 @@ export class CodeReviewAgent {
     return loadPrompt("review", {
       prTitle: context.prTitle,
       prBodySection,
+      conversationSection,
+      priorReviewSection,
       filesChanged,
       diffs,
       customRulesSection,

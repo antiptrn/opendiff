@@ -203,11 +203,12 @@ export function TeamSubscriptionCard({
           )}
         </SubscriptionInfoList>
 
+        {quotaPool && !quotaPool.hasUnlimited && quotaPool.total !== -1 && (
+          <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
+        )}
+
         {subscription?.status === "ACTIVE" && (
           <>
-            {quotaPool && !quotaPool.hasUnlimited && quotaPool.total !== -1 && (
-              <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
-            )}
             <div className="flex gap-2 mt-6">
               {subscription.cancelAtPeriodEnd ? (
                 <LoadingButton

@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createOpencode } from "@opencode-ai/sdk";
+import { loadOpencodeOauthCredentials } from "./opencode-auth";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
+type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type AiAuthMethod = "API_KEY" | "OAUTH_TOKEN";
 
@@ -134,6 +136,55 @@ function providerFromModel(model: string): "anthropic" | "openai" | null {
   return null;
 }
 
+function openAiReasoningEffortFromEnv(): OpenAiReasoningEffort | null {
+  const value = process.env.OPENCODE_REASONING_EFFORT?.trim().toLowerCase();
+  switch (value) {
+    case "none":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function providerOverridesForModel(model?: string): Record<string, unknown> | undefined {
+  if (!model) {
+    return undefined;
+  }
+
+  const provider = providerFromModel(model);
+  if (provider !== "openai") {
+    return undefined;
+  }
+
+  const reasoningEffort = openAiReasoningEffortFromEnv();
+  if (!reasoningEffort) {
+    return undefined;
+  }
+
+  const modelId = model.slice("openai/".length);
+  return {
+    openai: {
+      models: {
+        [modelId]: {
+          options: {
+            reasoningEffort,
+          },
+        },
+      },
+    },
+  };
+}
+
+function opencodeServerTimeoutMs(): number {
+  const raw = Number(process.env.OPENCODE_SERVER_TIMEOUT_MS?.trim() || "600000");
+  return Number.isFinite(raw) && raw > 0 ? raw : 600000;
+}
+
 function providerConfigFromAiConfig(aiConfig: AiRuntimeConfig): Record<string, unknown> {
   const provider = providerFromModel(aiConfig.model);
 
@@ -171,17 +222,23 @@ function providerConfigFromEnv(model?: string): Record<string, unknown> | undefi
 
   const provider = model ? providerFromModel(model) : null;
   if (provider === "openai") {
-    const token = openaiOauthToken || openaiApiKey;
+    const authFileToken = loadOpencodeOauthCredentials("openai")?.accessToken;
+    const token = openaiOauthToken || openaiApiKey || authFileToken;
     return token ? { openai: { options: { apiKey: token } } } : undefined;
   }
 
   if (provider === "anthropic") {
-    const token = anthropicOauthToken || anthropicApiKey;
+    const authFileToken = loadOpencodeOauthCredentials("anthropic")?.accessToken;
+    const token = anthropicOauthToken || anthropicApiKey || authFileToken;
     return token ? { anthropic: { options: { apiKey: token } } } : undefined;
   }
 
-  const openaiToken = openaiOauthToken || openaiApiKey;
-  const anthropicToken = anthropicOauthToken || anthropicApiKey;
+  const openaiToken =
+    openaiOauthToken || openaiApiKey || loadOpencodeOauthCredentials("openai")?.accessToken;
+  const anthropicToken =
+    anthropicOauthToken ||
+    anthropicApiKey ||
+    loadOpencodeOauthCredentials("anthropic")?.accessToken;
   const providerConfig: Record<string, unknown> = {};
 
   if (openaiToken) {
@@ -205,6 +262,12 @@ export async function runOpencodePrompt(
 
     try {
       process.chdir(input.cwd);
+
+      const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
+      const envProvider = model ? providerFromModel(model) : null;
+      const envOauthCredentials = !input.aiConfig && envProvider
+        ? loadOpencodeOauthCredentials(envProvider)
+        : null;
 
       // For BYOK OAuth users with refresh token, create a temp auth.json
       // so the opencode CodexAuthPlugin can authenticate via the Codex auth flow
@@ -234,14 +297,47 @@ export async function runOpencodePrompt(
         originalXdgDataHome = process.env.XDG_DATA_HOME;
         process.env.XDG_DATA_HOME = tempAuthDir;
       }
+      // For default runtime auth backed by a mounted OpenCode auth.json, mirror that
+      // auth into a temp XDG data dir so the SDK can use refreshable OAuth state.
+      else if (envProvider && envOauthCredentials?.refreshToken) {
+        tempAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-env-"));
+        const opencodeDir = path.join(tempAuthDir, "opencode");
+        fs.mkdirSync(opencodeDir, { recursive: true, mode: 0o700 });
 
-      const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
+        const authJson = {
+          [envProvider]: {
+            type: "oauth",
+            access: envOauthCredentials.accessToken,
+            refresh: envOauthCredentials.refreshToken,
+            accountId: envOauthCredentials.accountId || "",
+            expires: envOauthCredentials.expires || 0,
+          },
+        };
+        fs.writeFileSync(
+          path.join(opencodeDir, "auth.json"),
+          JSON.stringify(authJson, null, 2),
+          { mode: 0o600 }
+        );
+
+        originalXdgDataHome = process.env.XDG_DATA_HOME;
+        process.env.XDG_DATA_HOME = tempAuthDir;
+      }
+
       const provider = input.aiConfig
         ? providerConfigFromAiConfig(input.aiConfig)
         : providerConfigFromEnv(model);
+      const providerOverrides = providerOverridesForModel(model);
       const config = {
         ...(model ? { model } : {}),
         ...(provider ? { provider } : {}),
+        ...(providerOverrides
+          ? {
+              provider: {
+                ...((provider as Record<string, unknown> | undefined) ?? {}),
+                ...providerOverrides,
+              },
+            }
+          : {}),
         permission: permissionForMode(input.mode),
       } as Record<string, unknown>;
 
@@ -250,6 +346,7 @@ export async function runOpencodePrompt(
 
       opencode = await createOpencode({
         port: Number.isFinite(serverPort) ? serverPort : 0,
+        timeout: opencodeServerTimeoutMs(),
         config: config as Record<string, unknown>,
       });
 

@@ -53,10 +53,13 @@ services:
     ports:
       - "3000:3000"
     env_file: packages/review-agent/.env
+    environment:
+      OPENCODE_REASONING_EFFORT: medium
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}:ro
+      - /home/j/.local/share/opencode/auth.json:/tmp/opencode-auth/auth.json:ro
     labels:
       app: opendiff-prod
     init: true

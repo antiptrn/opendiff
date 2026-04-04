@@ -6,7 +6,7 @@ describe("ReviewFormatter", () => {
   const formatter = new ReviewFormatter();
 
   describe("formatReview", () => {
-    it("should convert review result to GitHub review format", () => {
+    it("should convert request-changes verdicts into conversational comment reviews", () => {
       const reviewResult: ReviewResult = {
         summary: "Found some issues that need attention.",
         issues: [
@@ -24,11 +24,34 @@ describe("ReviewFormatter", () => {
 
       const review = formatter.formatReview(reviewResult);
 
-      expect(review.event).toBe("REQUEST_CHANGES");
+      expect(review.event).toBe("COMMENT");
       expect(review.body).toContain("Found some issues");
       expect(review.comments).toHaveLength(1);
       expect(review.comments?.[0].path).toBe("src/auth.ts");
       expect(review.comments?.[0].line).toBe(10);
+    });
+
+    it("should format the review body as a current issues breakdown", () => {
+      const reviewResult: ReviewResult = {
+        summary: "Found some issues that need attention.",
+        issues: [
+          {
+            type: "security",
+            severity: "critical",
+            file: "src/auth.ts",
+            line: 10,
+            message: "SQL injection vulnerability",
+          },
+        ],
+        verdict: "comment",
+      };
+
+      const review = formatter.formatReview(reviewResult);
+
+      expect(review.body).toContain("## Status Update");
+      expect(review.body).toContain("### Overview");
+      expect(review.body).toContain("src/auth.ts:10");
+      expect(review.body).not.toContain("*Reviewed by [opendiff]");
     });
 
     it("should format approval correctly", () => {
@@ -168,6 +191,97 @@ describe("ReviewFormatter", () => {
       // Should include count summary
       expect(review.body).toMatch(/2.*critical/i);
       expect(review.body).toMatch(/1.*warning/i);
+    });
+  });
+
+  describe("formatSummaryBody", () => {
+    it("should keep the full PR summary format for the durable summary comment", () => {
+      const reviewResult: ReviewResult = {
+        summary: "Overall PR summary.",
+        issues: [
+          { type: "security", severity: "critical", file: "a.ts", line: 1, message: "x" },
+        ],
+        verdict: "comment",
+      };
+
+      const body = formatter.formatSummaryBody(reviewResult);
+
+      expect(body).toContain("## Summary");
+      expect(body).toContain("Overall PR summary.");
+      expect(body).toContain("**Rating:**");
+      expect(body).toContain("**Confidence:**");
+      expect(body).toContain("*Reviewed by [opendiff]");
+    });
+
+    it("should use non-historical headings on the first review", () => {
+      const reviewResult: ReviewResult = {
+        summary: "Initial review summary.",
+        issues: [
+          { type: "style", severity: "warning", file: "src/a.ts", line: 4, message: "x" },
+        ],
+        verdict: "comment",
+      };
+
+      const body = formatter.formatHistoricalSummaryBody(reviewResult, [], {
+        newIssues: [
+          {
+            fingerprint: "abc",
+            type: "style",
+            severity: "warning",
+            file: "src/a.ts",
+            line: 4,
+            message: "x",
+          },
+        ],
+        unresolvedHistoricalIssues: [],
+        addressedIssues: [],
+      });
+
+      expect(body).toContain("### Overview");
+      expect(body).not.toContain("### Open Issues Across Reviews");
+      expect(body).toContain("### Open Issues");
+      expect(body).not.toContain("### New Issues");
+      expect(body).toContain("**Rating:**");
+      expect(body).toContain("**Confidence:**");
+    });
+
+    it("should use historical headings on re-review", () => {
+      const reviewResult: ReviewResult = {
+        summary: "Rereview summary.",
+        issues: [
+          { type: "style", severity: "warning", file: "src/b.ts", line: 8, message: "y" },
+        ],
+        verdict: "comment",
+      };
+
+      const body = formatter.formatHistoricalSummaryBody(reviewResult, [], {
+        unresolvedHistoricalIssues: [
+          {
+            fingerprint: "old",
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/old.ts",
+            line: 2,
+            message: "old issue",
+          },
+        ],
+        newIssues: [
+          {
+            fingerprint: "new",
+            type: "style",
+            severity: "warning",
+            file: "src/b.ts",
+            line: 8,
+            message: "y",
+          },
+        ],
+        addressedIssues: [],
+      });
+
+      expect(body).toContain("### Open Issues Across Reviews");
+      expect(body).toContain("### New Issues");
+      expect(body).toContain("**Rating:**");
+      expect(body).toContain("**Confidence:**");
     });
   });
 

@@ -7,6 +7,7 @@ You are fixing a code review issue. Here are the details:
 - Line: {line}
 - Message: {message}
 {suggestionLine}
+{conversationSection}
 
 ## Instructions
 1. First, read the file {file} to understand the context
@@ -18,6 +19,8 @@ You are fixing a code review issue. Here are the details:
 3. If the suggestion says to extract code to a new file, DO IT
 
 Focus on fixing THIS issue correctly. Make the minimal changes needed but don't be afraid to create new files or modify multiple files if that's the right solution.
+
+If thread context is provided, treat it as advisory intent from the PR discussion. Follow it when it clarifies the desired fix, but use the codebase and validation as the source of truth. If the thread is ambiguous or conflicts with the code, return `needs_clarification` instead of guessing.
 
 ## Critical Output Rules
 - Do NOT provide progress updates, plans, or conversational narration.

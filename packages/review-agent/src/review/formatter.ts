@@ -1,8 +1,20 @@
 import type { CodeIssue, ReviewResult } from "../agent/types";
 import type { Review, ReviewComment } from "../github/types";
 import type { DiffPatches } from "./types";
+import { buildIssueMarker, type StoredIssueRecord } from "../utils/issue-markers";
 
 export type { DiffPatches };
+
+export interface PartitionedIssues {
+  inlineIssues: CodeIssue[];
+  bodyOnlyIssues: CodeIssue[];
+}
+
+export interface SummaryHistory {
+  unresolvedHistoricalIssues?: StoredIssueRecord[];
+  newIssues?: StoredIssueRecord[];
+  addressedIssues?: StoredIssueRecord[];
+}
 
 const SEVERITY_EMOJI = {
   critical: "🚨",
@@ -72,14 +84,11 @@ function parseValidLinesFromPatch(patch: string): Set<number> {
 }
 
 export class ReviewFormatter {
-  formatReview(result: ReviewResult, patches?: DiffPatches): Review {
-    const event = this.mapVerdict(result.verdict);
-
-    // Separate issues into those that can be inline comments and those that can't
+  partitionIssues(issues: CodeIssue[], patches?: DiffPatches): PartitionedIssues {
     const inlineIssues: CodeIssue[] = [];
     const bodyOnlyIssues: CodeIssue[] = [];
 
-    for (const issue of result.issues) {
+    for (const issue of issues) {
       if (!patches) {
         // No patches provided, all issues go inline
         inlineIssues.push(issue);
@@ -101,7 +110,70 @@ export class ReviewFormatter {
       }
     }
 
-    const body = this.formatSummary(result, bodyOnlyIssues);
+    return { inlineIssues, bodyOnlyIssues };
+  }
+
+  formatSummaryBody(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
+    return this.formatSummary(result, bodyOnlyIssues);
+  }
+
+  formatReviewBody(
+    result: ReviewResult,
+    inlineIssues: CodeIssue[] = [],
+    bodyOnlyIssues: CodeIssue[] = []
+  ): string {
+    const counts = this.countBySeverity(result.issues);
+
+    if (result.issues.length === 0) {
+      return `## Status Update\n\n${result.summary}\n\nNo open issues in the current review.`;
+    }
+
+    let body = "## Status Update\n\n";
+    body += `${result.summary}\n\n`;
+    body += "### Overview\n\n";
+
+    if (counts.critical > 0) {
+      body += `- 🚨 ${counts.critical} critical\n`;
+    }
+    if (counts.warning > 0) {
+      body += `- ⚠️ ${counts.warning} warning${counts.warning > 1 ? "s" : ""}\n`;
+    }
+    if (counts.suggestion > 0) {
+      body += `- 💡 ${counts.suggestion} suggestion${counts.suggestion > 1 ? "s" : ""}\n`;
+    }
+
+    if (inlineIssues.length > 0) {
+      body += "\n### Highlighted In This Review\n\n";
+      for (const issue of inlineIssues.slice(0, 5)) {
+        body += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+      }
+      if (inlineIssues.length > 5) {
+        body += `- ...and ${inlineIssues.length - 5} more inline issue${inlineIssues.length - 5 > 1 ? "s" : ""}\n`;
+      }
+    }
+
+    if (bodyOnlyIssues.length > 0) {
+      body += "\n### Kept In Summary Only\n\n";
+      for (const issue of bodyOnlyIssues.slice(0, 5)) {
+        body += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+      }
+      if (bodyOnlyIssues.length > 5) {
+        body += `- ...and ${bodyOnlyIssues.length - 5} more summary-only issue${bodyOnlyIssues.length - 5 > 1 ? "s" : ""}\n`;
+      }
+    }
+
+    const issueMarkers = [...inlineIssues, ...bodyOnlyIssues].map((issue) => buildIssueMarker(issue));
+    if (issueMarkers.length > 0) {
+      body += `\n\n${issueMarkers.join("\n")}`;
+    }
+
+    return body.trim();
+  }
+
+  formatReview(result: ReviewResult, patches?: DiffPatches): Review {
+    const event = this.mapVerdict(result.verdict);
+    const { inlineIssues, bodyOnlyIssues } = this.partitionIssues(result.issues, patches);
+    const body = this.formatReviewBody(result, inlineIssues, bodyOnlyIssues);
 
     // Only include comments if there are valid issues
     const comments =
@@ -135,6 +207,8 @@ export class ReviewFormatter {
       body += `\n\n**Suggestion:** ${issue.suggestion}`;
     }
 
+    body += `\n\n${buildIssueMarker(issue)}`;
+
     const comment: ReviewComment = {
       path: issue.file,
       line: issue.line,
@@ -151,23 +225,36 @@ export class ReviewFormatter {
   }
 
   private mapVerdict(verdict: ReviewResult["verdict"]): Review["event"] {
-    switch (verdict) {
-      case "approve":
-        return "APPROVE";
-      case "request_changes":
-        return "REQUEST_CHANGES";
-      default:
-        return "COMMENT";
+    if (verdict === "approve") {
+      return "APPROVE";
     }
+
+    return "COMMENT";
   }
 
-  private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
-    const counts = this.countBySeverity(result.issues);
-    let summary = "## Review Summary\n\n";
+  formatHistoricalSummaryBody(
+    result: ReviewResult,
+    bodyOnlyIssues: CodeIssue[] = [],
+    history?: SummaryHistory
+  ): string {
+    const hasHistoricalContext =
+      (history?.unresolvedHistoricalIssues?.length ?? 0) > 0 ||
+      (history?.addressedIssues?.length ?? 0) > 0;
+    const openIssues = [
+      ...(history?.unresolvedHistoricalIssues ?? []),
+      ...(history?.newIssues ?? []).filter(
+        (issue) =>
+          !(history?.unresolvedHistoricalIssues ?? []).some(
+            (existing) => existing.fingerprint === issue.fingerprint
+          )
+      ),
+    ];
+    const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
+    let summary = "## Summary\n\n";
     summary += `${result.summary}\n\n`;
 
-    if (result.issues.length > 0) {
-      summary += "### Issues\n\n";
+    if (openIssues.length > 0 || result.issues.length > 0) {
+      summary += `### ${hasHistoricalContext ? "Open Issues Across Reviews" : "Overview"}\n\n`;
 
       if (counts.critical > 0) {
         summary += `- 🚨 **${counts.critical} critical** issue${counts.critical > 1 ? "s" : ""}\n`;
@@ -177,6 +264,36 @@ export class ReviewFormatter {
       }
       if (counts.suggestion > 0) {
         summary += `- 💡 **${counts.suggestion} suggestion${counts.suggestion > 1 ? "s" : ""}**\n`;
+      }
+    }
+
+    if (history?.unresolvedHistoricalIssues && history.unresolvedHistoricalIssues.length > 0) {
+      summary += "\n### Still Open From Earlier Reviews\n\n";
+      for (const issue of history.unresolvedHistoricalIssues.slice(0, 10)) {
+        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+      }
+      if (history.unresolvedHistoricalIssues.length > 10) {
+        summary += `- ...and ${history.unresolvedHistoricalIssues.length - 10} more\n`;
+      }
+    }
+
+    if (history?.newIssues && history.newIssues.length > 0) {
+      summary += `\n### ${hasHistoricalContext ? "New Issues" : "Open Issues"}\n\n`;
+      for (const issue of history.newIssues.slice(0, 10)) {
+        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+      }
+      if (history.newIssues.length > 10) {
+        summary += `- ...and ${history.newIssues.length - 10} more\n`;
+      }
+    }
+
+    if (history?.addressedIssues && history.addressedIssues.length > 0) {
+      summary += "\n### Addressed Since Earlier Reviews\n\n";
+      for (const issue of history.addressedIssues.slice(0, 10)) {
+        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+      }
+      if (history.addressedIssues.length > 10) {
+        summary += `- ...and ${history.addressedIssues.length - 10} more\n`;
       }
     }
 
@@ -193,15 +310,28 @@ export class ReviewFormatter {
         if (issue.suggestion) {
           summary += `**Suggestion:** ${issue.suggestion}\n\n`;
         }
+        summary += `${buildIssueMarker(issue)}\n\n`;
       }
     }
 
-    summary += "\n---\n*Reviewed by [opendiff](https://opendiff.dev)*";
+    const rating = this.calculateRatingScore(result, history);
+    const confidence = this.calculateConfidenceScore(result, history);
+
+    summary += "\n---\n";
+    summary += `**Rating:** ${rating}/100\n`;
+    summary += `**Confidence:** ${confidence}/100\n\n`;
+    summary += "*Reviewed by [opendiff](https://opendiff.dev)*";
 
     return summary;
   }
 
-  private countBySeverity(issues: CodeIssue[]): Record<CodeIssue["severity"], number> {
+  private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
+    return this.formatHistoricalSummaryBody(result, bodyOnlyIssues);
+  }
+
+  private countBySeverity(
+    issues: Array<Pick<CodeIssue, "severity">>
+  ): Record<CodeIssue["severity"], number> {
     return issues.reduce(
       (acc, issue) => {
         acc[issue.severity]++;
@@ -209,5 +339,59 @@ export class ReviewFormatter {
       },
       { critical: 0, warning: 0, suggestion: 0 }
     );
+  }
+
+  private calculateConfidenceScore(result: ReviewResult, history?: SummaryHistory): number {
+    let score = 88;
+
+    for (const issue of result.issues) {
+      switch (issue.severity) {
+        case "critical":
+          score -= 12;
+          break;
+        case "warning":
+          score -= 5;
+          break;
+        case "suggestion":
+          score -= 2;
+          break;
+      }
+    }
+
+    score -= Math.min((history?.unresolvedHistoricalIssues?.length ?? 0) * 2, 10);
+    score += Math.min((history?.addressedIssues?.length ?? 0) * 2, 6);
+
+    if (result.verdict === "approve" && result.issues.length === 0) {
+      score += 6;
+    }
+
+    return Math.max(35, Math.min(99, score));
+  }
+
+  private calculateRatingScore(result: ReviewResult, history?: SummaryHistory): number {
+    let score = 92;
+
+    for (const issue of result.issues) {
+      switch (issue.severity) {
+        case "critical":
+          score -= 20;
+          break;
+        case "warning":
+          score -= 8;
+          break;
+        case "suggestion":
+          score -= 3;
+          break;
+      }
+    }
+
+    score -= Math.min((history?.unresolvedHistoricalIssues?.length ?? 0) * 3, 15);
+    score += Math.min((history?.addressedIssues?.length ?? 0) * 2, 8);
+
+    if (result.verdict === "approve" && result.issues.length === 0) {
+      score += 5;
+    }
+
+    return Math.max(1, Math.min(100, score));
   }
 }

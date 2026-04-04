@@ -7,6 +7,12 @@ import type { DiffPatches } from "../review/types";
 import { withClonedRepo } from "../utils/git";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import {
+  extractFingerprints,
+  extractStoredIssueRecords,
+  toStoredIssueRecord,
+  type StoredIssueRecord,
+} from "../utils/issue-markers";
+import {
   acquireExecutionLock,
   getClarificationLockByThread,
   getSuppressedIssueFingerprints,
@@ -117,6 +123,302 @@ interface TriageOptions {
   botUsername: string;
 }
 
+function isReviewSummaryComment(body: string): boolean {
+  return body.startsWith("## Summary") || body.startsWith("## Review Summary");
+}
+
+async function upsertReviewSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  summaryBody: string
+): Promise<void> {
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  const existingSummary = [...issueComments]
+    .reverse()
+    .find(
+      (comment) =>
+        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
+        isReviewSummaryComment(comment.body)
+    );
+
+  if (existingSummary) {
+    await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
+    console.log(`Updated review summary comment ${existingSummary.id}`);
+    return;
+  }
+
+  await github.createIssueComment(owner, repo, pullNumber, summaryBody);
+  console.log("Posted review summary comment");
+}
+
+function shouldSubmitReview(review: { event: "APPROVE" | "COMMENT"; comments?: unknown[] }): boolean {
+  if (review.comments && review.comments.length > 0) {
+    return true;
+  }
+
+  return review.event !== "COMMENT";
+}
+
+async function getExistingMentionedIssueFingerprints(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string
+): Promise<Set<string>> {
+  const [reviewComments, issueComments] = await Promise.all([
+    github.getReviewComments(owner, repo, pullNumber),
+    github.getIssueComments(owner, repo, pullNumber),
+  ]);
+
+  const botUsers = new Set([botUsername, `${botUsername}[bot]`]);
+  const fingerprints = new Set<string>();
+
+  for (const comment of reviewComments) {
+    if (!botUsers.has(comment.user)) continue;
+    for (const fingerprint of extractFingerprints(comment.body)) {
+      fingerprints.add(fingerprint);
+    }
+  }
+
+  for (const comment of issueComments) {
+    if (!botUsers.has(comment.user)) continue;
+    for (const fingerprint of extractFingerprints(comment.body)) {
+      fingerprints.add(fingerprint);
+    }
+  }
+
+  return fingerprints;
+}
+
+async function getHistoricalIssues(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string
+): Promise<Map<string, StoredIssueRecord>> {
+  const [reviewComments, issueComments] = await Promise.all([
+    github.getReviewComments(owner, repo, pullNumber),
+    github.getIssueComments(owner, repo, pullNumber),
+  ]);
+
+  const botUsers = new Set([botUsername, `${botUsername}[bot]`]);
+  const issues = new Map<string, StoredIssueRecord>();
+
+  for (const comment of reviewComments) {
+    if (!botUsers.has(comment.user)) continue;
+    for (const issue of extractStoredIssueRecords(comment.body)) {
+      issues.set(issue.fingerprint, issue);
+    }
+  }
+
+  for (const comment of issueComments) {
+    if (!botUsers.has(comment.user)) continue;
+    for (const issue of extractStoredIssueRecords(comment.body)) {
+      issues.set(issue.fingerprint, issue);
+    }
+  }
+
+  return issues;
+}
+
+async function buildPullRequestConversationContext(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<string> {
+  const [issueComments, reviewComments, reviews] = await Promise.all([
+    github.getIssueComments(owner, repo, pullNumber),
+    github.getReviewComments(owner, repo, pullNumber),
+    github.getPullRequestReviews(owner, repo, pullNumber),
+  ]);
+
+  const events = [
+    ...issueComments.map((comment) => ({
+      createdAt: comment.createdAt || "",
+      text: `[PR comment] ${comment.user}: ${comment.body}`,
+    })),
+    ...reviewComments.map((comment) => ({
+      createdAt: comment.createdAt || "",
+      text: `[Inline review comment] ${comment.user} on ${comment.path}:${comment.line ?? "?"}: ${comment.body}`,
+    })),
+    ...reviews
+      .filter((review) => review.body.trim())
+      .map((review) => ({
+        createdAt: review.submittedAt || "",
+        text: `[Review body - ${review.state}] ${review.user}: ${review.body}`,
+      })),
+  ]
+    .filter((event) => event.text.trim())
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  if (events.length === 0) {
+    return "";
+  }
+
+  const lines = events.slice(-40).map((event) => event.text);
+  return lines.join("\n\n");
+}
+
+function buildReviewHistoryContext(
+  historicalIssues: Map<string, StoredIssueRecord>,
+  currentIssueMap: Map<string, StoredIssueRecord>
+): {
+  unresolvedHistoricalIssues: StoredIssueRecord[];
+  newIssues: StoredIssueRecord[];
+  addressedIssues: StoredIssueRecord[];
+  promptText: string;
+} {
+  const unresolvedHistoricalIssues: StoredIssueRecord[] = [];
+  const addressedIssues: StoredIssueRecord[] = [];
+  const newIssues: StoredIssueRecord[] = [];
+
+  for (const [fingerprint, issue] of historicalIssues) {
+    if (currentIssueMap.has(fingerprint)) {
+      unresolvedHistoricalIssues.push(issue);
+    } else {
+      addressedIssues.push(issue);
+    }
+  }
+
+  for (const [fingerprint, issue] of currentIssueMap) {
+    if (!historicalIssues.has(fingerprint)) {
+      newIssues.push(issue);
+    }
+  }
+
+  const lines: string[] = [];
+  if (unresolvedHistoricalIssues.length > 0) {
+    lines.push("Still unresolved from earlier reviews:");
+    for (const issue of unresolvedHistoricalIssues.slice(0, 10)) {
+      lines.push(`- ${issue.file}:${issue.line} ${issue.message}`);
+    }
+  }
+  if (addressedIssues.length > 0) {
+    lines.push("Already addressed since earlier reviews:");
+    for (const issue of addressedIssues.slice(0, 10)) {
+      lines.push(`- ${issue.file}:${issue.line} ${issue.message}`);
+    }
+  }
+
+  return {
+    unresolvedHistoricalIssues,
+    newIssues,
+    addressedIssues,
+    promptText: lines.join("\n"),
+  };
+}
+
+function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssueRecord>): string {
+  if (historicalIssues.size === 0) {
+    return "";
+  }
+
+  const lines = ["Previously reported findings on this PR:"];
+  for (const issue of [...historicalIssues.values()].slice(-20)) {
+    lines.push(`- ${issue.file}:${issue.line} ${issue.message}`);
+  }
+  return lines.join("\n");
+}
+
+function resolvedReviewBody(): string {
+  return "Resolved in a later revision. See the living `Summary` comment for the current state of this PR.";
+}
+
+async function cleanupResolvedPreviousReviews(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  unresolvedIssueFingerprints: Set<string>
+): Promise<void> {
+  const [reviews, reviewComments] = await Promise.all([
+    github.getPullRequestReviews(owner, repo, pullNumber),
+    github.getReviewComments(owner, repo, pullNumber),
+  ]);
+
+  const botUsers = new Set([botUsername, `${botUsername}[bot]`]);
+  const commentsByReviewId = new Map<number, typeof reviewComments>();
+
+  for (const comment of reviewComments) {
+    if (!comment.pullRequestReviewId || !botUsers.has(comment.user)) {
+      continue;
+    }
+    const existing = commentsByReviewId.get(comment.pullRequestReviewId) ?? [];
+    existing.push(comment);
+    commentsByReviewId.set(comment.pullRequestReviewId, existing);
+  }
+
+  for (const review of reviews) {
+    if (!botUsers.has(review.user)) {
+      continue;
+    }
+
+    const relatedComments = commentsByReviewId.get(review.id) ?? [];
+    const issueComments = relatedComments.filter((comment) => extractFingerprints(comment.body).length > 0);
+    const reviewFingerprints = new Set<string>(extractFingerprints(review.body));
+    const commentFingerprints = issueComments.flatMap((comment) => extractFingerprints(comment.body));
+    const allFingerprints = new Set<string>([...reviewFingerprints, ...commentFingerprints]);
+
+    if (allFingerprints.size === 0) {
+      continue;
+    }
+
+    const hasUnresolvedIssues = [...allFingerprints].some((fingerprint) =>
+      unresolvedIssueFingerprints.has(fingerprint)
+    );
+    if (hasUnresolvedIssues) {
+      continue;
+    }
+
+    for (const comment of issueComments) {
+      const thread = await github.getReviewCommentThread(owner, repo, pullNumber, comment.id);
+      const hasExternalReplies = thread.comments.some(
+        (threadComment) => threadComment.id !== comment.id && !botUsers.has(threadComment.user)
+      );
+
+      if (hasExternalReplies) {
+        console.log(
+          `Preserved resolved review comment ${comment.id} because the thread has non-bot replies`
+        );
+        continue;
+      }
+
+      for (const threadComment of [...thread.comments].reverse()) {
+        if (!botUsers.has(threadComment.user)) {
+          continue;
+        }
+
+        try {
+          await github.deleteReviewComment(owner, repo, threadComment.id);
+          console.log(`Deleted resolved review comment ${threadComment.id}`);
+        } catch (error) {
+          console.warn(`Failed to delete resolved review comment ${threadComment.id}:`, error);
+        }
+      }
+    }
+
+    try {
+      await github.updatePullRequestReview(
+        owner,
+        repo,
+        pullNumber,
+        review.id,
+        resolvedReviewBody()
+      );
+      console.log(`Minimized resolved review body ${review.id}`);
+    } catch (error) {
+      console.warn(`Failed to minimize resolved review body ${review.id}:`, error);
+    }
+  }
+}
+
 export class WebhookHandler {
   constructor(
     private github: GitHubClient,
@@ -141,7 +443,7 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    const reviewResult = await this.performReview(payload, customRules, sensitivity);
+    const reviewResult = await this.performReview(payload, botUsername, customRules, sensitivity);
 
     // If review succeeded and triage is enabled, run auto-fix
     if (
@@ -197,11 +499,12 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload, customRules, sensitivity);
+    return this.performReview(payload, botUsername, customRules, sensitivity);
   }
 
   private async performReview(
     payload: WebhookPayload,
+    botUsername: string,
     customRules?: string | null,
     sensitivity?: number
   ): Promise<HandlerResult> {
@@ -246,12 +549,27 @@ export class WebhookHandler {
           }));
 
           // Run AI review with OpenCode (agent will read files itself)
+          const conversationContext = await buildPullRequestConversationContext(
+            this.github,
+            owner,
+            repo,
+            prNumber
+          );
+          const historicalIssues = await getHistoricalIssues(
+            this.github,
+            owner,
+            repo,
+            prNumber,
+            botUsername
+          );
           const reviewResult = await this.agent.reviewFiles(
             filesToReview,
             {
               prTitle: pull_request.title,
               prBody: pull_request.body,
               sensitivity,
+              conversationContext,
+              priorReviewContext: buildPriorReviewPromptContext(historicalIssues),
             },
             tempDir,
             customRules
@@ -266,9 +584,19 @@ export class WebhookHandler {
             prNumber,
             issueFingerprints
           );
+          const existingMentioned = await getExistingMentionedIssueFingerprints(
+            this.github,
+            owner,
+            repo,
+            prNumber,
+            botUsername
+          );
 
           const filteredIssues = reviewResult.issues.filter(
-            (issue) => !suppressed.has(buildIssueFingerprint(issue))
+            (issue) => {
+              const fingerprint = buildIssueFingerprint(issue);
+              return !suppressed.has(fingerprint) && !existingMentioned.has(fingerprint);
+            }
           );
 
           if (suppressed.size > 0) {
@@ -276,11 +604,36 @@ export class WebhookHandler {
               `Suppressed ${suppressed.size} clarification-locked issue(s) for ${owner}/${repo}#${prNumber}`
             );
           }
+          if (existingMentioned.size > 0) {
+            const duplicateCount = reviewResult.issues.filter((issue) =>
+              existingMentioned.has(buildIssueFingerprint(issue))
+            ).length;
+            if (duplicateCount > 0) {
+              console.log(
+                `Suppressed ${duplicateCount} previously mentioned unresolved issue(s) for ${owner}/${repo}#${prNumber}`
+              );
+            }
+          }
 
           const effectiveReviewResult = {
             ...reviewResult,
             issues: filteredIssues,
           };
+          const currentIssueMap = new Map(
+            reviewResult.issues
+              .filter((issue) => !suppressed.has(buildIssueFingerprint(issue)))
+              .map((issue) => [buildIssueFingerprint(issue), toStoredIssueRecord(issue)])
+          );
+          const history = buildReviewHistoryContext(historicalIssues, currentIssueMap);
+
+          await cleanupResolvedPreviousReviews(
+            this.github,
+            owner,
+            repo,
+            prNumber,
+            botUsername,
+            new Set(history.unresolvedHistoricalIssues.map((issue) => issue.fingerprint))
+          );
 
           // Build patches map for filtering inline comments to valid diff lines
           const patches: DiffPatches = {};
@@ -291,20 +644,118 @@ export class WebhookHandler {
           }
 
           // Format for GitHub (with patches to filter comments to valid lines)
-          const review = this.formatter.formatReview(effectiveReviewResult, patches);
-
-          // Submit review
-          const { id } = await this.github.submitReview(
-            owner,
-            repo,
-            prNumber,
-            pull_request.head.sha,
-            review
+          const { inlineIssues, bodyOnlyIssues } = this.formatter.partitionIssues(
+            effectiveReviewResult.issues,
+            patches
           );
+          const review = this.formatter.formatReview(effectiveReviewResult, patches);
+          const inlineComments = inlineIssues.map((issue) => this.formatter.formatComment(issue));
+
+          let validInlineComments = inlineComments;
+          let invalidInlineIssues: CodeIssue[] = [];
+
+          if (inlineComments.length > 0) {
+            const { validComments, invalidComments } = await this.github.validateReviewComments(
+              owner,
+              repo,
+              prNumber,
+              pull_request.head.sha,
+              inlineComments
+            );
+
+            validInlineComments = validComments;
+            invalidInlineIssues = invalidComments
+              .map((comment) =>
+                inlineIssues.find(
+                  (issue) =>
+                    issue.file === comment.path &&
+                    issue.line === comment.line &&
+                    this.formatter.formatComment(issue).body === comment.body
+                )
+              )
+              .filter((issue): issue is CodeIssue => issue !== undefined);
+
+            if (invalidInlineIssues.length > 0) {
+              console.warn(
+                `Downgrading ${invalidInlineIssues.length} inline issue(s) to summary-only because GitHub could not resolve their diff lines`
+              );
+              for (const issue of invalidInlineIssues) {
+                console.warn(`Unresolvable review line: ${issue.file}:${issue.line}`);
+              }
+            }
+          }
+
+          const summaryBody = this.formatter.formatSummaryBody(effectiveReviewResult, [
+            ...bodyOnlyIssues,
+            ...invalidInlineIssues,
+          ]);
+          const historicalSummaryBody = this.formatter.formatHistoricalSummaryBody(
+            {
+              ...effectiveReviewResult,
+              issues: [
+                ...history.unresolvedHistoricalIssues.map((issue) => ({
+                  ...issue,
+                  description: issue.message,
+                })),
+                ...history.newIssues.map((issue) => ({
+                  ...issue,
+                  description: issue.message,
+                })),
+              ] as CodeIssue[],
+            },
+            [...bodyOnlyIssues, ...invalidInlineIssues],
+            history
+          );
+          const reviewBody = this.formatter.formatReviewBody(
+            effectiveReviewResult,
+            inlineIssues.filter(
+              (issue) =>
+                !invalidInlineIssues.some(
+                  (invalidIssue) =>
+                    invalidIssue.file === issue.file &&
+                    invalidIssue.line === issue.line &&
+                    invalidIssue.message === issue.message
+                )
+            ),
+            [...bodyOnlyIssues, ...invalidInlineIssues]
+          );
+
+          try {
+            await upsertReviewSummaryComment(
+              this.github,
+              owner,
+              repo,
+              prNumber,
+              botUsername,
+              historicalSummaryBody || summaryBody
+            );
+          } catch (error) {
+            console.error("Failed to upsert review summary comment:", error);
+          }
+
+          let reviewId: number | undefined;
+          const resolvedComments = validInlineComments.length > 0 ? validInlineComments : undefined;
+
+          if (shouldSubmitReview({ ...review, comments: resolvedComments })) {
+            const { id } = await this.github.submitReview(
+              owner,
+              repo,
+              prNumber,
+              pull_request.head.sha,
+              {
+                ...review,
+                body: reviewBody,
+                comments: resolvedComments,
+              }
+            );
+            reviewId = id;
+          } else {
+            console.log("Skipped GitHub review submission; summary updated with no inline findings");
+          }
 
           return {
             success: true,
-            reviewId: id,
+            reviewId,
             issues: effectiveReviewResult.issues,
             tokensUsed: reviewResult.tokensUsed,
           } as HandlerResult;
