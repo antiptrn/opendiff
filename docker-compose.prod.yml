@@ -54,6 +54,7 @@ services:
       - "3000:3000"
     env_file: packages/review-agent/.env
     environment:
+      GITHUB_PRIVATE_KEY_PATH: ${GITHUB_PRIVATE_KEY_PATH:?Set GITHUB_PRIVATE_KEY_PATH}
       OPENCODE_REASONING_EFFORT: medium
     extra_hosts:
       - "host.docker.internal:host-gateway"
