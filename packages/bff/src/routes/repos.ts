@@ -4,6 +4,7 @@ import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../mid
 import { logAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
 import { fetchRepoMetadata } from "../utils/github-metadata";
+import { fetchGitHubRepoByFullName, fetchGitHubRepos } from "../utils/github-repos";
 
 // Helper function to fetch a file from GitHub
 async function fetchGitHubFile(
@@ -40,38 +41,27 @@ reposRoutes.get("/repos", requireAuth(), async (c) => {
     // Check if Google user, use stored githubAccessToken
     const isGitHubToken = /^(gho_|ghu_|ghp_|github_pat_)/.test(token);
     const githubToken = isGitHubToken ? token : user.githubAccessToken || null;
-    if (!isGitHubToken && !user.githubAccessToken) {
+    if (!githubToken) {
       return c.json({ error: "GitHub not linked", code: "GITHUB_NOT_LINKED" }, 400);
     }
 
-    // Fetch user's repos (includes repos they have access to)
-    const reposResponse = await fetch(
-      "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
-      {
-        headers: {
-          Authorization: `Bearer ${githubToken}`,
-          Accept: "application/vnd.github+json",
-        },
-      }
-    );
-
-    if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, 500);
+    const exactRepo = await fetchGitHubRepoByFullName(githubToken, query);
+    if (query.includes("/")) {
+      console.log(`[repos] Search query="${query}" exactMatch=${exactRepo ? "hit" : "miss"}`);
     }
-
-    const repos = await reposResponse.json();
-
-    // Filter by search query if provided
-    const filteredRepos = query
-      ? repos.filter((repo: { full_name: string }) =>
-          repo.full_name.toLowerCase().includes(query.toLowerCase())
-        )
-      : repos;
+    const filteredRepos = exactRepo
+      ? [exactRepo]
+      : await fetchGitHubRepos(githubToken, {
+          query,
+          sort: "updated",
+          targetCount: 50,
+        });
 
     // Return simplified repo data
     return c.json(
-      filteredRepos.slice(0, 50).map(
+      filteredRepos.map(
         (repo: {
+          id: number;
           full_name: string;
           owner: { login: string };
           name: string;
@@ -80,6 +70,7 @@ reposRoutes.get("/repos", requireAuth(), async (c) => {
           pushed_at: string | null;
           description: string | null;
         }) => ({
+          id: repo.id,
           full_name: repo.full_name,
           owner: repo.owner.login,
           name: repo.name,
@@ -107,22 +98,11 @@ reposRoutes.get("/settings", async (c) => {
   const token = authHeader.slice(7);
 
   try {
-    // Get repos the user has access to
-    const reposResponse = await fetch(
-      "https://api.github.com/user/repos?per_page=100&affiliation=owner,collaborator,organization_member",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-        },
-      }
-    );
-
-    if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, 500);
-    }
-
-    const repos = await reposResponse.json();
+    const repos = await fetchGitHubRepos(token, {
+      sort: "updated",
+      maxPages: 10,
+      targetCount: 1000,
+    });
     const repoIdentifiers = repos.map((r: { owner: { login: string }; name: string }) => ({
       owner: r.owner.login,
       repo: r.name,

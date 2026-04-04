@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../middleware/auth";
+import { fetchGitHubRepos } from "../utils/github-repos";
 
 const statsRoutes = new Hono();
 
@@ -92,21 +93,11 @@ statsRoutes.get("/", requireAuth(), async (c) => {
     }
 
     // User has GitHub access - use GitHub API
-    const reposResponse = await fetch(
-      "https://api.github.com/user/repos?per_page=100&affiliation=owner,collaborator,organization_member",
-      {
-        headers: {
-          Authorization: `Bearer ${githubToken}`,
-          Accept: "application/vnd.github+json",
-        },
-      }
-    );
-
-    if (!reposResponse.ok) {
-      return c.json({ error: "Failed to fetch repos" }, 500);
-    }
-
-    const repos = await reposResponse.json();
+    const repos = await fetchGitHubRepos(githubToken as string, {
+      sort: "updated",
+      maxPages: 10,
+      targetCount: 1000,
+    });
     const repoNames = repos.map((r: { owner: { login: string }; name: string }) => ({
       owner: r.owner.login,
       repo: r.name,
