@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodeReviewAgent } from "../agent/reviewer";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
+import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 
 // Mock simple-git before importing handler
 mock.module("simple-git", () => ({
@@ -183,6 +184,15 @@ describe("WebhookHandler", () => {
       getPullRequestFiles: vi.fn(),
       getFileContent: vi.fn(),
       submitReview: vi.fn(),
+      validateReviewComments: vi.fn().mockImplementation(async (_owner, _repo, _pull, _commit, comments) => ({
+        validComments: comments,
+        invalidComments: [],
+      })),
+      getPullRequestReviews: vi.fn().mockResolvedValue([]),
+      getReviewComments: vi.fn().mockResolvedValue([]),
+      getIssueComments: vi.fn().mockResolvedValue([]),
+      createIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
+      updateIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
       getInstallationToken: vi.fn().mockResolvedValue("fake-token"),
     };
 
@@ -192,6 +202,11 @@ describe("WebhookHandler", () => {
 
     mockFormatter = {
       formatReview: vi.fn(),
+      partitionIssues: vi.fn().mockReturnValue({ inlineIssues: [], bodyOnlyIssues: [] }),
+      formatComment: vi.fn(),
+      formatSummaryBody: vi.fn().mockReturnValue("Review body"),
+      formatHistoricalSummaryBody: vi.fn().mockReturnValue("Review body"),
+      formatReviewBody: vi.fn().mockReturnValue("Current review body"),
     };
 
     handler = new WebhookHandler(
@@ -250,6 +265,259 @@ describe("WebhookHandler", () => {
       expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
       expect(mockGitHubClient.submitReview).toHaveBeenCalled();
+      expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "Review body"
+      );
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "Current review body",
+        })
+      );
+    });
+
+    it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n context\n+new\n+another",
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Found issues.",
+        issues: [
+          {
+            type: "style",
+            severity: "warning",
+            file: "src/index.ts",
+            line: 2,
+            message: "Resolvable issue",
+          },
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/index.ts",
+            line: 3,
+            message: "Unresolvable issue",
+          },
+        ],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nFound issues.",
+        event: "COMMENT",
+        comments: [
+          { path: "src/index.ts", line: 2, body: "comment-1" },
+          { path: "src/index.ts", line: 3, body: "comment-2" },
+        ],
+      });
+      mockFormatter.partitionIssues = vi.fn().mockReturnValue({
+        inlineIssues: [
+          {
+            type: "style",
+            severity: "warning",
+            file: "src/index.ts",
+            line: 2,
+            message: "Resolvable issue",
+          },
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/index.ts",
+            line: 3,
+            message: "Unresolvable issue",
+          },
+        ],
+        bodyOnlyIssues: [],
+      });
+      mockFormatter.formatComment = vi
+        .fn()
+        .mockImplementation((issue) =>
+          issue.line === 2
+            ? { path: "src/index.ts", line: 2, body: "comment-1" }
+            : { path: "src/index.ts", line: 3, body: "comment-2" }
+        );
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary.");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary.");
+      mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Current Review\n\nFound issues.\n\n### Open Issues");
+      mockGitHubClient.validateReviewComments.mockResolvedValue({
+        validComments: [{ path: "src/index.ts", line: 2, body: "comment-1" }],
+        invalidComments: [{ path: "src/index.ts", line: 3, body: "comment-2" }],
+      });
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 130 });
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(mockFormatter.formatSummaryBody).toHaveBeenCalled();
+      expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary."
+      );
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "## Current Review\n\nFound issues.\n\n### Open Issues",
+          comments: [{ path: "src/index.ts", line: 2, body: "comment-1" }],
+        })
+      );
+    });
+
+    it("should avoid creating a GitHub review when there are no inline findings and verdict is comment", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Needs follow-up but no inline diff anchors",
+        issues: [],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nNeeds follow-up but no inline diff anchors",
+        event: "COMMENT",
+      });
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.reviewId).toBeUndefined();
+      expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "## Review Summary\n\nNeeds follow-up but no inline diff anchors"
+      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+    });
+
+    it("should suppress issues that were already mentioned in existing bot comments", async () => {
+      const repeatedIssue = {
+        type: "style" as const,
+        severity: "warning" as const,
+        file: "src/index.ts",
+        line: 5,
+        message: "Repeated issue",
+      };
+      const fingerprint = buildIssueFingerprint(repeatedIssue);
+
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+        },
+      ]);
+      mockGitHubClient.getReviewComments.mockResolvedValue([
+        {
+          id: 201,
+          nodeId: "node-201",
+          path: "src/index.ts",
+          line: 10,
+          user: "opendiff-bot",
+          body: `Existing comment\n\n<!-- opendiff-fingerprint:${fingerprint} -->`,
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Found issues.",
+        issues: [repeatedIssue],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nNo new issues.",
+        event: "COMMENT",
+      });
+      mockFormatter.partitionIssues = vi.fn().mockReturnValue({ inlineIssues: [], bodyOnlyIssues: [] });
+      mockFormatter.formatSummaryBody = vi.fn().mockReturnValue("## Review Summary\n\nNo new issues.");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNo new issues.");
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.issues).toEqual([]);
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "## Review Summary\n\nNo new issues."
+      );
+    });
+
+    it("should update the existing review summary comment on re-review", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockGitHubClient.getIssueComments.mockResolvedValue([
+        {
+          id: 101,
+          user: "opendiff-bot",
+          body: "## Review Summary\n\nOld summary",
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Updated summary",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nNew summary",
+        event: "APPROVE",
+      });
+      mockFormatter.formatSummaryBody = vi.fn().mockReturnValue("## Review Summary\n\nNew summary");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNew summary");
+      mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Current Review\n\nNew summary");
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 129 });
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        101,
+        "## Review Summary\n\nNew summary"
+      );
+      expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
     });
 
     it("should skip if reviewer is not the bot", async () => {

@@ -12,6 +12,10 @@ interface FixResult {
   clarificationQuestion?: string;
 }
 
+interface FixIssueContext {
+  conversationContext?: string;
+}
+
 interface ParsedFixResponse {
   status: "fixed" | "needs_clarification" | "cannot_fix";
   explanation: string;
@@ -21,7 +25,11 @@ interface ParsedFixResponse {
 export class TriageAgent {
   constructor(private aiConfig: AiRuntimeConfig | null = null) {}
 
-  async fixIssue(issue: CodeIssue, workingDir: string): Promise<FixResult> {
+  async fixIssue(
+    issue: CodeIssue,
+    workingDir: string,
+    context?: FixIssueContext
+  ): Promise<FixResult> {
     const prompt = loadPrompt("fix-issue", {
       type: issue.type,
       severity: issue.severity,
@@ -29,6 +37,9 @@ export class TriageAgent {
       line: String(issue.line),
       message: issue.message,
       suggestionLine: issue.suggestion ? `- Suggestion: ${issue.suggestion}` : "",
+      conversationSection: context?.conversationContext?.trim()
+        ? `\n## Review Thread Context\n${context.conversationContext}\n`
+        : "",
     });
 
     try {
