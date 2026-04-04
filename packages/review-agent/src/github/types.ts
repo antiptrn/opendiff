@@ -34,7 +34,7 @@ export interface ReviewComment {
 
 export interface Review {
   body: string;
-  event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+  event: "APPROVE" | "COMMENT";
   comments?: ReviewComment[];
 }
 

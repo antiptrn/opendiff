@@ -1,4 +1,5 @@
 import { createOpencode } from "@opencode-ai/sdk";
+import { loadOpencodeOauthCredentials } from "../utils/opencode-auth";
 
 export interface ProviderModelOption {
   id: string;
@@ -13,6 +14,7 @@ export interface ProviderModelsCatalog {
 let cache: ProviderModelsCatalog | null = null;
 let cacheAt = 0;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const PROVIDER_MODEL_SERVER_TIMEOUT_MS = 15000;
 
 function fallbackCatalog(): ProviderModelsCatalog {
   return {
@@ -78,8 +80,33 @@ export async function getProviderModelsCatalog(): Promise<ProviderModelsCatalog>
     return cache;
   }
 
-  const opencode = await createOpencode();
+  const providerConfig: Record<string, unknown> = {};
+  const openaiOauth = loadOpencodeOauthCredentials("openai");
+  const anthropicOauth = loadOpencodeOauthCredentials("anthropic");
+
+  if (openaiOauth?.accessToken) {
+    providerConfig.openai = { options: { apiKey: openaiOauth.accessToken } };
+  }
+  if (anthropicOauth?.accessToken) {
+    providerConfig.anthropic = { options: { apiKey: anthropicOauth.accessToken } };
+  }
+
+  let opencode: Awaited<ReturnType<typeof createOpencode>> | null = null;
   try {
+    opencode = await createOpencode(
+      {
+        port: 0,
+        timeout: PROVIDER_MODEL_SERVER_TIMEOUT_MS,
+        ...(Object.keys(providerConfig).length > 0
+          ? {
+              config: {
+                provider: providerConfig,
+              },
+            }
+          : {}),
+      } as Parameters<typeof createOpencode>[0]
+    );
+
     const result = (await opencode.client.provider.list()) as unknown as {
       data?: unknown;
     };
@@ -106,10 +133,12 @@ export async function getProviderModelsCatalog(): Promise<ProviderModelsCatalog>
     console.warn("Failed to list provider models via OpenCode SDK:", error);
     return fallbackCatalog();
   } finally {
-    try {
-      opencode.server.close();
-    } catch {
-      // best effort
+    if (opencode) {
+      try {
+        opencode.server.close();
+      } catch {
+        // best effort
+      }
     }
   }
 }

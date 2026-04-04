@@ -10,6 +10,7 @@ const mockOctokit = {
       get: vi.fn(),
       listFiles: vi.fn(),
       createReview: vi.fn(),
+      deletePendingReview: vi.fn(),
     },
     repos: {
       getContent: vi.fn(),
@@ -213,10 +214,10 @@ describe("GitHubClient", () => {
       });
     });
 
-    it("should submit request changes", async () => {
+    it("should submit comment reviews for conversational fix requests", async () => {
       const review: Review = {
         body: "Please address these issues before merging.",
-        event: "REQUEST_CHANGES",
+        event: "COMMENT",
         comments: [
           {
             path: "src/auth.ts",
@@ -234,9 +235,56 @@ describe("GitHubClient", () => {
 
       expect(mockOctokit.rest.pulls.createReview).toHaveBeenCalledWith(
         expect.objectContaining({
-          event: "REQUEST_CHANGES",
+          event: "COMMENT",
         })
       );
+    });
+  });
+
+  describe("validateReviewComments", () => {
+    it("should keep all comments when GitHub accepts the pending review", async () => {
+      const comments: NonNullable<Review["comments"]> = [
+        { path: "src/index.ts", line: 10, body: "comment-1" },
+      ];
+
+      mockOctokit.rest.pulls.createReview.mockResolvedValue({
+        data: { id: 2001 },
+      });
+
+      const result = await client.validateReviewComments("owner", "repo", 42, "abc123", comments);
+
+      expect(result).toEqual({ validComments: comments, invalidComments: [] });
+      expect(mockOctokit.rest.pulls.deletePendingReview).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        pull_number: 42,
+        review_id: 2001,
+      });
+    });
+
+    it("should isolate invalid comments when GitHub rejects unresolved lines", async () => {
+      const comments: NonNullable<Review["comments"]> = [
+        { path: "src/index.ts", line: 10, body: "comment-1" },
+        { path: "src/index.ts", line: 20, body: "comment-2" },
+      ];
+
+      mockOctokit.rest.pulls.createReview
+        .mockRejectedValueOnce({ status: 422, message: 'Unprocessable Entity: "Line could not be resolved"' })
+        .mockResolvedValueOnce({ data: { id: 2002 } })
+        .mockRejectedValueOnce({ status: 422, message: 'Unprocessable Entity: "Line could not be resolved"' });
+
+      const result = await client.validateReviewComments("owner", "repo", 42, "abc123", comments);
+
+      expect(result).toEqual({
+        validComments: [comments[0]],
+        invalidComments: [comments[1]],
+      });
+      expect(mockOctokit.rest.pulls.deletePendingReview).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        pull_number: 42,
+        review_id: 2002,
+      });
     });
   });
 });

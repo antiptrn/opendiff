@@ -7,6 +7,8 @@ interface FileWithSha {
   sha: string;
 }
 
+type PendingReviewComment = NonNullable<Review["comments"]>[number];
+
 export class GitHubClient {
   constructor(private octokit: Octokit) {}
 
@@ -106,6 +108,134 @@ export class GitHubClient {
     return { id: data.id };
   }
 
+  async validateReviewComments(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    commitId: string,
+    comments: PendingReviewComment[]
+  ): Promise<{ validComments: PendingReviewComment[]; invalidComments: PendingReviewComment[] }> {
+    if (comments.length === 0) {
+      return { validComments: [], invalidComments: [] };
+    }
+
+    const allValid = await this.tryCreatePendingReview(owner, repo, pullNumber, commitId, comments);
+    if (allValid) {
+      return { validComments: comments, invalidComments: [] };
+    }
+
+    const { validComments, invalidComments } = await this.partitionValidReviewComments(
+      owner,
+      repo,
+      pullNumber,
+      commitId,
+      comments
+    );
+
+    return { validComments, invalidComments };
+  }
+
+  private async partitionValidReviewComments(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    commitId: string,
+    comments: PendingReviewComment[]
+  ): Promise<{ validComments: PendingReviewComment[]; invalidComments: PendingReviewComment[] }> {
+    if (comments.length === 0) {
+      return { validComments: [], invalidComments: [] };
+    }
+
+    const valid = await this.tryCreatePendingReview(owner, repo, pullNumber, commitId, comments);
+    if (valid) {
+      return { validComments: comments, invalidComments: [] };
+    }
+
+    if (comments.length === 1) {
+      return { validComments: [], invalidComments: comments };
+    }
+
+    const midpoint = Math.floor(comments.length / 2);
+    const left = await this.partitionValidReviewComments(
+      owner,
+      repo,
+      pullNumber,
+      commitId,
+      comments.slice(0, midpoint)
+    );
+    const right = await this.partitionValidReviewComments(
+      owner,
+      repo,
+      pullNumber,
+      commitId,
+      comments.slice(midpoint)
+    );
+
+    return {
+      validComments: [...left.validComments, ...right.validComments],
+      invalidComments: [...left.invalidComments, ...right.invalidComments],
+    };
+  }
+
+  private async tryCreatePendingReview(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    commitId: string,
+    comments: PendingReviewComment[]
+  ): Promise<boolean> {
+    let reviewId: number | null = null;
+
+    try {
+      const { data } = await this.octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        commit_id: commitId,
+        comments: comments.map((c) => ({
+          ...c,
+          side: "RIGHT" as const,
+        })),
+      });
+      reviewId = data.id;
+      return true;
+    } catch (error: unknown) {
+      if (this.isUnresolvableReviewLineError(error)) {
+        return false;
+      }
+      throw error;
+    } finally {
+      if (reviewId) {
+        try {
+          await this.octokit.rest.pulls.deletePendingReview({
+            owner,
+            repo,
+            pull_number: pullNumber,
+            review_id: reviewId,
+          });
+        } catch (error) {
+          console.warn(`Failed to delete pending review ${reviewId}:`, error);
+        }
+      }
+    }
+  }
+
+  private isUnresolvableReviewLineError(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+
+    if (!("status" in error) || error.status !== 422) {
+      return false;
+    }
+
+    if (!("message" in error) || typeof error.message !== "string") {
+      return false;
+    }
+
+    return error.message.includes("Line could not be resolved");
+  }
+
   async replyToReviewComment(
     owner: string,
     repo: string,
@@ -172,11 +302,45 @@ export class GitHubClient {
     return { id: data.id };
   }
 
+  async updateIssueComment(
+    owner: string,
+    repo: string,
+    commentId: number,
+    body: string
+  ): Promise<{ id: number }> {
+    const { data } = await this.octokit.rest.issues.updateComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      body,
+    });
+
+    return { id: data.id };
+  }
+
+  async updatePullRequestReview(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    reviewId: number,
+    body: string
+  ): Promise<{ id: number }> {
+    const { data } = await this.octokit.rest.pulls.updateReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      review_id: reviewId,
+      body,
+    });
+
+    return { id: data.id };
+  }
+
   async getIssueComments(
     owner: string,
     repo: string,
     issueNumber: number
-  ): Promise<Array<{ user: string; body: string; id: number }>> {
+  ): Promise<Array<{ user: string; body: string; id: number; createdAt: string }>> {
     const { data } = await this.octokit.rest.issues.listComments({
       owner,
       repo,
@@ -188,6 +352,28 @@ export class GitHubClient {
       user: c.user?.login || "unknown",
       body: c.body || "",
       id: c.id,
+      createdAt: c.created_at,
+    }));
+  }
+
+  async getPullRequestReviews(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<Array<{ id: number; user: string; body: string; state: string; submittedAt: string | null }>> {
+    const { data } = await this.octokit.rest.pulls.listReviews({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      per_page: 100,
+    });
+
+    return data.map((review) => ({
+      id: review.id,
+      user: review.user?.login || "unknown",
+      body: review.body || "",
+      state: review.state || "",
+      submittedAt: review.submitted_at || null,
     }));
   }
 
@@ -269,10 +455,13 @@ export class GitHubClient {
     Array<{
       id: number;
       nodeId: string;
+      pullRequestReviewId: number | null;
+      inReplyToId: number | null;
       path: string;
       line: number | null;
       body: string;
       user: string;
+      createdAt: string;
     }>
   > {
     const { data } = await this.octokit.rest.pulls.listReviewComments({
@@ -285,11 +474,22 @@ export class GitHubClient {
     return data.map((c) => ({
       id: c.id,
       nodeId: c.node_id,
+      pullRequestReviewId: c.pull_request_review_id ?? null,
+      inReplyToId: c.in_reply_to_id ?? null,
       path: c.path,
       line: c.line ?? c.original_line ?? null,
       body: c.body,
       user: c.user?.login || "unknown",
+      createdAt: c.created_at,
     }));
+  }
+
+  async deleteReviewComment(owner: string, repo: string, commentId: number): Promise<void> {
+    await this.octokit.rest.pulls.deleteReviewComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
   }
 
   async resolveReviewThread(threadId: string): Promise<void> {
