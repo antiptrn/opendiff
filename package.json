@@ -2,26 +2,27 @@
   "name": "opendiff",
   "private": true,
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev:server": "bun run --cwd packages/bff dev",
-    "dev:website": "bun run --cwd packages/website dev",
-    "dev:agent": "bun run --cwd packages/review-agent dev",
-    "dev:app": "bun run --cwd packages/app dev",
-    "start:dev": "concurrently \"bun run dev:server\" \"bun run dev:website\" \"bun run dev:app\" \"bun run dev:agent\"",
-    "start:prod": "bun run build && bun run build:app && bun run build:agent && concurrently \"bun run --cwd packages/bff start\" \"bun run --cwd packages/website preview\" \"bun run --cwd packages/app preview\" \"bun run --cwd packages/review-agent start\"",
+    "dev:server": "bun run --cwd apps/bff dev",
+    "dev:site": "bun run --cwd apps/site dev",
+    "dev:agent": "bun run --cwd apps/review-agent dev",
+    "dev:app": "bun run --cwd apps/app dev",
+    "start:dev": "concurrently \"bun run dev:server\" \"bun run dev:site\" \"bun run dev:app\" \"bun run dev:agent\"",
+    "start:prod": "bun run build && bun run build:app && bun run build:agent && concurrently \"bun run --cwd apps/bff start\" \"bun run --cwd apps/site preview\" \"bun run --cwd apps/app preview\" \"bun run --cwd apps/review-agent start\"",
     "start:dev:nohup": "bash scripts/start.sh dev",
     "start:prod:nohup": "bash scripts/start.sh prod",
     "stop": "bash scripts/stop.sh",
-    "build": "bun run --cwd packages/website build",
-    "build:app": "bun run --cwd packages/app build",
-    "build:agent": "bun run --cwd packages/review-agent build",
+    "build": "bun run --cwd apps/site build",
+    "build:app": "bun run --cwd apps/app build",
+    "build:agent": "bun run --cwd apps/review-agent build",
     "lint": "biome lint .",
     "lint:fix": "biome lint --fix .",
     "format": "biome format --write .",
     "check": "biome check .",
-    "test": "bun run --cwd packages/components test:run && bun run --cwd packages/shared test:run && bun run --cwd packages/app test:run && bun run --cwd packages/website test:run"
+    "test": "bun run --cwd packages/components test:run && bun run --cwd packages/shared test:run && bun run --cwd apps/app test:run && bun run --cwd apps/site test:run"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

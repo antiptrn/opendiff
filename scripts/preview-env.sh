@@ -78,7 +78,7 @@ fi
 # Note: We intentionally use the admin DB user for `DATABASE_URL` in preview.
 # Preview runs migrations inside the bff container and needs DDL privileges.
 # This avoids brittle failures when a separate app user isn't provisioned.
-cat > "${PREVIEW_DIR}/packages/bff/.env" <<EOF
+cat > "${PREVIEW_DIR}/apps/bff/.env" <<EOF
 PORT=3001
 DATABASE_URL=postgresql://${PREVIEW_DB_ADMIN_USER}${ADMIN_DB_PASSWORD_SEGMENT}@host.docker.internal:${PREVIEW_DB_PORT}/${PREVIEW_DB}
 FRONTEND_URL=${APP_URL}
@@ -93,21 +93,21 @@ GITHUB_CLIENT_SECRET=${PREVIEW_GITHUB_CLIENT_SECRET:-}
 EOF
 
 # ── App (VITE_* vars read from .env by vite during Docker build) ─────────────
-cat > "${PREVIEW_DIR}/packages/app/.env" <<EOF
+cat > "${PREVIEW_DIR}/apps/app/.env" <<EOF
 VITE_API_URL=${BFF_URL}
 VITE_APP_URL=${APP_URL}
 VITE_WEBSITE_URL=${WEBSITE_URL}
 EOF
 
 # ── Website (VITE_* vars read from .env by vite during Docker build) ─────────
-cat > "${PREVIEW_DIR}/packages/website/.env" <<EOF
+cat > "${PREVIEW_DIR}/apps/site/.env" <<EOF
 VITE_API_URL=${BFF_URL}
 VITE_APP_URL=${APP_URL}
 VITE_WEBSITE_URL=${WEBSITE_URL}
 EOF
 
 # ── Review Agent ─────────────────────────────────────────────────────────────
-cat > "${PREVIEW_DIR}/packages/review-agent/.env" <<EOF
+cat > "${PREVIEW_DIR}/apps/review-agent/.env" <<EOF
 PORT=3000
 SETTINGS_API_URL=http://host.docker.internal:${BFF_PORT}
 REVIEW_AGENT_API_KEY=${AGENT_API_KEY}
@@ -124,7 +124,7 @@ services:
       target: bff
     ports:
       - "${BFF_PORT}:3001"
-    env_file: packages/bff/.env
+    env_file: apps/bff/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:
@@ -133,13 +133,13 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
-  website:
+  site:
     build:
       context: .
       dockerfile: Dockerfile
       target: frontend
       args:
-        PACKAGE: website
+        PACKAGE: site
     ports:
       - "${WEBSITE_PORT}:8080"
     labels:
@@ -168,7 +168,7 @@ services:
       target: agent
     ports:
       - "${AGENT_PORT}:3000"
-    env_file: packages/review-agent/.env
+    env_file: apps/review-agent/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:

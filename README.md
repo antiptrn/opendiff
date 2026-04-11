@@ -21,10 +21,10 @@ OpenDiff is a SaaS platform that integrates with GitHub to provide:
 
 | Package | Description | Tech Stack |
 |---------|-------------|------------|
-| [`bff`](./packages/bff) | Backend API with auth, billing, and data management | Hono, Prisma, PostgreSQL, Cloudflare R2 |
-| [`app`](./packages/app) | Main console dashboard and management UI | React 19, Vite, Tailwind CSS v4 |
-| [`website`](./packages/website) | Marketing website and landing pages | React 19, Vite, Tailwind CSS v4 |
-| [`review-agent`](./packages/review-agent) | GitHub webhook handler and AI code reviewer | Hono, OpenCode SDK, Octokit |
+| [`bff`](./apps/bff) | Backend API with auth, billing, and data management | Hono, Prisma, PostgreSQL, Cloudflare R2 |
+| [`app`](./apps/app) | Main console dashboard and management UI | React 19, Vite, Tailwind CSS v4 |
+| [`site`](./apps/site) | Marketing website and landing pages | React 19, Vite, Tailwind CSS v4 |
+| [`review-agent`](./apps/review-agent) | GitHub webhook handler and AI code reviewer | Hono, OpenCode SDK, Octokit |
 | [`prompts`](./packages/prompts) | Shared AI prompt templates with variable substitution | Bun |
 | [`components`](./packages/components) | Shared UI component library | Radix UI, shadcn, CVA |
 | [`shared`](./packages/shared) | Shared business logic, hooks, and services | React Query, React Router |
@@ -63,19 +63,19 @@ For local development, each package requires its own environment configuration. 
 
 ```bash
 # Server
-cp packages/bff/.env.example packages/bff/.env
+cp apps/bff/.env.example apps/bff/.env
 
 # App (Console)
-cp packages/app/.env.example packages/app/.env
+cp apps/app/.env.example apps/app/.env
 
 # Website
-cp packages/website/.env.example packages/website/.env
+cp apps/site/.env.example apps/site/.env
 
 # Review Agent
-cp packages/review-agent/.env.example packages/review-agent/.env
+cp apps/review-agent/.env.example apps/review-agent/.env
 ```
 
-#### Server Configuration (`packages/bff/.env`)
+#### Server Configuration (`apps/bff/.env`)
 
 ```env
 # Database
@@ -150,7 +150,7 @@ Rate limiting notes:
 - In production, requests should come through Cloudflare (or another trusted proxy) so `CF-Connecting-IP` is available.
 - If you do not fully trust proxy headers, keep `RATE_LIMIT_TRUST_PROXY_HEADERS=false`.
 
-#### App Configuration (`packages/app/.env`)
+#### App Configuration (`apps/app/.env`)
 
 ```env
 VITE_WEBSITE_URL=http://localhost:5173
@@ -171,7 +171,7 @@ VITE_SELF_SUFFICIENT_MONTHLY_PRODUCT_ID=xxx
 VITE_SELF_SUFFICIENT_YEARLY_PRODUCT_ID=xxx
 ```
 
-#### Website Configuration (`packages/website/.env`)
+#### Website Configuration (`apps/site/.env`)
 
 ```env
 VITE_API_URL=http://localhost:3001
@@ -215,7 +215,7 @@ Preview behavior is controlled by repo-level Actions variables (non-secret):
 - `Repo -> Settings -> Secrets and variables -> Actions -> Variables`
   - `PREVIEW_DOMAIN`, `PREVIEW_*_SUBDOMAIN_PREFIX`, `PREVIEW_DB_*`, `PREVIEW_OAUTH_CALLBACK_BASE_URL`, `PREVIEW_BOT_USERNAME`
 
-#### Review Agent Configuration (`packages/review-agent/.env`)
+#### Review Agent Configuration (`apps/review-agent/.env`)
 
 ```env
 # GitHub Webhook Secret
@@ -245,7 +245,7 @@ PORT=3000
 ### Database Setup
 
 ```bash
-cd packages/bff
+cd apps/bff
 
 # Generate Prisma client
 bunx prisma generate
@@ -263,7 +263,7 @@ bun run start:dev
 # Or start individually (in separate terminals)
 bun run dev:server    # Backend API on http://localhost:3001
 bun run dev:app       # Console dashboard on http://localhost:5174
-bun run dev:website   # Marketing site on http://localhost:5173
+bun run dev:site      # Marketing site on http://localhost:5173
 bun run dev:agent     # Review agent on http://localhost:3000
 ```
 
@@ -277,12 +277,12 @@ From the monorepo root:
 # Development
 bun run dev:server     # Start server in watch mode
 bun run dev:app        # Start console app dev server
-bun run dev:website    # Start website dev server
+bun run dev:site       # Start site dev server
 bun run dev:agent      # Start review agent in watch mode
 bun run start:dev      # Start all services concurrently
 
 # Building
-bun run build          # Build website for production
+bun run build          # Build site for production
 bun run build:app      # Build console app for production
 bun run build:agent    # Build review agent for production
 bun run start:prod     # Build all and start in production mode
@@ -324,8 +324,8 @@ bun run format
 bun run test
 
 # Run tests for specific package
-cd packages/app && bun run test
-cd packages/website && bun run test
+cd apps/app && bun run test
+cd apps/site && bun run test
 cd packages/components && bun run test
 cd packages/shared && bun run test
 
@@ -374,7 +374,7 @@ Skills are automatically applied based on the repository configuration and team 
 ### Console App (Static)
 
 ```bash
-cd packages/app
+cd apps/app
 bun run build
 # Deploy dist/ to your static host
 ```
@@ -382,7 +382,7 @@ bun run build
 ### Website (Static)
 
 ```bash
-cd packages/website
+cd apps/site
 bun run build
 # Deploy dist/ to your static host
 ```
@@ -402,7 +402,7 @@ export GITHUB_PRIVATE_KEY_PATH=/absolute/path/to/private-key.pem
 ### Review Agent (Docker)
 
 ```bash
-cd packages/review-agent
+cd apps/review-agent
 
 # Build image
 docker build -t review-agent .
@@ -517,7 +517,7 @@ opendiff/
 │   │   └── src/
 │   │       └── extension.ts
 │   │
-│   └── website/              # Marketing Website
+│   └── site/                 # Marketing Website
 │       └── src/
 │           ├── features/         # Feature modules
 │           └── components/       # Website components
@@ -548,7 +548,7 @@ opendiff/
 - **Notification** - In-app notifications
 - **AuditLog** - Security audit trail
 
-See [`packages/bff/prisma/schema.prisma`](./packages/bff/prisma/schema.prisma) for the complete schema.
+See [`apps/bff/prisma/schema.prisma`](./apps/bff/prisma/schema.prisma) for the complete schema.
 
 ## Contributing
 

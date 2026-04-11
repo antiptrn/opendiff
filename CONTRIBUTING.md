@@ -24,10 +24,10 @@ bun install
 Copy the example files for each package you'll be working on:
 
 ```bash
-cp packages/bff/.env.example packages/bff/.env
-cp packages/app/.env.example packages/app/.env
-cp packages/website/.env.example packages/website/.env
-cp packages/review-agent/.env.example packages/review-agent/.env
+cp apps/bff/.env.example apps/bff/.env
+cp apps/app/.env.example apps/app/.env
+cp apps/site/.env.example apps/site/.env
+cp apps/review-agent/.env.example apps/review-agent/.env
 ```
 
 See the [README](./README.md#environment-setup) for detailed configuration of each `.env` file.
@@ -35,7 +35,7 @@ See the [README](./README.md#environment-setup) for detailed configuration of ea
 ### 3. Set up the database
 
 ```bash
-cd packages/bff
+cd apps/bff
 bunx prisma generate
 bunx prisma migrate dev
 ```
@@ -49,7 +49,7 @@ bun run start:dev
 # Or individually
 bun run dev:server    # Backend API        → http://localhost:3001
 bun run dev:app       # Console dashboard  → http://localhost:5174
-bun run dev:website   # Marketing site     → http://localhost:5173
+bun run dev:site      # Marketing site     → http://localhost:5173
 bun run dev:agent     # Review agent       → http://localhost:3000
 ```
 
@@ -61,7 +61,7 @@ OpenDiff is a Bun monorepo with these packages:
 |---------|-------------|
 | `bff` | Backend API — Hono, Prisma, PostgreSQL |
 | `app` | Console dashboard — React 19, Vite, Tailwind CSS v4 |
-| `website` | Marketing site — React 19, Vite, Tailwind CSS v4 |
+| `site` | Marketing site — React 19, Vite, Tailwind CSS v4 |
 | `review-agent` | GitHub webhook handler and AI reviewer — Hono, OpenCode SDK |
 | `github` | GitHub App auth and API utilities — Octokit |
 | `prompts` | Shared AI prompt templates |
@@ -108,10 +108,10 @@ Run `bun run check` before committing to catch issues early.
 bun run test
 
 # Run tests for a specific package
-bun run --cwd packages/app test:run
+bun run --cwd apps/app test:run
 bun run --cwd packages/shared test:run
 bun run --cwd packages/components test:run
-bun run --cwd packages/website test:run
+bun run --cwd apps/site test:run
 ```
 
 ## Making Changes
@@ -139,7 +139,7 @@ Add loading states to billing subscription buttons
 
 If your change requires a database schema update:
 
-1. Edit `packages/bff/prisma/schema.prisma`
+1. Edit `apps/bff/prisma/schema.prisma`
 2. Generate a migration: `bunx prisma migrate dev --name describe-your-change`
 3. Commit both the schema change and the generated migration
 
@@ -154,7 +154,7 @@ When adding a new component:
 
 ### Adding API endpoints
 
-API routes live in `packages/bff/src/routes/`. Follow existing patterns:
+API routes live in `apps/bff/src/routes/`. Follow existing patterns:
 
 - Use `requireAuth()` middleware for authenticated endpoints
 - Use `requireOrgAccess(c)` for organization-scoped endpoints

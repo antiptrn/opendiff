@@ -8,16 +8,16 @@
   "files": {
     "ignoreUnknown": true,
     "include": [
-      "packages/website/src/**/*.ts",
-      "packages/website/src/**/*.tsx",
-      "packages/review-agent/src/**/*.ts",
-      "packages/bff/src/**/*.ts",
+      "apps/site/src/**/*.ts",
+      "apps/site/src/**/*.tsx",
+      "apps/review-agent/src/**/*.ts",
+      "apps/bff/src/**/*.ts",
       "packages/components/src/**/*.ts",
       "packages/components/src/**/*.tsx",
       "packages/shared/src/**/*.ts",
       "packages/shared/src/**/*.tsx",
-      "packages/app/src/**/*.ts",
-      "packages/app/src/**/*.tsx",
+      "apps/app/src/**/*.ts",
+      "apps/app/src/**/*.tsx",
       "packages/vscode/src/**/*.ts",
       "packages/prompts/src/**/*.ts",
       "packages/github/src/**/*.ts"
