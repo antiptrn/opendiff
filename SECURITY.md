@@ -17,10 +17,10 @@ You should receive a response within 48 hours. We will work with you to understa
 
 This policy covers the OpenDiff repository and its packages:
 
-- `packages/bff` - API server
-- `packages/app` - Console dashboard
-- `packages/website` - Marketing site
-- `packages/review-agent` - AI code review agent
+- `apps/bff` - API server
+- `apps/app` - Console dashboard
+- `apps/site` - Marketing site
+- `apps/review-agent` - AI code review agent
 - `packages/shared` - Shared libraries
 - `packages/components` - UI components
 

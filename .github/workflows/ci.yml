@@ -32,19 +32,19 @@ jobs:
         run: cd "$CI_DIR" && bun install --frozen-lockfile
 
       - name: Generate Prisma client
-        run: cd "$CI_DIR" && bunx prisma generate --schema packages/bff/prisma/schema.prisma
+        run: cd "$CI_DIR" && bunx prisma generate --schema apps/bff/prisma/schema.prisma
 
       - name: Typecheck bff
-        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/bff/tsconfig.json
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project apps/bff/tsconfig.json
 
       - name: Typecheck app
-        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/app/tsconfig.json
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project apps/app/tsconfig.json
 
-      - name: Typecheck website
-        run: cd "$CI_DIR" && bunx tsc --noEmit --project packages/website/tsconfig.json
+      - name: Typecheck site
+        run: cd "$CI_DIR" && bunx tsc --noEmit --project apps/site/tsconfig.json
 
       - name: Typecheck review-agent
-        run: cd "$CI_DIR" && bun run --cwd packages/review-agent typecheck
+        run: cd "$CI_DIR" && bun run --cwd apps/review-agent typecheck
 
       - name: Run tests
         run: cd "$CI_DIR" && bun run test

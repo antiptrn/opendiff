@@ -128,7 +128,7 @@ describe("WebhookHandler file filtering", () => {
 
     it("should skip yarn.lock", () => {
       expect(handler.testShouldSkipFile("yarn.lock")).toBe(true);
-      expect(handler.testShouldSkipFile("packages/app/yarn.lock")).toBe(true);
+      expect(handler.testShouldSkipFile("apps/app/yarn.lock")).toBe(true);
     });
 
     it("should skip pnpm-lock.yaml", () => {
@@ -155,7 +155,7 @@ describe("WebhookHandler file filtering", () => {
 
     it("should skip node_modules files", () => {
       expect(handler.testShouldSkipFile("node_modules/lodash/index.js")).toBe(true);
-      expect(handler.testShouldSkipFile("packages/app/node_modules/react/index.js")).toBe(true);
+      expect(handler.testShouldSkipFile("apps/app/node_modules/react/index.js")).toBe(true);
     });
 
     it("should NOT skip regular code files", () => {

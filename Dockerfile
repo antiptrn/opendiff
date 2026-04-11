@@ -10,10 +10,10 @@ COPY packages/components/package.json ./packages/components/
 COPY packages/assets/package.json ./packages/assets/
 COPY packages/github/package.json ./packages/github/
 COPY packages/prompts/package.json ./packages/prompts/
-COPY packages/bff/package.json ./packages/bff/
-COPY packages/review-agent/package.json ./packages/review-agent/
-COPY packages/website/package.json ./packages/website/
-COPY packages/app/package.json ./packages/app/
+COPY apps/bff/package.json ./apps/bff/
+COPY apps/review-agent/package.json ./apps/review-agent/
+COPY apps/site/package.json ./apps/site/
+COPY apps/app/package.json ./apps/app/
 COPY packages/vscode-extension/package.json ./packages/vscode-extension/
 
 RUN bun install
@@ -23,28 +23,28 @@ COPY . .
 # ── BFF ──────────────────────────────────────────────────────────
 FROM base AS bff
 
-RUN cd packages/bff && bunx prisma generate
+RUN cd apps/bff && bunx prisma generate
 
 ENV NODE_ENV=production
 USER bun
 EXPOSE 3001
 
-CMD ["bun", "run", "packages/bff/src/index.ts"]
+CMD ["bun", "run", "apps/bff/src/index.ts"]
 
 # ── Frontend build ───────────────────────────────────────────────
 FROM base AS frontend-build
 
-ARG PACKAGE=website
+ARG PACKAGE=site
 
-RUN bun run --cwd packages/${PACKAGE} build
+RUN bun run --cwd apps/${PACKAGE} build
 
 # ── Frontend serve ───────────────────────────────────────────────
 FROM nginx:alpine AS frontend
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-ARG PACKAGE=website
-COPY --from=frontend-build /app/packages/${PACKAGE}/dist /usr/share/nginx/html
+ARG PACKAGE=site
+COPY --from=frontend-build /app/apps/${PACKAGE}/dist /usr/share/nginx/html
 
 EXPOSE 8080
 
@@ -54,7 +54,7 @@ FROM base AS agent
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV BUN_INSTALL=/usr/local
 RUN bun install -g opencode-ai
-RUN bun run --cwd packages/review-agent build
+RUN bun run --cwd apps/review-agent build
 
 ENV NODE_ENV=production
 # Disable core dumps — prevents junk files from being committed by git add
@@ -63,4 +63,4 @@ ENV BUN_CRASH_REPORTER_URL=""
 USER bun
 EXPOSE 3000
 
-CMD ["sh", "-c", "ulimit -c 0 && exec bun run packages/review-agent/dist/index.js"]
+CMD ["sh", "-c", "ulimit -c 0 && exec bun run apps/review-agent/dist/index.js"]

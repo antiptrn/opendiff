@@ -30,23 +30,23 @@ jobs:
       - name: Build containers (keep old services running)
         env:
           RUNNER_TRACKING_ID: ""
-        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml build bff website app agent
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml build bff site app agent
 
       - name: Run migrations
-        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy --schema packages/bff/prisma/schema.prisma
+        run: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml run --rm bff bunx prisma migrate deploy --schema apps/bff/prisma/schema.prisma
 
-      - name: Deploy website and wait for health
+      - name: Deploy site and wait for health
         run: |
           cd $DEPLOY_DIR
-          docker compose -f docker-compose.prod.yml up -d --no-deps website
+          docker compose -f docker-compose.prod.yml up -d --no-deps site
           for i in {1..30}; do
             if curl -fsS http://localhost:5173/ >/dev/null; then
-              echo "website healthy"
+              echo "site healthy"
               exit 0
             fi
             sleep 2
           done
-          echo "website failed health check"
+          echo "site failed health check"
           exit 1
 
       - name: Deploy app and wait for health

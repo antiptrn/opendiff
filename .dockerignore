@@ -1,9 +1,9 @@
 node_modules
 dist
 .git
-packages/bff/.env
-packages/bff/.env.*
-packages/review-agent/.env
-packages/review-agent/.env.*
+apps/bff/.env
+apps/bff/.env.*
+apps/review-agent/.env
+apps/review-agent/.env.*
 *.log
 logs

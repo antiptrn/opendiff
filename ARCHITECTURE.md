@@ -19,7 +19,7 @@ flowchart TB
     end
 
     subgraph Frontend["Frontend Applications"]
-        Website["website<br/><i>Marketing & Landing</i><br/>:5173"]
+        Website["site<br/><i>Marketing & Landing</i><br/>:5173"]
         App["app<br/><i>Console Dashboard</i><br/>:5174"]
     end
 
@@ -122,7 +122,7 @@ sequenceDiagram
 flowchart BT
     subgraph Apps["Applications"]
         App["app"]
-        Website["website"]
+        Website["site"]
     end
 
     subgraph Services["Services"]
@@ -227,7 +227,7 @@ erDiagram
 
 | Service | Port |
 |---------|------|
-| website | 5173 |
+| site | 5173 |
 | app | 5174 |
 | bff | 3001 |
 | review-agent | 3000 |
