@@ -271,6 +271,7 @@ export class ReviewFormatter {
       summary += "\n### Still Open From Earlier Reviews\n\n";
       for (const issue of history.unresolvedHistoricalIssues.slice(0, 10)) {
         summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        summary += `${buildIssueMarker(issue)}\n`;
       }
       if (history.unresolvedHistoricalIssues.length > 10) {
         summary += `- ...and ${history.unresolvedHistoricalIssues.length - 10} more\n`;
@@ -281,6 +282,7 @@ export class ReviewFormatter {
       summary += `\n### ${hasHistoricalContext ? "New Issues" : "Open Issues"}\n\n`;
       for (const issue of history.newIssues.slice(0, 10)) {
         summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        summary += `${buildIssueMarker(issue)}\n`;
       }
       if (history.newIssues.length > 10) {
         summary += `- ...and ${history.newIssues.length - 10} more\n`;
@@ -291,6 +293,7 @@ export class ReviewFormatter {
       summary += "\n### Addressed Since Earlier Reviews\n\n";
       for (const issue of history.addressedIssues.slice(0, 10)) {
         summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        summary += `${buildIssueMarker(issue)}\n`;
       }
       if (history.addressedIssues.length > 10) {
         summary += `- ...and ${history.addressedIssues.length - 10} more\n`;

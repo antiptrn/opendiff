@@ -4,6 +4,7 @@ import type { CodeReviewAgent } from "../agent/reviewer";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
+import { buildIssueMarker } from "../utils/issue-markers";
 
 // Mock simple-git before importing handler
 mock.module("simple-git", () => ({
@@ -264,22 +265,14 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
-      expect(mockGitHubClient.submitReview).toHaveBeenCalled();
+      expect(result.reviewId).toBeUndefined();
       expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         42,
         "Review body"
       );
-      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
-        "owner",
-        "repo",
-        42,
-        "abc123",
-        expect.objectContaining({
-          body: "Current review body",
-        })
-      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
     });
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
@@ -398,6 +391,12 @@ describe("WebhookHandler", () => {
         issues: [],
         verdict: "comment",
       });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNeeds follow-up but no inline diff anchors");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNeeds follow-up but no inline diff anchors");
       mockFormatter.formatReview.mockReturnValue({
         body: "## Review Summary\n\nNeeds follow-up but no inline diff anchors",
         event: "COMMENT",
@@ -518,6 +517,74 @@ describe("WebhookHandler", () => {
         "## Review Summary\n\nNew summary"
       );
       expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+    });
+
+    it("should post a status update when previously reported issues were addressed", async () => {
+      const addressedIssue = {
+        type: "style" as const,
+        severity: "warning" as const,
+        file: "src/index.ts",
+        line: 5,
+        message: "Previously reported issue",
+      };
+
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockGitHubClient.getIssueComments.mockResolvedValue([
+        {
+          id: 101,
+          user: "opendiff-bot",
+          body: `## Summary\n\nOld summary\n\n${buildIssueMarker(addressedIssue)}`,
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "All previously reported issues are fixed.",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Summary\n\nAll previously reported issues are fixed.",
+        event: "APPROVE",
+      });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Summary\n\nAll previously reported issues are fixed.");
+      mockFormatter.formatHistoricalSummaryBody = vi.fn().mockReturnValue(
+        "## Summary\n\nAll previously reported issues are fixed.\n\n### Addressed Since Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
+      );
+      mockFormatter.formatReviewBody = vi
+        .fn()
+        .mockReturnValue("## Status Update\n\nAll previously reported issues are fixed.");
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 129 });
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.reviewId).toBe(129);
+      expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        101,
+        "## Summary\n\nAll previously reported issues are fixed.\n\n### Addressed Since Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
+      );
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "## Status Update\n\nAll previously reported issues are fixed.",
+        })
+      );
     });
 
     it("should skip if reviewer is not the bot", async () => {

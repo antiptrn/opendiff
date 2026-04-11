@@ -61,6 +61,22 @@ export async function handleTriageAfterReview(
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
+    if (autofixEnabled && postSummary) {
+      const summaryBody = formatTriageSummary(result.fixedIssues, result.skippedIssues, result.clarificationIssues, {
+        fixed: [],
+        skipped: [],
+        clarifications: [],
+      });
+      await upsertTriageSummaryComment(
+        github,
+        owner,
+        repo,
+        pullRequest.number,
+        botUsername,
+        summaryBody
+      );
+      console.log("Upserted triage summary: no remediation actions were needed for this push");
+    }
     return result;
   }
 
@@ -500,6 +516,8 @@ function formatTriageSummary(
     body += `⏭️ **${totalSkipped} issue${totalSkipped > 1 ? "s" : ""} could not be auto-fixed**\n\n`;
   } else if (totalFixed === 0 && totalSkipped === 0 && totalClarification > 0) {
     body += `❓ **${totalClarification} issue${totalClarification > 1 ? "s" : ""} need clarification**\n\n`;
+  } else if (totalFixed === 0 && totalSkipped === 0 && totalClarification === 0) {
+    body += "ℹ️ **No remediation actions were needed for this push**\n\n";
   } else {
     body += `✅ **${totalFixed} fixed** · ⏭️ **${totalSkipped} skipped** · ❓ **${totalClarification} needs clarification**\n\n`;
   }
