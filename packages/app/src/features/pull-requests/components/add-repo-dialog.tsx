@@ -91,7 +91,7 @@ export function AddRepoDialog({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
             />
-            <div className="max-h-80 bg-background overflow-y-auto rounded-xl py-2.5">
+            <div className="max-h-80 bg-background overflow-y-auto rounded-none py-2.5">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="size-4 animate-spin text-muted-foreground" />

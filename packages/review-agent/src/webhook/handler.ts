@@ -162,6 +162,26 @@ function shouldSubmitReview(review: { event: "APPROVE" | "COMMENT"; comments?: u
   return review.event !== "COMMENT";
 }
 
+function hasOpenIssuesToReport(
+  inlineComments: unknown[],
+  bodyOnlyIssues: CodeIssue[],
+  invalidInlineIssues: CodeIssue[],
+  history: {
+    unresolvedHistoricalIssues: StoredIssueRecord[];
+    newIssues: StoredIssueRecord[];
+    addressedIssues: StoredIssueRecord[];
+  }
+): boolean {
+  return (
+    inlineComments.length > 0 ||
+    bodyOnlyIssues.length > 0 ||
+    invalidInlineIssues.length > 0 ||
+    history.unresolvedHistoricalIssues.length > 0 ||
+    history.newIssues.length > 0 ||
+    history.addressedIssues.length > 0
+  );
+}
+
 async function getExistingMentionedIssueFingerprints(
   github: GitHubClient,
   owner: string,
@@ -735,8 +755,14 @@ export class WebhookHandler {
 
           let reviewId: number | undefined;
           const resolvedComments = validInlineComments.length > 0 ? validInlineComments : undefined;
+          const shouldPostStatusUpdate = hasOpenIssuesToReport(
+            validInlineComments,
+            bodyOnlyIssues,
+            invalidInlineIssues,
+            history
+          );
 
-          if (shouldSubmitReview({ ...review, comments: resolvedComments })) {
+          if (shouldPostStatusUpdate && shouldSubmitReview({ ...review, comments: resolvedComments })) {
             const { id } = await this.github.submitReview(
               owner,
               repo,
@@ -750,7 +776,7 @@ export class WebhookHandler {
             );
             reviewId = id;
           } else {
-            console.log("Skipped GitHub review submission; summary updated with no inline findings");
+            console.log("Skipped GitHub review submission; summary captured the current state");
           }
 
           return {

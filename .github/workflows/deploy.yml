@@ -22,7 +22,7 @@ jobs:
     environment: production
     env:
       DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
-      GITHUB_PRIVATE_KEY_PATH: ${{ secrets.GH_APP_PRIVATE_KEY_PATH }}
+      GITHUB_PRIVATE_KEY_PATH: /home/j/.ssh/opendiff-app.pem
     steps:
       - name: Pull latest
         run: cd $DEPLOY_DIR && git fetch origin main && git reset --hard origin/main

@@ -282,6 +282,33 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("### New Issues");
       expect(body).toContain("**Rating:**");
       expect(body).toContain("**Confidence:**");
+      expect(body).toContain("<!-- opendiff-issue:");
+    });
+
+    it("should preserve hidden issue markers for addressed findings in the living summary", () => {
+      const reviewResult: ReviewResult = {
+        summary: "Everything from earlier passes is now fixed.",
+        issues: [],
+        verdict: "approve",
+      };
+
+      const body = formatter.formatHistoricalSummaryBody(reviewResult, [], {
+        unresolvedHistoricalIssues: [],
+        newIssues: [],
+        addressedIssues: [
+          {
+            fingerprint: "done",
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/c.ts",
+            line: 12,
+            message: "already fixed",
+          },
+        ],
+      });
+
+      expect(body).toContain("### Addressed Since Earlier Reviews");
+      expect(body).toContain("<!-- opendiff-issue:");
     });
   });
 
