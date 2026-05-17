@@ -34,6 +34,10 @@ Copy `.env.example` to `.env` and configure values.
 | `PORT` | Optional | Defaults to `3000`. |
 | `SETTINGS_API_URL` | Recommended | BFF URL for repository settings, custom rules, and review recording. |
 | `REVIEW_AGENT_API_KEY` | Recommended | Shared secret for internal BFF routes and callback auth. |
+| `REVIEW_QUEUE_CONCURRENCY` | Optional | Number of full PR reviews to process at once. Defaults to `1`. |
+| `REVIEW_QUEUE_MAX_SIZE` | Optional | Maximum queued full PR reviews before returning `503` for GitHub retry. Defaults to `100`. |
+| `REVIEW_QUEUE_MAX_ATTEMPTS` | Optional | Attempts per queued full PR review. Defaults to `2`. |
+| `REVIEW_QUEUE_RETRY_DELAY_MS` | Optional | Delay before retrying a failed queued review. Defaults to `15000`. |
 
 \* At least one default credential should be set for non-Self-sufficient organizations.
 

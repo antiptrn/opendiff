@@ -129,7 +129,8 @@ export class GitHubClient {
       repo,
       pullNumber,
       commitId,
-      comments
+      comments,
+      true
     );
 
     return { validComments, invalidComments };
@@ -140,15 +141,18 @@ export class GitHubClient {
     repo: string,
     pullNumber: number,
     commitId: string,
-    comments: PendingReviewComment[]
+    comments: PendingReviewComment[],
+    skipWholeSetValidation = false
   ): Promise<{ validComments: PendingReviewComment[]; invalidComments: PendingReviewComment[] }> {
     if (comments.length === 0) {
       return { validComments: [], invalidComments: [] };
     }
 
-    const valid = await this.tryCreatePendingReview(owner, repo, pullNumber, commitId, comments);
-    if (valid) {
-      return { validComments: comments, invalidComments: [] };
+    if (!skipWholeSetValidation) {
+      const valid = await this.tryCreatePendingReview(owner, repo, pullNumber, commitId, comments);
+      if (valid) {
+        return { validComments: comments, invalidComments: [] };
+      }
     }
 
     if (comments.length === 1) {
@@ -360,7 +364,9 @@ export class GitHubClient {
     owner: string,
     repo: string,
     pullNumber: number
-  ): Promise<Array<{ id: number; user: string; body: string; state: string; submittedAt: string | null }>> {
+  ): Promise<
+    Array<{ id: number; user: string; body: string; state: string; submittedAt: string | null }>
+  > {
     const { data } = await this.octokit.rest.pulls.listReviews({
       owner,
       repo,
