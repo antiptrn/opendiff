@@ -45,6 +45,12 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 const BOT_USERNAME = process.env.BOT_USERNAME || "opendiff-bot";
 const BOT_TEAMS = (process.env.BOT_TEAMS || "").split(",").filter(Boolean);
+const REVIEW_TRIGGER_LABELS = (
+  process.env.REVIEW_TRIGGER_LABELS || `opendiff,${BOT_USERNAME}`
+)
+  .split(",")
+  .map((label) => label.trim().toLowerCase())
+  .filter(Boolean);
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
@@ -660,6 +666,11 @@ function isAuthorizedInternalApiKey(headerValue: string | undefined): boolean {
   return headerValue === REVIEW_AGENT_API_KEY;
 }
 
+function isReviewTriggerLabel(payload: { label?: { name?: string } }): boolean {
+  const labelName = payload.label?.name?.trim().toLowerCase();
+  return !!labelName && REVIEW_TRIGGER_LABELS.includes(labelName);
+}
+
 async function createGitHubClientForRepo(owner: string, repo: string): Promise<GitHubClient> {
   const privateKey = getPrivateKey();
 
@@ -824,9 +835,20 @@ app.post("/webhook", async (c) => {
 
   // Handle pull request events
   if (event === "pull_request") {
-    const triggerActions = ["opened", "synchronize", "ready_for_review", "review_requested"];
+    const triggerActions = [
+      "opened",
+      "synchronize",
+      "ready_for_review",
+      "review_requested",
+      "labeled",
+    ];
 
     if (triggerActions.includes(payload.action)) {
+      if (payload.action === "labeled" && !isReviewTriggerLabel(payload)) {
+        console.log(`Ignoring non-trigger label: ${payload.label?.name || "unknown"}`);
+        return c.json({ status: "ignored", reason: "non-trigger-label" });
+      }
+
       if (!hasNumberField(payload.pull_request)) {
         return c.json({ status: "ignored", reason: "missing_pull_request" });
       }

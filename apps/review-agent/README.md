@@ -7,6 +7,7 @@ This package is part of the OpenDiff monorepo. For full platform setup, see the 
 ## What it does
 
 - Reviews pull requests with OpenCode when PRs are opened, synchronized, or marked ready for review.
+- Reviews pull requests when a configured trigger label is added.
 - Replies to PR comments when the bot is mentioned (inline review comments and issue comments on PRs).
 - Runs triage after reviews to attempt automated fixes.
 - Can push auto-fixes when `autofixEnabled` is enabled in repository settings.
@@ -31,6 +32,7 @@ Copy `.env.example` to `.env` and configure values.
 | `GITHUB_TOKEN` | Fallback | Used only when GitHub App auth is not configured. |
 | `BOT_USERNAME` | Optional | Defaults to `opendiff-bot`. |
 | `BOT_TEAMS` | Optional | Comma-separated team slugs for review-request matching. |
+| `REVIEW_TRIGGER_LABELS` | Optional | Comma-separated labels that trigger a PR review when added. Defaults to `opendiff,<BOT_USERNAME>`. |
 | `PORT` | Optional | Defaults to `3000`. |
 | `SETTINGS_API_URL` | Recommended | BFF URL for repository settings, custom rules, and review recording. |
 | `REVIEW_AGENT_API_KEY` | Recommended | Shared secret for internal BFF routes and callback auth. |
