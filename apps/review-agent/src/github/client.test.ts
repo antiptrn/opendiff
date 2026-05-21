@@ -22,7 +22,7 @@ describe("GitHubClient", () => {
   let client: GitHubClient;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     client = new GitHubClient(mockOctokit);
   });
 
@@ -269,9 +269,15 @@ describe("GitHubClient", () => {
       ];
 
       mockOctokit.rest.pulls.createReview
-        .mockRejectedValueOnce({ status: 422, message: 'Unprocessable Entity: "Line could not be resolved"' })
+        .mockRejectedValueOnce({
+          status: 422,
+          message: 'Unprocessable Entity: "Line could not be resolved"',
+        })
         .mockResolvedValueOnce({ data: { id: 2002 } })
-        .mockRejectedValueOnce({ status: 422, message: 'Unprocessable Entity: "Line could not be resolved"' });
+        .mockRejectedValueOnce({
+          status: 422,
+          message: 'Unprocessable Entity: "Line could not be resolved"',
+        });
 
       const result = await client.validateReviewComments("owner", "repo", 42, "abc123", comments);
 

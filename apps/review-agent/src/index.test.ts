@@ -16,6 +16,8 @@ describe("Application endpoints", () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
     process.env.BOT_USERNAME = "test-bot";
     process.env.BOT_TEAMS = "team-a,team-b";
+    process.env.SETTINGS_API_URL = "";
+    process.env.REVIEW_AGENT_API_KEY = "test-review-agent-key";
   });
 
   afterAll(() => {
@@ -133,6 +135,91 @@ describe("Application endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(body.status).toBe("ignored");
+    });
+
+    it("should enqueue pull_request review triggers", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "opened",
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        pull_request: {
+          number: 42,
+          title: "Add queue",
+          body: null,
+          draft: false,
+          head: { sha: "abc123", ref: "feature" },
+          base: { sha: "def456", ref: "main" },
+          user: { login: "author" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "pull_request",
+          "x-github-delivery": "delivery-1",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.status).toBe("queued");
+      expect(body.key).toBe("owner/repo#42");
+      expect(body.jobId).toBeDefined();
+      expect(body.reviewQueue).toBeDefined();
+    });
+
+    it("should ignore review_requested events for other reviewers", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "review_requested",
+        requested_reviewer: { login: "human-reviewer" },
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        pull_request: {
+          number: 42,
+          title: "Add queue",
+          body: null,
+          draft: false,
+          head: { sha: "abc123", ref: "feature" },
+          base: { sha: "def456", ref: "main" },
+          user: { login: "author" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "pull_request",
+          "x-github-delivery": "delivery-2",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("ignored");
+      expect(body.reason).toBe("review_not_requested_from_bot");
     });
 
     it("should support legacy sha1 signature header", async () => {

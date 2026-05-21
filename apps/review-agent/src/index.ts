@@ -9,6 +9,7 @@ import { generateReviewSummary } from "./internal/generate-summary";
 import { runLocalReview } from "./internal/local-review";
 import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
+import { AsyncJobQueue } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import {
@@ -34,6 +35,43 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || "opendiff-bot";
 const BOT_TEAMS = (process.env.BOT_TEAMS || "").split(",").filter(Boolean);
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const REVIEW_QUEUE_CONCURRENCY = parsePositiveIntegerEnv("REVIEW_QUEUE_CONCURRENCY", 1);
+const REVIEW_QUEUE_MAX_SIZE = parsePositiveIntegerEnv("REVIEW_QUEUE_MAX_SIZE", 100);
+const REVIEW_QUEUE_MAX_ATTEMPTS = parsePositiveIntegerEnv("REVIEW_QUEUE_MAX_ATTEMPTS", 2);
+const REVIEW_QUEUE_RETRY_DELAY_MS = parsePositiveIntegerEnv("REVIEW_QUEUE_RETRY_DELAY_MS", 15_000);
+
+interface PullRequestWebhookPayload {
+  action: string;
+  sender?: { login: string };
+  installation?: { id: number };
+  requested_reviewer?: { login: string };
+  requested_team?: { slug: string };
+  repository: {
+    id: number;
+    owner: { login: string };
+    name: string;
+  };
+  pull_request?: {
+    number: number;
+    title: string;
+    body: string | null;
+    draft?: boolean;
+    head: { sha: string; ref: string };
+    base: { sha: string; ref: string };
+    user: { login: string };
+  };
+}
+
+interface PullRequestReviewJob {
+  payload: PullRequestWebhookPayload;
+  deliveryId: string | null;
+}
 
 // Load private key from file or environment
 function getPrivateKey(): string | undefined {
@@ -125,7 +163,129 @@ async function initWebhookContext(payload: {
   return { owner, repo, settings, handler, customRules, triageAgent };
 }
 
+function buildPullRequestReviewJobKey(payload: PullRequestWebhookPayload): string {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const pullNumber = payload.pull_request?.number ?? "unknown";
+  return `${owner}/${repo}#${pullNumber}`;
+}
+
+function isReviewRequestedFromBot(payload: PullRequestWebhookPayload): boolean {
+  return (
+    payload.requested_reviewer?.login === BOT_USERNAME ||
+    Boolean(payload.requested_team && BOT_TEAMS.includes(payload.requested_team.slug))
+  );
+}
+
+async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<void> {
+  const { payload, deliveryId } = job;
+
+  if (!payload.pull_request) {
+    console.log(
+      `Skipping queued pull_request webhook without pull_request payload (${deliveryId})`
+    );
+    return;
+  }
+
+  const { owner, repo, settings, handler, customRules, triageAgent } =
+    await initWebhookContext(payload);
+
+  if (!settings.effectiveEnabled) {
+    console.log(
+      `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`
+    );
+    return;
+  }
+
+  if (payload.pull_request.draft) {
+    console.log(`Skipping draft PR ${owner}/${repo}#${payload.pull_request.number}`);
+    return;
+  }
+
+  const sender = payload.sender?.login;
+  let triageEnabled = true;
+  if (payload.action === "synchronize" && sender?.includes("[bot]")) {
+    const pendingLocks = await hasPendingClarificationLocks(
+      owner,
+      repo,
+      payload.pull_request.number
+    );
+    if (pendingLocks) {
+      triageEnabled = false;
+      console.log(
+        `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
+      );
+    }
+  }
+
+  const triageOptions = {
+    enabled: triageEnabled,
+    autofixEnabled: settings.autofixEnabled,
+    triageAgent,
+    botUsername: BOT_USERNAME,
+  };
+
+  const result =
+    payload.action === "review_requested"
+      ? await handler.handlePullRequestReviewRequested(
+          payload,
+          BOT_USERNAME,
+          BOT_TEAMS,
+          customRules,
+          settings.sensitivity
+        )
+      : await handler.handlePullRequestOpened(
+          payload,
+          BOT_USERNAME,
+          customRules,
+          triageOptions,
+          settings.sensitivity
+        );
+
+  if (result.skipped) {
+    console.log(`Queued PR review skipped for ${owner}/${repo}#${payload.pull_request.number}`);
+    return;
+  }
+
+  if (!result.success) {
+    throw new Error(result.error || "Review failed");
+  }
+
+  const dbReviewId = await recordReview({
+    githubRepoId: payload.repository.id,
+    owner,
+    repo,
+    pullNumber: payload.pull_request.number,
+    reviewType: "initial",
+    reviewId: result.reviewId,
+    tokensUsed: result.tokensUsed,
+  });
+
+  if (dbReviewId && result.issues && result.issues.length > 0) {
+    await recordReviewComments(dbReviewId, result.issues, result.triageResult);
+  }
+
+  console.log(`Queued review submitted successfully: ${result.reviewId}`);
+}
+
 const app = new Hono();
+
+const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
+  name: "review",
+  concurrency: REVIEW_QUEUE_CONCURRENCY,
+  maxQueuedJobs: REVIEW_QUEUE_MAX_SIZE,
+  maxAttempts: REVIEW_QUEUE_MAX_ATTEMPTS,
+  retryDelayMs: REVIEW_QUEUE_RETRY_DELAY_MS,
+  processor: processPullRequestReviewJob,
+  onError: (error, job, context) => {
+    const pullNumber = job.payload.pull_request?.number ?? "unknown";
+    const repo = `${job.payload.repository.owner.login}/${job.payload.repository.name}`;
+    console.error(
+      `Review queue job ${context.id} failed for ${repo}#${pullNumber} (attempt ${context.attempt}/${context.maxAttempts}):`,
+      error
+    );
+  },
+});
 
 function isAuthorizedInternalApiKey(headerValue: string | undefined): boolean {
   if (!REVIEW_AGENT_API_KEY) {
@@ -157,7 +317,20 @@ async function createGitHubClientForRepo(owner: string, repo: string): Promise<G
 
 // Health check endpoint
 app.get("/health", (c) => {
-  return c.json({ status: "ok", timestamp: new Date().toISOString() });
+  return c.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    reviewQueue: reviewQueue.getStats(),
+  });
+});
+
+app.get("/internal/review-queue", (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!isAuthorizedInternalApiKey(apiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  return c.json(reviewQueue.getSnapshot());
 });
 
 app.get("/internal/provider-models", async (c) => {
@@ -284,90 +457,50 @@ app.post("/webhook", async (c) => {
 
   // Handle pull request events
   if (event === "pull_request") {
-    const triggerActions = ["opened", "synchronize", "ready_for_review"];
+    const triggerActions = ["opened", "synchronize", "ready_for_review", "review_requested"];
 
     if (triggerActions.includes(payload.action)) {
-      try {
-        const { owner, repo, settings, handler, customRules, triageAgent } =
-          await initWebhookContext(payload);
-
-        if (!settings.effectiveEnabled) {
-          console.log(
-            `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`
-          );
-          return c.json({ status: "skipped", reason: "disabled" });
-        }
-
-        // Skip draft PRs
-        if (payload.pull_request?.draft) {
-          console.log("Skipping draft PR");
-          return c.json({ status: "skipped", reason: "draft" });
-        }
-
-        // Triage always runs when repo has reviews enabled; autofixEnabled controls push behavior
-        const sender = payload.sender?.login as string | undefined;
-        let triageEnabled = true;
-        if (payload.action === "synchronize" && sender?.includes("[bot]")) {
-          const pendingLocks = await hasPendingClarificationLocks(
-            owner,
-            repo,
-            payload.pull_request.number
-          );
-          if (pendingLocks) {
-            triageEnabled = false;
-            console.log(
-              `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
-            );
-          }
-        }
-
-        const triageOptions = {
-          enabled: triageEnabled,
-          autofixEnabled: settings.autofixEnabled,
-          triageAgent,
-          botUsername: BOT_USERNAME,
-        };
-
-        // Process the PR
-        const result = await handler.handlePullRequestOpened(
-          payload,
-          BOT_USERNAME,
-          customRules,
-          triageOptions,
-          settings.sensitivity
-        );
-
-        if (result.skipped) {
-          console.log("PR skipped (opened by bot)");
-          return c.json({ status: "skipped" });
-        }
-
-        if (!result.success) {
-          console.error("Review failed:", result.error);
-          return c.json({ error: result.error }, 500);
-        }
-
-        // Record the review and save comments to DB
-        const dbReviewId = await recordReview({
-          githubRepoId: payload.repository.id,
-          owner,
-          repo,
-          pullNumber: payload.pull_request.number,
-          reviewType: "initial",
-          reviewId: result.reviewId,
-          tokensUsed: result.tokensUsed,
-        });
-
-        if (dbReviewId && result.issues && result.issues.length > 0) {
-          await recordReviewComments(dbReviewId, result.issues, result.triageResult);
-        }
-
-        console.log(`Review submitted successfully: ${result.reviewId}`);
-        return c.json({ status: "reviewed", reviewId: result.reviewId });
-      } catch (error) {
-        console.error("Error processing webhook:", error);
-        return c.json({ error: "Internal error" }, 500);
+      if (!payload.pull_request) {
+        return c.json({ status: "ignored", reason: "missing_pull_request" });
       }
+
+      if (payload.action === "review_requested" && !isReviewRequestedFromBot(payload)) {
+        return c.json({ status: "ignored", reason: "review_not_requested_from_bot" });
+      }
+
+      const deliveryId = c.req.header("x-github-delivery") || null;
+      const key = buildPullRequestReviewJobKey(payload);
+      const enqueueResult = reviewQueue.enqueue(key, {
+        payload,
+        deliveryId,
+      });
+
+      if (!enqueueResult.accepted) {
+        console.warn(`Review queue full; rejecting ${key} for GitHub retry`);
+        return c.json(
+          {
+            status: "busy",
+            reason: "review_queue_full",
+            reviewQueue: enqueueResult.stats,
+          },
+          503
+        );
+      }
+
+      console.log(
+        `Queued PR review ${enqueueResult.jobId} for ${key} (${payload.action}, ${enqueueResult.status})`
+      );
+
+      return c.json(
+        {
+          status: "queued",
+          queueStatus: enqueueResult.status,
+          jobId: enqueueResult.jobId,
+          key,
+          reviewQueue: enqueueResult.stats,
+        },
+        202
+      );
     }
   }
 
@@ -630,6 +763,9 @@ app.post("/callback/fix-accepted", async (c) => {
 console.log(`Starting review-agent on port ${PORT}...`);
 console.log(`Bot username: ${BOT_USERNAME}`);
 console.log(`Bot teams: ${BOT_TEAMS.length > 0 ? BOT_TEAMS.join(", ") : "none"}`);
+console.log(
+  `Review queue: concurrency=${REVIEW_QUEUE_CONCURRENCY}, maxSize=${REVIEW_QUEUE_MAX_SIZE}, maxAttempts=${REVIEW_QUEUE_MAX_ATTEMPTS}, retryDelayMs=${REVIEW_QUEUE_RETRY_DELAY_MS}`
+);
 const privateKey = getPrivateKey();
 if (GITHUB_APP_ID && privateKey) {
   console.log(`Auth: GitHub App (ID: ${GITHUB_APP_ID})`);
