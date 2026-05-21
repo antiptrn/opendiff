@@ -88,6 +88,11 @@ GOOGLE_CLIENT_ID=xxx
 GOOGLE_CLIENT_SECRET=xxx
 MICROSOFT_CLIENT_ID=xxx
 MICROSOFT_CLIENT_SECRET=xxx
+MICROSOFT_TENANT_ID=common
+
+# Optional: restrict sign-in to specific users/domains
+AUTH_ALLOWED_EMAILS=alice@example.com,bob@example.com
+AUTH_ALLOWED_DOMAINS=example.com
 
 # GitHub App credentials (same values as review agent — used for fetching PR metadata)
 GITHUB_APP_ID=xxx

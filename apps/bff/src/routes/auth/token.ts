@@ -9,6 +9,8 @@ import {
   GOOGLE_CLIENT_SECRET,
   MICROSOFT_CLIENT_ID,
   MICROSOFT_CLIENT_SECRET,
+  MICROSOFT_SCOPES,
+  MICROSOFT_TENANT_ID,
 } from "./utils";
 
 const tokenRoutes = new Hono();
@@ -85,7 +87,7 @@ tokenRoutes.post("/refresh", async (c) => {
       }
 
       const tokenResponse = await fetch(
-        "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
         {
           method: "POST",
           headers: {
@@ -96,7 +98,7 @@ tokenRoutes.post("/refresh", async (c) => {
             client_secret: MICROSOFT_CLIENT_SECRET,
             refresh_token: user.microsoftRefreshToken,
             grant_type: "refresh_token",
-            scope: "openid email profile User.Read offline_access",
+            scope: MICROSOFT_SCOPES,
           }),
         }
       );

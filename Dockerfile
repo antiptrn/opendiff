@@ -35,6 +35,10 @@ CMD ["bun", "run", "apps/bff/src/index.ts"]
 FROM base AS frontend-build
 
 ARG PACKAGE=site
+ARG VITE_API_URL
+ARG VITE_AUTH_PROVIDERS
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_AUTH_PROVIDERS=${VITE_AUTH_PROVIDERS}
 
 RUN bun run --cwd apps/${PACKAGE} build
 

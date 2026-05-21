@@ -7,10 +7,15 @@ import {
   FRONTEND_URL,
   MICROSOFT_CLIENT_ID,
   MICROSOFT_CLIENT_SECRET,
+  MICROSOFT_SCOPES,
+  MICROSOFT_TENANT_ID,
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getOAuthProviderNotConfiguredRedirect,
   getTurnstileErrorRedirect,
+  getUnauthorizedLoginRedirect,
+  isLoginEmailAllowed,
   sanitizeRedirectUrl,
   verifyTurnstileRequest,
 } from "./utils";
@@ -18,6 +23,10 @@ import {
 const microsoftRoutes = new Hono();
 
 microsoftRoutes.get("/", async (c) => {
+  if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET) {
+    return c.redirect(getOAuthProviderNotConfiguredRedirect("Microsoft"));
+  }
+
   const isHuman = await verifyTurnstileRequest(c);
 
   if (!isHuman) {
@@ -26,11 +35,11 @@ microsoftRoutes.get("/", async (c) => {
 
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
   const redirectUri = `${callbackBase}/auth/microsoft/callback`;
-  const scope = "openid email profile User.Read";
+  const scope = MICROSOFT_SCOPES;
   const clientRedirectUrl = c.req.query("redirectUrl");
 
   const microsoftAuthUrl = new URL(
-    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize`
   );
   microsoftAuthUrl.searchParams.set("client_id", MICROSOFT_CLIENT_ID);
   microsoftAuthUrl.searchParams.set("redirect_uri", redirectUri);
@@ -57,7 +66,14 @@ microsoftRoutes.get("/callback", async (c) => {
   const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
   const redirectUri = `${callbackBase}/auth/microsoft/callback`;
 
+  console.log("[Auth] Microsoft callback received", {
+    hasCode: !!code,
+    hasState: !!state,
+    redirectUri,
+  });
+
   if (!code) {
+    console.warn("[Auth] Microsoft callback missing code");
     return c.redirect(`${FRONTEND_URL}/login?error=no_code`);
   }
 
@@ -75,7 +91,7 @@ microsoftRoutes.get("/callback", async (c) => {
 
   try {
     const tokenResponse = await fetch(
-      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
       {
         method: "POST",
         headers: {
@@ -87,7 +103,7 @@ microsoftRoutes.get("/callback", async (c) => {
           code,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
-          scope: "openid email profile User.Read",
+          scope: MICROSOFT_SCOPES,
         }),
       }
     );
@@ -109,11 +125,32 @@ microsoftRoutes.get("/callback", async (c) => {
 
     const microsoftUser = await userResponse.json();
 
+    console.log("[Auth] Microsoft Graph user response", {
+      status: userResponse.status,
+      hasMail: !!microsoftUser.mail,
+      hasUserPrincipalName: !!microsoftUser.userPrincipalName,
+      id: microsoftUser.id,
+    });
+
     if (!microsoftUser.mail && !microsoftUser.userPrincipalName) {
+      console.warn("[Auth] Microsoft user has no email-like identifier", {
+        status: userResponse.status,
+        response: microsoftUser,
+      });
       return c.redirect(`${FRONTEND_URL}/login?error=no_email`);
     }
 
     const email = microsoftUser.mail || microsoftUser.userPrincipalName;
+
+    if (!isLoginEmailAllowed(email)) {
+      console.warn("[Auth] Microsoft login rejected by allowlist", {
+        email,
+      });
+      return c.redirect(getUnauthorizedLoginRedirect());
+    }
+
+    console.log("[Auth] Microsoft login allowed", { email });
+
     const login = email
       .split("@")[0]
       .toLowerCase()

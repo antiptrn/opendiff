@@ -16,7 +16,7 @@ interface LinkGitHubCardProps {
 }
 
 /**
- * Card component for linking/unlinking GitHub account (for Google users)
+ * Card component for linking/unlinking GitHub account.
  */
 export function LinkGitHubCard({ token, isLinked, onUnlinked }: LinkGitHubCardProps) {
   const linkGitHub = useLinkGitHub(token);

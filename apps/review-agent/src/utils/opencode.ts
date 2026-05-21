@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createOpencode } from "@opencode-ai/sdk";
-import { loadOpencodeOauthCredentials } from "./opencode-auth";
+import { loadOpencodeOauthCredentials, resolveOpencodeAuthPath } from "./opencode-auth";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
 type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -350,6 +350,8 @@ export async function runOpencodePrompt(
     let opencode: Awaited<ReturnType<typeof createOpencode>> | null = null;
     let tempAuthDir: string | null = null;
     let originalXdgDataHome: string | undefined;
+    let xdgDataHomeOverridden = false;
+    let persistAuthBackTo: string | null = null;
 
     try {
       process.chdir(input.cwd);
@@ -380,29 +382,23 @@ export async function runOpencodePrompt(
         });
 
         originalXdgDataHome = process.env.XDG_DATA_HOME;
+        xdgDataHomeOverridden = true;
         process.env.XDG_DATA_HOME = tempAuthDir;
       }
-      // For default runtime auth backed by a mounted OpenCode auth.json, mirror that
-      // auth into a temp XDG data dir so the SDK can use refreshable OAuth state.
+      // For default runtime auth backed by a mounted OpenCode auth.json, prefer using
+      // a local XDG data dir for the OpenCode sqlite DB, then copy refreshed auth
+      // back to the mounted auth file. Azure Files does not support sqlite WAL mode.
       else if (envProvider && envOauthCredentials?.refreshToken) {
+        const authPath = resolveOpencodeAuthPath();
         tempAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-env-"));
         const opencodeDir = path.join(tempAuthDir, "opencode");
         fs.mkdirSync(opencodeDir, { recursive: true, mode: 0o700 });
-
-        const authJson = {
-          [envProvider]: {
-            type: "oauth",
-            access: envOauthCredentials.accessToken,
-            refresh: envOauthCredentials.refreshToken,
-            accountId: envOauthCredentials.accountId || "",
-            expires: envOauthCredentials.expires || 0,
-          },
-        };
-        fs.writeFileSync(path.join(opencodeDir, "auth.json"), JSON.stringify(authJson, null, 2), {
-          mode: 0o600,
-        });
+        fs.copyFileSync(authPath, path.join(opencodeDir, "auth.json"));
+        fs.chmodSync(path.join(opencodeDir, "auth.json"), 0o600);
+        persistAuthBackTo = authPath;
 
         originalXdgDataHome = process.env.XDG_DATA_HOME;
+        xdgDataHomeOverridden = true;
         process.env.XDG_DATA_HOME = tempAuthDir;
       }
 
@@ -497,13 +493,27 @@ export async function runOpencodePrompt(
         }
       }
 
-      // Restore XDG_DATA_HOME and clean up temp auth dir
-      if (tempAuthDir) {
+      if (xdgDataHomeOverridden) {
         if (originalXdgDataHome !== undefined) {
           process.env.XDG_DATA_HOME = originalXdgDataHome;
         } else {
           process.env.XDG_DATA_HOME = undefined;
         }
+      }
+
+      if (tempAuthDir) {
+        if (persistAuthBackTo) {
+          try {
+            const refreshedAuthPath = path.join(tempAuthDir, "opencode", "auth.json");
+            if (fs.existsSync(refreshedAuthPath)) {
+              fs.copyFileSync(refreshedAuthPath, persistAuthBackTo);
+              fs.chmodSync(persistAuthBackTo, 0o600);
+            }
+          } catch (error) {
+            console.warn("Failed to persist refreshed OpenCode auth:", error);
+          }
+        }
+
         try {
           fs.rmSync(tempAuthDir, { recursive: true, force: true });
         } catch {

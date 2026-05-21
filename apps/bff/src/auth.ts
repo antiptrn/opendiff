@@ -6,9 +6,10 @@ export interface ProviderUser {
   name?: string;
   email?: string;
   avatar_url?: string;
-  _provider: "github" | "google";
+  _provider: "github" | "google" | "microsoft";
   _githubId?: number;
   _googleId?: string;
+  _microsoftId?: string;
 }
 
 // Fetch GitHub user data from an access token
@@ -30,6 +31,21 @@ export async function getGitHubUserFromToken(token: string) {
 // Fetch Google user data from an access token
 export async function getGoogleUserFromToken(token: string) {
   const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!userResponse.ok) {
+    return null;
+  }
+
+  return userResponse.json();
+}
+
+// Fetch Microsoft user data from an access token
+export async function getMicrosoftUserFromToken(token: string) {
+  const userResponse = await fetch("https://graph.microsoft.com/v1.0/me", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -68,6 +84,20 @@ export async function getUserFromToken(token: string): Promise<ProviderUser | nu
     };
   }
 
+  // Try Microsoft
+  const microsoftUser = await getMicrosoftUserFromToken(token);
+  if (microsoftUser) {
+    const email = microsoftUser.mail || microsoftUser.userPrincipalName;
+    return {
+      id: microsoftUser.id,
+      login: email?.split("@")[0],
+      name: microsoftUser.displayName,
+      email,
+      _provider: "microsoft" as const,
+      _microsoftId: microsoftUser.id,
+    };
+  }
+
   return null;
 }
 
@@ -78,6 +108,9 @@ export function getDbUserWhere(providerUser: ProviderUser) {
   }
   if (providerUser._provider === "google" && providerUser._googleId) {
     return { googleId: providerUser._googleId };
+  }
+  if (providerUser._provider === "microsoft" && providerUser._microsoftId) {
+    return { microsoftId: providerUser._microsoftId };
   }
   return null;
 }
@@ -127,6 +160,23 @@ export async function findDbUserFromToken(token: string) {
       }
     } catch (error) {
       console.error("Failed to connect to Google API:", error);
+    }
+
+    try {
+      const microsoftResponse = await fetch("https://graph.microsoft.com/v1.0/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (microsoftResponse.ok) {
+        const microsoftUser = await microsoftResponse.json();
+        return prisma.user.findUnique({
+          where: { microsoftId: microsoftUser.id },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to connect to Microsoft Graph API:", error);
     }
   }
 

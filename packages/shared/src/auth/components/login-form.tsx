@@ -12,6 +12,9 @@ const TURNSTILE_SCRIPT_SRC =
 const TURNSTILE_LOAD_ERROR = "Human verification failed to load. Please refresh and try again.";
 const TURNSTILE_EXECUTE_ERROR = "Unable to start verification. Please refresh and try again.";
 
+const DEFAULT_LOGIN_PROVIDERS = ["github", "google", "microsoft"] as const;
+type EnabledLoginProvider = (typeof DEFAULT_LOGIN_PROVIDERS)[number];
+
 declare global {
   interface Window {
     turnstile?: {
@@ -74,6 +77,13 @@ export function LoginForm({
     },
     [onVerificationStatusChange]
   );
+  const enabledProviders = (import.meta.env.VITE_AUTH_PROVIDERS || "")
+    .split(",")
+    .map((provider: string) => provider.trim().toLowerCase())
+    .filter((provider: string): provider is EnabledLoginProvider =>
+      DEFAULT_LOGIN_PROVIDERS.includes(provider as EnabledLoginProvider)
+    );
+  const visibleProviders = enabledProviders.length > 0 ? enabledProviders : DEFAULT_LOGIN_PROVIDERS;
 
   const startProviderLogin = useCallback(
     (provider: Exclude<LoginProvider, null>, turnstileToken?: string) => {
@@ -316,48 +326,54 @@ export function LoginForm({
         </div>
       ) : (
         <>
-          <Button
-            size="lg"
-            variant="secondary"
-            type="button"
-            onClick={() => handleProviderLogin("github")}
-            disabled={isLoading}
-          >
-            {loadingProvider === "github" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <SiGithub className="size-4" />
-            )}
-            {addAccount ? "Add GitHub account" : "Login with GitHub"}
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            type="button"
-            onClick={() => handleProviderLogin("google")}
-            disabled={isLoading}
-          >
-            {loadingProvider === "google" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <img src="/icons/google-icon.svg" alt="" className="size-4" />
-            )}
-            {addAccount ? "Add Google account" : "Login with Google"}
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            type="button"
-            onClick={() => handleProviderLogin("microsoft")}
-            disabled={isLoading}
-          >
-            {loadingProvider === "microsoft" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <img src="/icons/microsoft-icon.svg" alt="" className="size-4" />
-            )}
-            {addAccount ? "Add Microsoft account" : "Login with Microsoft"}
-          </Button>
+          {visibleProviders.includes("github") && (
+            <Button
+              size="lg"
+              variant="secondary"
+              type="button"
+              onClick={() => handleProviderLogin("github")}
+              disabled={isLoading}
+            >
+              {loadingProvider === "github" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <SiGithub className="size-4" />
+              )}
+              {addAccount ? "Add GitHub account" : "Login with GitHub"}
+            </Button>
+          )}
+          {visibleProviders.includes("google") && (
+            <Button
+              size="lg"
+              variant="secondary"
+              type="button"
+              onClick={() => handleProviderLogin("google")}
+              disabled={isLoading}
+            >
+              {loadingProvider === "google" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <img src="/icons/google-icon.svg" alt="" className="size-4" />
+              )}
+              {addAccount ? "Add Google account" : "Login with Google"}
+            </Button>
+          )}
+          {visibleProviders.includes("microsoft") && (
+            <Button
+              size="lg"
+              variant="secondary"
+              type="button"
+              onClick={() => handleProviderLogin("microsoft")}
+              disabled={isLoading}
+            >
+              {loadingProvider === "microsoft" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <img src="/icons/microsoft-icon.svg" alt="" className="size-4" />
+              )}
+              {addAccount ? "Add Microsoft account" : "Login with Microsoft"}
+            </Button>
+          )}
         </>
       )}
       {hasTurnstile && (
