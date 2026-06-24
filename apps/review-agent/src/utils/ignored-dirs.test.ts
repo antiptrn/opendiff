@@ -1,22 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { getIgnoredDirForPath, parseIgnoredDirs } from "./ignored-dirs";
 
-describe("ignored directory matching", () => {
-  it("parses newline-separated directory settings", () => {
-    expect(parseIgnoredDirs(" generated \n/vendor/\n\napps\\legacy\nvendor")).toEqual([
-      "generated",
-      "vendor",
-      "apps/legacy",
+describe("ignored path pattern matching", () => {
+  it("parses newline-separated path pattern settings", () => {
+    expect(parseIgnoredDirs(" generated/* \n/vendor/\n\napps\\legacy\\*\nREADME.md")).toEqual([
+      "generated/*",
+      "vendor/*",
+      "apps/legacy/*",
+      "README.md",
     ]);
   });
 
-  it("matches files directly under ignored directories", () => {
-    expect(getIgnoredDirForPath("generated/client.ts", ["generated"])).toBe("generated");
-    expect(getIgnoredDirForPath("/vendor/pkg/a.ts", ["vendor/"])).toBe("vendor");
+  it("matches exact file paths at the repository root", () => {
+    expect(getIgnoredDirForPath("README.md", ["README.md"])).toBe("README.md");
+    expect(getIgnoredDirForPath("/README.md", ["README.md"])).toBe("README.md");
+    expect(getIgnoredDirForPath("docs/README.md", ["README.md"])).toBeNull();
   });
 
-  it("does not match unrelated paths that only contain the ignored directory name", () => {
+  it("matches wildcard directory patterns recursively", () => {
+    expect(getIgnoredDirForPath("src/apps/bff/index.ts", ["src/apps/bff/*"])).toBe(
+      "src/apps/bff/*"
+    );
+    expect(getIgnoredDirForPath("src/apps/bff/routes/index.ts", ["src/apps/bff/*"])).toBe(
+      "src/apps/bff/*"
+    );
+    expect(getIgnoredDirForPath("/vendor/pkg/a.ts", ["vendor/"])).toBe("vendor/*");
+  });
+
+  it("does not treat bare path entries as directory prefixes", () => {
+    expect(getIgnoredDirForPath("generated", ["generated"])).toBe("generated");
+    expect(getIgnoredDirForPath("generated/client.ts", ["generated"])).toBeNull();
     expect(getIgnoredDirForPath("src/generated.ts", ["generated"])).toBeNull();
-    expect(getIgnoredDirForPath("src/vendor/file.ts", ["vendor"])).toBeNull();
+    expect(getIgnoredDirForPath("src/apps/bff.ts", ["src/apps/bff/*"])).toBeNull();
   });
 });
