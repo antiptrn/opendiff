@@ -135,4 +135,75 @@ describe("AsyncJobQueue", () => {
     expect(rejected.accepted).toBe(false);
     expect(rejected.status).toBe("full");
   });
+
+  it("calls onTerminalFailure when the final processing attempt fails", async () => {
+    let terminalFailure: { message: string; attempt: number } | null = null;
+    const queue = new AsyncJobQueue<string>({
+      name: "test",
+      concurrency: 1,
+      maxQueuedJobs: 10,
+      maxAttempts: 2,
+      retryDelayMs: 1,
+      processor: async () => {
+        throw new Error("permanent failure");
+      },
+      onTerminalFailure: (error, _job, context) => {
+        terminalFailure = {
+          message: error instanceof Error ? error.message : String(error),
+          attempt: context.attempt,
+        };
+      },
+    });
+
+    queue.enqueue("owner/repo#1", "review");
+
+    await waitFor(() => terminalFailure !== null);
+
+    expect(terminalFailure).toEqual({ message: "permanent failure", attempt: 2 });
+    expect(queue.getStats().failed).toBe(1);
+  });
+
+  it("calls onTerminalFailure when a retry cannot be re-enqueued", async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstJobDone = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let secondStarted = false;
+    let terminalFailure: { message: string; attempt: number } | null = null;
+
+    const queue = new AsyncJobQueue<string>({
+      name: "test",
+      concurrency: 1,
+      maxQueuedJobs: 1,
+      maxAttempts: 2,
+      retryDelayMs: 100,
+      processor: async (job) => {
+        if (job === "first") {
+          throw new Error("temporary failure");
+        }
+
+        secondStarted = true;
+        await firstJobDone;
+      },
+      onTerminalFailure: (error, _job, context) => {
+        terminalFailure = {
+          message: error instanceof Error ? error.message : String(error),
+          attempt: context.attempt,
+        };
+      },
+    });
+
+    queue.enqueue("owner/repo#1", "first");
+    await waitFor(() => queue.getStats().running === 1);
+
+    queue.enqueue("owner/repo#2", "second");
+    await waitFor(() => secondStarted);
+    queue.enqueue("owner/repo#3", "third");
+
+    await waitFor(() => terminalFailure !== null, 2_000);
+    releaseFirst();
+
+    expect(terminalFailure).toEqual({ message: "temporary failure", attempt: 1 });
+    expect(queue.getStats().failed).toBe(1);
+  });
 });

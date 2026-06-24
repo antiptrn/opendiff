@@ -9,7 +9,7 @@ import { generateReviewSummary } from "./internal/generate-summary";
 import { runLocalReview } from "./internal/local-review";
 import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
-import { AsyncJobQueue } from "./utils/async-job-queue";
+import { AsyncJobQueue, type QueueJobContext } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import { parseIgnoredDirs } from "./utils/ignored-dirs";
@@ -470,7 +470,10 @@ async function removeReviewInProgressReaction(
   }
 }
 
-async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<void> {
+async function processPullRequestReviewJob(
+  job: PullRequestReviewJob,
+  _context: QueueJobContext
+): Promise<void> {
   const { payload, deliveryId } = job;
 
   if (!payload.pull_request) {
@@ -481,7 +484,6 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
   }
 
   let githubClient: GitHubClient | undefined;
-  let failureCommentPosted = false;
   let reviewReaction: {
     githubClient: GitHubClient;
     owner: string;
@@ -594,18 +596,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
     }
 
     if (!result.success) {
-      const error = new Error(result.error || "Review failed");
-      await commentOnPullRequestFailure({
-        githubClient,
-        owner,
-        repo,
-        pullNumber: reviewPayload.pull_request.number,
-        kind: "review",
-        deliveryId,
-        error,
-      });
-      failureCommentPosted = true;
-      throw error;
+      throw new Error(result.error || "Review failed");
     }
 
     const dbReviewId = await recordReview({
@@ -623,11 +614,6 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
     }
 
     console.log(`Queued review submitted successfully: ${result.reviewId}`);
-  } catch (error) {
-    if (!failureCommentPosted) {
-      await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId, githubClient);
-    }
-    throw error;
   } finally {
     if (reviewReaction) {
       await removeReviewInProgressReaction(
@@ -657,6 +643,9 @@ const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
       `Review queue job ${context.id} failed for ${repo}#${pullNumber} (attempt ${context.attempt}/${context.maxAttempts}):`,
       error
     );
+  },
+  onTerminalFailure: async (error, job) => {
+    await commentOnWebhookPullRequestFailure(job.payload, "review", error, job.deliveryId);
   },
 });
 

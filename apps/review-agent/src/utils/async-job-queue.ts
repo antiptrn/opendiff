@@ -26,6 +26,7 @@ export interface AsyncJobQueueOptions<T> {
   retryDelayMs: number;
   processor: (job: T, context: QueueJobContext) => Promise<void>;
   onError?: (error: unknown, job: T, context: QueueJobContext) => void;
+  onTerminalFailure?: (error: unknown, job: T, context: QueueJobContext) => Promise<void> | void;
 }
 
 export interface QueueStats {
@@ -65,6 +66,7 @@ export class AsyncJobQueue<T> {
   private readonly retryDelayMs: number;
   private readonly processor: AsyncJobQueueOptions<T>["processor"];
   private readonly onError?: AsyncJobQueueOptions<T>["onError"];
+  private readonly onTerminalFailure?: AsyncJobQueueOptions<T>["onTerminalFailure"];
   private readonly queue: Array<QueueEntry<T>> = [];
   private readonly queuedByKey = new Map<string, QueueEntry<T>>();
   private readonly runningById = new Map<string, QueueEntry<T>>();
@@ -82,6 +84,7 @@ export class AsyncJobQueue<T> {
     this.retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
     this.processor = options.processor;
     this.onError = options.onError;
+    this.onTerminalFailure = options.onTerminalFailure;
   }
 
   enqueue(key: string, data: T): QueueEnqueueResult {
@@ -203,11 +206,9 @@ export class AsyncJobQueue<T> {
         entry.status = "retrying";
         this.retries += 1;
         this.remember(entry);
-        setTimeout(() => this.retry(entry), this.retryDelayMs);
+        setTimeout(() => void this.retry(entry), this.retryDelayMs);
       } else {
-        entry.status = "failed";
-        this.failed += 1;
-        this.remember(entry);
+        this.markTerminalFailure(entry, error);
       }
     } finally {
       this.runningById.delete(entry.id);
@@ -216,7 +217,7 @@ export class AsyncJobQueue<T> {
     }
   }
 
-  private retry(entry: QueueEntry<T>): void {
+  private async retry(entry: QueueEntry<T>): Promise<void> {
     if (this.queuedByKey.has(entry.key)) {
       return;
     }
@@ -225,8 +226,7 @@ export class AsyncJobQueue<T> {
       entry.status = "failed";
       entry.lastError = entry.lastError || "Queue full before retry";
       entry.updatedAt = Date.now();
-      this.failed += 1;
-      this.remember(entry);
+      this.markTerminalFailure(entry, new Error(entry.lastError));
       return;
     }
 
@@ -236,6 +236,28 @@ export class AsyncJobQueue<T> {
     this.queuedByKey.set(entry.key, entry);
     this.remember(entry);
     this.drain();
+  }
+
+  private markTerminalFailure(entry: QueueEntry<T>, error: unknown): void {
+    entry.status = "failed";
+    entry.updatedAt = Date.now();
+    this.failed += 1;
+    this.remember(entry);
+
+    if (!this.onTerminalFailure) {
+      return;
+    }
+
+    void Promise.resolve(
+      this.onTerminalFailure(error, entry.data, {
+        id: entry.id,
+        key: entry.key,
+        attempt: entry.attempts,
+        maxAttempts: this.maxAttempts,
+      })
+    ).catch((callbackError) => {
+      console.error(`Queue ${this.options.name} terminal failure callback failed:`, callbackError);
+    });
   }
 
   private remember(entry: QueueEntry<T>): void {
