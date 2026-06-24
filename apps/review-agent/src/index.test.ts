@@ -180,6 +180,93 @@ describe("Application endpoints", () => {
       expect(body.reviewQueue).toBeDefined();
     });
 
+    it("should enqueue deterministic review when an issue comment only mentions the bot", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "created",
+        sender: { login: "reviewer" },
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        issue: {
+          number: 42,
+          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/42" },
+        },
+        comment: {
+          id: 1001,
+          body: "  @test-bot  ",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "issue_comment",
+          "x-github-delivery": "delivery-comment-review",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.status).toBe("queued");
+      expect(body.trigger).toBe("issue_comment");
+      expect(body.key).toBe("owner/repo#42");
+      expect(body.jobId).toBeDefined();
+      expect(body.reviewQueue).toBeDefined();
+    });
+
+    it("should keep non-bare issue comment mentions on the comment response path", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "created",
+        sender: { login: "reviewer" },
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        issue: {
+          number: 43,
+          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/43" },
+        },
+        comment: {
+          id: 1002,
+          body: "@test-bot can you explain this?",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "issue_comment",
+          "x-github-delivery": "delivery-comment-reply",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("skipped");
+      expect(body.reason).toBe("disabled");
+    });
+
     it("should ignore review_requested events for other reviewers", async () => {
       const { default: app } = await import("./index");
 
