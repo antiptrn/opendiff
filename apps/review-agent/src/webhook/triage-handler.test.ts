@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TriageAgent } from "../agent/triage";
 import type { GitHubClient } from "../github/client";
-import { handleTriageAfterReview } from "./triage-handler";
+import { getAutofixIgnoredDirForPath, handleTriageAfterReview } from "./triage-handler";
 
 describe("handleTriageAfterReview", () => {
   let mockGitHubClient: Partial<GitHubClient>;
@@ -65,5 +65,16 @@ describe("handleTriageAfterReview", () => {
     expect(result.success).toBe(true);
     expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
     expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+  });
+
+  it("should match autofix ignored path patterns", () => {
+    expect(getAutofixIgnoredDirForPath("README.md", ["README.md"])).toBe("README.md");
+    expect(getAutofixIgnoredDirForPath("docs/README.md", ["README.md"])).toBeNull();
+    expect(getAutofixIgnoredDirForPath("src/apps/bff/index.ts", ["src/apps/bff/*"])).toBe(
+      "src/apps/bff/*"
+    );
+    expect(getAutofixIgnoredDirForPath("src/apps/bff/routes/index.ts", ["src/apps/bff/*"])).toBe(
+      "src/apps/bff/*"
+    );
   });
 });

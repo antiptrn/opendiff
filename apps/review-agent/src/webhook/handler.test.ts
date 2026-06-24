@@ -874,10 +874,11 @@ describe("WebhookHandler", () => {
       expect(reviewedFiles[0].filename).toBe("src/code.ts");
     });
 
-    it("should filter out files in review ignored directories", async () => {
+    it("should filter out files matching review ignored path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
         { filename: "src/code.ts", status: "modified", patch: "+code" },
+        { filename: "src/config.ts", status: "modified", patch: "+config" },
         { filename: "generated/client.ts", status: "modified", patch: "+generated" },
         { filename: "apps/legacy/old.ts", status: "modified", patch: "+legacy" },
       ]);
@@ -897,7 +898,7 @@ describe("WebhookHandler", () => {
         [],
         null,
         undefined,
-        ["generated", "apps/legacy"]
+        ["src/config.ts", "generated/*", "apps/legacy/*"]
       );
 
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
@@ -906,7 +907,7 @@ describe("WebhookHandler", () => {
       ]);
     });
 
-    it("should drop review findings in ignored directories", async () => {
+    it("should drop review findings matching ignored path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
         { filename: "src/code.ts", status: "modified", patch: "+code" },
@@ -928,6 +929,13 @@ describe("WebhookHandler", () => {
             line: 1,
             message: "Ignored issue",
           },
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/config.ts",
+            line: 1,
+            message: "Ignored exact file issue",
+          },
         ],
         verdict: "comment",
       });
@@ -942,7 +950,7 @@ describe("WebhookHandler", () => {
         [],
         null,
         undefined,
-        ["generated"]
+        ["generated/*", "src/config.ts"]
       );
 
       expect(result.success).toBe(true);

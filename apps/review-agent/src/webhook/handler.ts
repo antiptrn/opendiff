@@ -4,6 +4,7 @@ import type { CodeIssue, FileToReview } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import type { DiffPatches } from "../review/types";
+import { commentMentionsBot } from "../utils/bot-mentions";
 import { withClonedRepo } from "../utils/git";
 import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
@@ -978,7 +979,7 @@ export class WebhookHandler {
 
       // Only respond if the bot was part of the conversation (replied before or was mentioned)
       const botInThread = thread.comments.some((c) => c.user === botUsername);
-      const botMentioned = comment.body.includes(`@${botUsername}`);
+      const botMentioned = commentMentionsBot(comment.body, botUsername);
 
       if (!botInThread && !botMentioned) {
         return { success: true, skipped: true };
@@ -1156,7 +1157,7 @@ export class WebhookHandler {
     const prNumber = issue.number;
 
     // Only respond if mentioned
-    if (!comment.body.includes(`@${botUsername}`)) {
+    if (!commentMentionsBot(comment.body, botUsername)) {
       return { success: true, skipped: true };
     }
 

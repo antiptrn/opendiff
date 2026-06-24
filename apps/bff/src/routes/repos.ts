@@ -31,6 +31,22 @@ async function fetchGitHubFile(
 
 const reposRoutes = new Hono();
 
+function normalizeIgnoredPathPattern(path: string): string {
+  const normalized = path.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized) {
+    return "";
+  }
+
+  const withoutTrailingSlashes = normalized.replace(/\/+$/, "");
+  if (!withoutTrailingSlashes) {
+    return "";
+  }
+
+  return withoutTrailingSlashes.length !== normalized.length
+    ? `${withoutTrailingSlashes}/*`
+    : withoutTrailingSlashes;
+}
+
 function normalizeIgnoredDirs(value: unknown): string | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -39,10 +55,7 @@ function normalizeIgnoredDirs(value: unknown): string | null | undefined {
     return null;
   }
 
-  const dirs = value
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""))
-    .filter(Boolean);
+  const dirs = value.split(/\r?\n/).map(normalizeIgnoredPathPattern).filter(Boolean);
 
   return dirs.length > 0 ? Array.from(new Set(dirs)).join("\n") : null;
 }
