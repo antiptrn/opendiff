@@ -19,7 +19,7 @@ export function HeroSection() {
             </p>
             <div className="flex items-start justify-start gap-4 lg:mt-4 md:mt-4 mt-4 mb-4">
               <Button size="lg" asChild>
-                <Link to={import.meta.env.VITE_APP_URL || ""}>Get started now</Link>
+                <Link to="/autofix-ignored-path-broken-link">Get started now</Link>
               </Button>
               <Button size="lg" variant="secondary" asChild>
                 <a href="cursor:extension/opendiff.opendiff-local-review">
