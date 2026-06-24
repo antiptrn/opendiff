@@ -1,4 +1,5 @@
 /** Review query endpoints: list reviews, get review details, update metadata, and accept/reject fixes. */
+import type { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { prisma } from "../../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../../middleware/auth";
@@ -28,8 +29,12 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
   const limit = Math.min(50, Math.max(1, Number.parseInt(c.req.query("limit") || "20")));
   const repoFilter = c.req.query("repo");
 
-  // Build where clause - filter by repositorySettings relation
-  const where: Record<string, unknown> = { organizationId: orgId };
+  // Build where clause - filter by repositorySettings relation. The pull requests tab should
+  // only show repository-backed reviews, then collapse repeated reviews for the same PR.
+  const where: Prisma.ReviewWhereInput = {
+    organizationId: orgId,
+    repositorySettingsId: { not: null },
+  };
   if (repoFilter) {
     if (repoFilter.includes("/")) {
       const [ownerPart, repoPart] = repoFilter.split("/", 2);
@@ -44,21 +49,62 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     }
   }
 
-  const [reviews, total] = await Promise.all([
-    prisma.review.findMany({
+  const [reviewGroups, totalGroups] = await Promise.all([
+    prisma.review.groupBy({
+      by: ["repositorySettingsId", "pullNumber"],
       where,
-      orderBy: { createdAt: "desc" },
+      _max: { createdAt: true },
+      orderBy: [{ _max: { createdAt: "desc" } }],
       skip: (page - 1) * limit,
       take: limit,
-      include: {
-        repositorySettings: true,
-        comments: {
-          include: { fix: true },
-        },
-      },
     }),
-    prisma.review.count({ where }),
+    prisma.review.groupBy({
+      by: ["repositorySettingsId", "pullNumber"],
+      where,
+    }),
   ]);
+
+  const latestReviewSelectors = reviewGroups.flatMap((group) => {
+    if (!group.repositorySettingsId || !group._max.createdAt) {
+      return [];
+    }
+
+    return [
+      {
+        repositorySettingsId: group.repositorySettingsId,
+        pullNumber: group.pullNumber,
+        createdAt: group._max.createdAt,
+      },
+    ];
+  });
+
+  const candidateReviews =
+    latestReviewSelectors.length > 0
+      ? await prisma.review.findMany({
+          where: { AND: [where, { OR: latestReviewSelectors }] },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          include: {
+            repositorySettings: true,
+            comments: {
+              include: { fix: true },
+            },
+          },
+        })
+      : [];
+
+  const reviewByPullRequest = new Map<string, (typeof candidateReviews)[number]>();
+  for (const review of candidateReviews) {
+    const key = `${review.repositorySettingsId}:${review.pullNumber}`;
+    if (!reviewByPullRequest.has(key)) {
+      reviewByPullRequest.set(key, review);
+    }
+  }
+
+  const reviews = reviewGroups
+    .map((group) => reviewByPullRequest.get(`${group.repositorySettingsId}:${group.pullNumber}`))
+    .filter((review): review is (typeof candidateReviews)[number] => Boolean(review));
+
+  const total = totalGroups.length;
 
   // Batch fetch PR metadata from GitHub
   const githubToken = resolveGitHubToken(c);
