@@ -291,6 +291,8 @@ async function prepareFreshClone(
     "git clone"
   );
 
+  await validateCommitSha(git, "HEAD", opts);
+
   return { dir: tempDir, git };
 }
 
@@ -456,18 +458,7 @@ async function fetchBranch(
     `git fetch ${opts.owner}/${opts.repo}@${opts.branch}`
   );
 
-  if (opts.commitSha) {
-    const fetchedSha = (await git.raw(["rev-parse", paths.branchRef])).trim();
-    if (fetchedSha !== opts.commitSha) {
-      throw new CommitDriftError(
-        opts.owner,
-        opts.repo,
-        opts.branch,
-        fetchedSha,
-        opts.commitSha
-      );
-    }
-  }
+  await validateCommitSha(git, paths.branchRef, opts);
 
   await mkdir(dirname(paths.branchMetaFile), { recursive: true });
   await writeFile(
@@ -482,6 +473,21 @@ async function fetchBranch(
       2
     )}\n`
   );
+}
+
+async function validateCommitSha(
+  git: SimpleGit,
+  ref: string,
+  opts: WithClonedRepoOptions
+): Promise<void> {
+  if (!opts.commitSha) {
+    return;
+  }
+
+  const resolvedSha = (await git.raw(["rev-parse", ref])).trim();
+  if (resolvedSha !== opts.commitSha) {
+    throw new CommitDriftError(opts.owner, opts.repo, opts.branch, resolvedSha, opts.commitSha);
+  }
 }
 
 async function writeWorktreeMeta(
