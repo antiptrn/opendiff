@@ -411,6 +411,17 @@ function resolvedReviewBody(): string {
   return "Resolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.";
 }
 
+function resolvedReviewBodyVariants(): string[] {
+  return [
+    resolvedReviewBody(),
+    "Resolved in a later revision. See the living `OpenDiff Summary` comment for the current state of this PR.",
+  ];
+}
+
+function isResolvedReviewBody(body: string): boolean {
+  return resolvedReviewBodyVariants().some((resolvedBody) => body.includes(resolvedBody));
+}
+
 function strikeThroughReviewBody(body: string): string {
   return body
     .split("\n")
@@ -451,7 +462,7 @@ async function cleanupResolvedPreviousReviews(
     if (!botUsers.has(review.user)) {
       continue;
     }
-    const reviewAlreadyResolved = review.body.includes(resolvedReviewBody());
+    const reviewAlreadyResolved = isResolvedReviewBody(review.body);
 
     const relatedComments = commentsByReviewId.get(review.id) ?? [];
     const issueComments = relatedComments.filter(
