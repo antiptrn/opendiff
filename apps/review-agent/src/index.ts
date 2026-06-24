@@ -192,7 +192,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
 
   if (!settings.effectiveEnabled) {
     console.log(
-      `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`
+      `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled}, reason: ${settings.disabledReason ?? "unknown"})`
     );
     return;
   }

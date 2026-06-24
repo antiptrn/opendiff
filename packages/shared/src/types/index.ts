@@ -55,4 +55,14 @@ export interface RepositorySettings {
   effectiveEnabled: boolean;
   autofixEnabled: boolean;
   sensitivity: number;
+  disabledReason?:
+    | "repository_not_configured"
+    | "repository_disabled"
+    | "missing_organization"
+    | "quota_exhausted";
+  quota?: {
+    total: number;
+    used: number;
+    hasUnlimited: boolean;
+  };
 }

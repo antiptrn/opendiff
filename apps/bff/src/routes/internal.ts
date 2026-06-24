@@ -13,6 +13,36 @@ function safeCompare(a: string, b: string): boolean {
 
 const internalRoutes = new Hono();
 
+type InternalSettingsDisabledReason =
+  | "repository_not_configured"
+  | "repository_disabled"
+  | "missing_organization"
+  | "quota_exhausted";
+
+type InternalSettingsQuota = {
+  total: number;
+  used: number;
+  hasUnlimited: boolean;
+};
+
+function buildDisabledSettings(
+  owner: string,
+  repo: string,
+  reason: InternalSettingsDisabledReason,
+  quota?: InternalSettingsQuota
+) {
+  return {
+    owner,
+    repo,
+    enabled: false,
+    effectiveEnabled: false,
+    autofixEnabled: false,
+    sensitivity: 50,
+    disabledReason: reason,
+    ...(quota ? { quota } : {}),
+  };
+}
+
 // Check if a user has an active seat for a given repo
 internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
   const apiKey = c.req.header("X-API-Key");
@@ -105,14 +135,24 @@ internalRoutes.get("/settings/:owner/:repo", async (c) => {
   });
 
   if (!settings) {
-    return c.json({
-      owner,
-      repo,
-      enabled: false,
-      effectiveEnabled: false,
-      autofixEnabled: false,
-      sensitivity: 50,
-    });
+    return c.json(buildDisabledSettings(owner, repo, "repository_not_configured"));
+  }
+
+  let effectiveEnabled = settings.enabled;
+  let disabledReason: InternalSettingsDisabledReason | undefined;
+  let quota: InternalSettingsQuota | undefined;
+
+  if (!settings.enabled) {
+    disabledReason = "repository_disabled";
+  } else if (!settings.organizationId) {
+    effectiveEnabled = false;
+    disabledReason = "missing_organization";
+  } else {
+    quota = await getOrgQuotaPool(settings.organizationId);
+    if (quota.total !== -1 && quota.used >= quota.total) {
+      effectiveEnabled = false;
+      disabledReason = "quota_exhausted";
+    }
   }
 
   return c.json({
@@ -121,7 +161,9 @@ internalRoutes.get("/settings/:owner/:repo", async (c) => {
     enabled: settings.enabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
-    effectiveEnabled: settings.enabled,
+    effectiveEnabled,
+    ...(disabledReason ? { disabledReason } : {}),
+    ...(quota ? { quota } : {}),
   });
 });
 

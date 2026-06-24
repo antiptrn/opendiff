@@ -32,7 +32,7 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
   }
 
   const quotaPool = await getOrgQuotaPool(orgId);
-  if (quotaPool.total !== -1 && quotaPool.used > quotaPool.total) {
+  if (quotaPool.total !== -1 && quotaPool.used >= quotaPool.total) {
     return c.json(
       {
         error: "Token quota exceeded",
