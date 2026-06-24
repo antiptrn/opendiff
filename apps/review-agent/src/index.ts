@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { CodeReviewAgent } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
@@ -13,11 +13,18 @@ import { AsyncJobQueue } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import {
+  type ReviewFailureCommentKind,
+  type TokenQuotaAwareRepositorySettings,
+  upsertReviewFailureComment,
+  upsertTokenQuotaBlockedComment,
+} from "./utils/quota-comment";
+import {
   type RepositorySettings,
   getCustomReviewRules,
   getRepositorySettings,
   getRuntimeAiConfig,
   hasPendingClarificationLocks,
+  isSettingsApiUnavailableError,
   recordReview,
   recordReviewComments,
 } from "./utils/settings";
@@ -132,20 +139,22 @@ interface WebhookContext {
   owner: string;
   repo: string;
   settings: RepositorySettings;
+  githubClient: GitHubClient;
   handler: WebhookHandler;
   customRules: string | null;
   triageAgent: TriageAgent;
 }
 
 async function initWebhookContext(payload: {
-  repository: { owner: { login: string }; name: string };
+  repository: { id?: number; owner: { login: string }; name: string };
   installation?: { id: number };
 }): Promise<WebhookContext> {
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
+  const githubRepoId = payload.repository.id;
 
-  const settings = await getRepositorySettings(owner, repo);
-  const aiConfig = await getRuntimeAiConfig(owner, repo);
+  const settings = await getRepositorySettings(owner, repo, githubRepoId);
+  const aiConfig = await getRuntimeAiConfig(owner, repo, githubRepoId);
 
   const installationId = payload.installation?.id;
   const octokit = createOctokit(installationId);
@@ -155,12 +164,12 @@ async function initWebhookContext(payload: {
   const triageAgent = new TriageAgent(aiConfig);
   const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
 
-  const customRules = await getCustomReviewRules(owner, repo);
+  const customRules = await getCustomReviewRules(owner, repo, githubRepoId);
   if (customRules) {
     console.log(`Using custom review rules for ${owner}/${repo}`);
   }
 
-  return { owner, repo, settings, handler, customRules, triageAgent };
+  return { owner, repo, settings, githubClient, handler, customRules, triageAgent };
 }
 
 function buildPullRequestReviewJobKey(payload: PullRequestWebhookPayload): string {
@@ -177,6 +186,175 @@ function isReviewRequestedFromBot(payload: PullRequestWebhookPayload): boolean {
   );
 }
 
+function settingsApiUnavailableResponse(c: Context, error: unknown): Response {
+  const message = error instanceof Error ? error.message : "Settings API unavailable";
+  console.error("Settings API unavailable while handling webhook:", error);
+  return c.json(
+    {
+      error: "Settings API unavailable",
+      reason: message,
+    },
+    503
+  );
+}
+
+function isTokenQuotaExhausted(
+  settings: RepositorySettings
+): settings is TokenQuotaAwareRepositorySettings {
+  return (settings as TokenQuotaAwareRepositorySettings).disabledReason === "quota_exhausted";
+}
+
+async function commentOnTokenQuotaBlocked(options: {
+  githubClient: GitHubClient;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  settings: RepositorySettings;
+}): Promise<void> {
+  if (!isTokenQuotaExhausted(options.settings)) {
+    return;
+  }
+
+  try {
+    await upsertTokenQuotaBlockedComment(
+      options.githubClient,
+      options.owner,
+      options.repo,
+      options.pullNumber,
+      BOT_USERNAME,
+      options.settings
+    );
+  } catch (error) {
+    console.warn(
+      `Failed to post token quota notice for ${options.owner}/${options.repo}#${options.pullNumber}:`,
+      error
+    );
+  }
+}
+
+async function commentOnPullRequestFailure(options: {
+  githubClient: GitHubClient;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  kind: ReviewFailureCommentKind;
+  deliveryId?: string | null;
+  error?: unknown;
+}): Promise<void> {
+  try {
+    await upsertReviewFailureComment(
+      options.githubClient,
+      options.owner,
+      options.repo,
+      options.pullNumber,
+      BOT_USERNAME,
+      {
+        kind: options.kind,
+        deliveryId: options.deliveryId,
+      }
+    );
+  } catch (commentError) {
+    console.warn(
+      `Failed to post ${options.kind} failure notice for ${options.owner}/${options.repo}#${options.pullNumber}:`,
+      commentError
+    );
+  }
+
+  if (options.error) {
+    console.error(
+      `${options.kind} failed for ${options.owner}/${options.repo}#${options.pullNumber}:`,
+      options.error
+    );
+  }
+}
+
+async function commentOnWebhookPullRequestFailure(
+  payload: {
+    installation?: { id?: number };
+    repository?: { owner?: { login?: string }; name?: string };
+    pull_request?: { number?: number };
+    issue?: { number?: number; pull_request?: { url: string } };
+  },
+  kind: ReviewFailureCommentKind,
+  error: unknown,
+  deliveryId?: string | null,
+  githubClient?: GitHubClient
+): Promise<void> {
+  const owner = payload.repository?.owner?.login;
+  const repo = payload.repository?.name;
+  const pullNumber =
+    payload.pull_request?.number ??
+    (payload.issue?.pull_request ? payload.issue.number : undefined);
+  if (!owner || !repo || !pullNumber) {
+    return;
+  }
+
+  let client = githubClient;
+  try {
+    client ??= new GitHubClient(createOctokit(payload.installation?.id));
+  } catch (authError) {
+    console.warn(
+      `Unable to create GitHub client for ${kind} failure notice on ${owner}/${repo}#${pullNumber}:`,
+      authError
+    );
+    console.error(`${kind} failed before a failure notice could be posted:`, error);
+    return;
+  }
+
+  await commentOnPullRequestFailure({
+    githubClient: client,
+    owner,
+    repo,
+    pullNumber,
+    kind,
+    deliveryId,
+    error,
+  });
+}
+
+async function addReviewInProgressReaction(
+  githubClient: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<number | null> {
+  try {
+    const { id } = await githubClient.createPullRequestEyesReaction(owner, repo, pullNumber);
+    console.log(`Added review in-progress reaction ${id} for ${owner}/${repo}#${pullNumber}`);
+    return id;
+  } catch (error) {
+    console.warn(
+      `Failed to add review in-progress reaction for ${owner}/${repo}#${pullNumber}:`,
+      error
+    );
+    return null;
+  }
+}
+
+async function removeReviewInProgressReaction(
+  githubClient: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  reactionId: number | null
+): Promise<void> {
+  if (!reactionId) {
+    return;
+  }
+
+  try {
+    await githubClient.deletePullRequestEyesReaction(owner, repo, pullNumber, reactionId);
+    console.log(
+      `Removed review in-progress reaction ${reactionId} for ${owner}/${repo}#${pullNumber}`
+    );
+  } catch (error) {
+    console.warn(
+      `Failed to remove review in-progress reaction ${reactionId} for ${owner}/${repo}#${pullNumber}:`,
+      error
+    );
+  }
+}
+
 async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<void> {
   const { payload, deliveryId } = job;
 
@@ -187,85 +365,146 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
     return;
   }
 
-  const { owner, repo, settings, handler, customRules, triageAgent } =
-    await initWebhookContext(payload);
+  let githubClient: GitHubClient | undefined;
+  let failureCommentPosted = false;
+  let reviewReaction: {
+    githubClient: GitHubClient;
+    owner: string;
+    repo: string;
+    pullNumber: number;
+    id: number | null;
+  } | null = null;
 
-  if (!settings.effectiveEnabled) {
-    console.log(
-      `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled}, reason: ${settings.disabledReason ?? "unknown"})`
-    );
-    return;
-  }
-
-  if (payload.pull_request.draft) {
-    console.log(`Skipping draft PR ${owner}/${repo}#${payload.pull_request.number}`);
-    return;
-  }
-
-  const sender = payload.sender?.login;
-  let triageEnabled = true;
-  if (payload.action === "synchronize" && sender?.includes("[bot]")) {
-    const pendingLocks = await hasPendingClarificationLocks(
+  try {
+    const {
       owner,
       repo,
-      payload.pull_request.number
-    );
-    if (pendingLocks) {
-      triageEnabled = false;
+      settings,
+      githubClient: contextGithubClient,
+      handler,
+      customRules,
+      triageAgent,
+    } = await initWebhookContext(payload);
+    githubClient = contextGithubClient;
+
+    if (!settings.effectiveEnabled) {
       console.log(
-        `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
+        `Reviews disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled}, reason: ${settings.disabledReason ?? "unknown"})`
+      );
+      await commentOnTokenQuotaBlocked({
+        githubClient,
+        owner,
+        repo,
+        pullNumber: payload.pull_request.number,
+        settings,
+      });
+      return;
+    }
+
+    if (payload.pull_request.draft) {
+      console.log(`Skipping draft PR ${owner}/${repo}#${payload.pull_request.number}`);
+      return;
+    }
+
+    const sender = payload.sender?.login;
+    let triageEnabled = true;
+    if (payload.action === "synchronize" && sender?.includes("[bot]")) {
+      const pendingLocks = await hasPendingClarificationLocks(
+        owner,
+        repo,
+        payload.pull_request.number
+      );
+      if (pendingLocks) {
+        triageEnabled = false;
+        console.log(
+          `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
+        );
+      }
+    }
+
+    const triageOptions = {
+      enabled: triageEnabled,
+      autofixEnabled: settings.autofixEnabled,
+      triageAgent,
+      botUsername: BOT_USERNAME,
+    };
+
+    reviewReaction = {
+      githubClient,
+      owner,
+      repo,
+      pullNumber: payload.pull_request.number,
+      id: await addReviewInProgressReaction(githubClient, owner, repo, payload.pull_request.number),
+    };
+
+    const result =
+      payload.action === "review_requested"
+        ? await handler.handlePullRequestReviewRequested(
+            payload,
+            BOT_USERNAME,
+            BOT_TEAMS,
+            customRules,
+            settings.sensitivity
+          )
+        : await handler.handlePullRequestOpened(
+            payload,
+            BOT_USERNAME,
+            customRules,
+            triageOptions,
+            settings.sensitivity
+          );
+
+    if (result.skipped) {
+      console.log(`Queued PR review skipped for ${owner}/${repo}#${payload.pull_request.number}`);
+      return;
+    }
+
+    if (!result.success) {
+      const error = new Error(result.error || "Review failed");
+      await commentOnPullRequestFailure({
+        githubClient,
+        owner,
+        repo,
+        pullNumber: payload.pull_request.number,
+        kind: "review",
+        deliveryId,
+        error,
+      });
+      failureCommentPosted = true;
+      throw error;
+    }
+
+    const dbReviewId = await recordReview({
+      githubRepoId: payload.repository.id,
+      owner,
+      repo,
+      pullNumber: payload.pull_request.number,
+      reviewType: "initial",
+      reviewId: result.reviewId,
+      tokensUsed: result.tokensUsed,
+    });
+
+    if (dbReviewId && result.issues && result.issues.length > 0) {
+      await recordReviewComments(dbReviewId, result.issues, result.triageResult);
+    }
+
+    console.log(`Queued review submitted successfully: ${result.reviewId}`);
+  } catch (error) {
+    if (!failureCommentPosted) {
+      await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId, githubClient);
+    }
+    throw error;
+  } finally {
+    if (reviewReaction) {
+      await removeReviewInProgressReaction(
+        reviewReaction.githubClient,
+        reviewReaction.owner,
+        reviewReaction.repo,
+        reviewReaction.pullNumber,
+        reviewReaction.id
       );
     }
   }
-
-  const triageOptions = {
-    enabled: triageEnabled,
-    autofixEnabled: settings.autofixEnabled,
-    triageAgent,
-    botUsername: BOT_USERNAME,
-  };
-
-  const result =
-    payload.action === "review_requested"
-      ? await handler.handlePullRequestReviewRequested(
-          payload,
-          BOT_USERNAME,
-          BOT_TEAMS,
-          customRules,
-          settings.sensitivity
-        )
-      : await handler.handlePullRequestOpened(
-          payload,
-          BOT_USERNAME,
-          customRules,
-          triageOptions,
-          settings.sensitivity
-        );
-
-  if (result.skipped) {
-    console.log(`Queued PR review skipped for ${owner}/${repo}#${payload.pull_request.number}`);
-    return;
-  }
-
-  if (!result.success) {
-    throw new Error(result.error || "Review failed");
-  }
-
-  const dbReviewId = await recordReview({
-    githubRepoId: payload.repository.id,
-    owner,
-    repo,
-    pullNumber: payload.pull_request.number,
-    reviewType: "initial",
-    reviewId: result.reviewId,
-    tokensUsed: result.tokensUsed,
-  });
-
-  if (dbReviewId && result.issues && result.issues.length > 0) {
-    await recordReviewComments(dbReviewId, result.issues, result.triageResult);
-  }
-
-  console.log(`Queued review submitted successfully: ${result.reviewId}`);
 }
 
 const app = new Hono();
@@ -452,6 +691,7 @@ app.post("/webhook", async (c) => {
   // Parse payload
   const payload = JSON.parse(body);
   const event = c.req.header("x-github-event");
+  const deliveryId = c.req.header("x-github-delivery") || null;
 
   console.log(`Received webhook: ${event} - ${payload.action || "no action"}`);
 
@@ -468,7 +708,20 @@ app.post("/webhook", async (c) => {
         return c.json({ status: "ignored", reason: "review_not_requested_from_bot" });
       }
 
-      const deliveryId = c.req.header("x-github-delivery") || null;
+      try {
+        await getRepositorySettings(
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.repository.id
+        );
+      } catch (error) {
+        await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId);
+        if (isSettingsApiUnavailableError(error)) {
+          return settingsApiUnavailableResponse(c, error);
+        }
+        throw error;
+      }
+
       const key = buildPullRequestReviewJobKey(payload);
       const enqueueResult = reviewQueue.enqueue(key, {
         payload,
@@ -514,12 +767,22 @@ app.post("/webhook", async (c) => {
     }
 
     try {
-      const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
+      const { owner, repo, settings, githubClient, handler, customRules } =
+        await initWebhookContext(payload);
 
       if (!settings.effectiveEnabled) {
         console.log(
           `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled})`
         );
+        if (payload.comment?.body?.includes(`@${BOT_USERNAME}`)) {
+          await commentOnTokenQuotaBlocked({
+            githubClient,
+            owner,
+            repo,
+            pullNumber: payload.pull_request.number,
+            settings,
+          });
+        }
         return c.json({ status: "skipped", reason: "disabled" });
       }
 
@@ -532,6 +795,15 @@ app.post("/webhook", async (c) => {
 
       if (!result.success) {
         console.error("Comment reply failed:", result.error);
+        await commentOnPullRequestFailure({
+          githubClient,
+          owner,
+          repo,
+          pullNumber: payload.pull_request.number,
+          kind: "comment_reply",
+          deliveryId,
+          error: new Error(result.error || "Comment reply failed"),
+        });
         return c.json({ error: result.error }, 500);
       }
 
@@ -549,6 +821,10 @@ app.post("/webhook", async (c) => {
       console.log(`Comment reply posted: ${result.reviewId}`);
       return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
+      await commentOnWebhookPullRequestFailure(payload, "comment_reply", error, deliveryId);
+      if (isSettingsApiUnavailableError(error)) {
+        return settingsApiUnavailableResponse(c, error);
+      }
       console.error("Error processing review comment:", error);
       return c.json({ error: "Internal error" }, 500);
     }
@@ -563,13 +839,29 @@ app.post("/webhook", async (c) => {
       return c.json({ status: "ignored" });
     }
 
+    if (!payload.issue?.pull_request) {
+      return c.json({ status: "ignored", reason: "not_pull_request" });
+    }
+
+    if (!payload.comment?.body?.includes(`@${BOT_USERNAME}`)) {
+      return c.json({ status: "ignored", reason: "bot_not_mentioned" });
+    }
+
     try {
-      const { owner, repo, settings, handler, customRules } = await initWebhookContext(payload);
+      const { owner, repo, settings, githubClient, handler, customRules } =
+        await initWebhookContext(payload);
 
       if (!settings.effectiveEnabled) {
         console.log(
           `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled})`
         );
+        await commentOnTokenQuotaBlocked({
+          githubClient,
+          owner,
+          repo,
+          pullNumber: payload.issue.number,
+          settings,
+        });
         return c.json({ status: "skipped", reason: "disabled" });
       }
 
@@ -582,6 +874,15 @@ app.post("/webhook", async (c) => {
 
       if (!result.success) {
         console.error("Comment reply failed:", result.error);
+        await commentOnPullRequestFailure({
+          githubClient,
+          owner,
+          repo,
+          pullNumber: payload.issue.number,
+          kind: "comment_reply",
+          deliveryId,
+          error: new Error(result.error || "Comment reply failed"),
+        });
         return c.json({ error: result.error }, 500);
       }
 
@@ -599,6 +900,10 @@ app.post("/webhook", async (c) => {
       console.log(`Comment reply posted: ${result.reviewId}`);
       return c.json({ status: "replied", commentId: result.reviewId });
     } catch (error) {
+      await commentOnWebhookPullRequestFailure(payload, "comment_reply", error, deliveryId);
+      if (isSettingsApiUnavailableError(error)) {
+        return settingsApiUnavailableResponse(c, error);
+      }
       console.error("Error processing issue comment:", error);
       return c.json({ error: "Internal error" }, 500);
     }
@@ -633,6 +938,8 @@ app.post("/callback/fix-accepted", async (c) => {
     return c.json({ error: "Missing required fields" }, 400);
   }
 
+  let githubClient: GitHubClient | undefined;
+
   try {
     // Look up GitHub App installation for this repo
     const privateKey = getPrivateKey();
@@ -646,7 +953,7 @@ app.post("/callback/fix-accepted", async (c) => {
     });
     const { data: installation } = await appOctokit.apps.getRepoInstallation({ owner, repo });
     const octokit = createOctokitWithApp(installation.id);
-    const githubClient = new GitHubClient(octokit);
+    githubClient = new GitHubClient(octokit);
 
     // Get the PR to find the head branch
     const pr = await githubClient.getPullRequest(owner, repo, pullNumber);
@@ -741,6 +1048,21 @@ app.post("/callback/fix-accepted", async (c) => {
     return c.json({ success: true, commitSha });
   } catch (error) {
     console.error(`Failed to apply fix ${fixId}:`, error);
+    try {
+      await commentOnPullRequestFailure({
+        githubClient: githubClient ?? (await createGitHubClientForRepo(owner, repo)),
+        owner,
+        repo,
+        pullNumber,
+        kind: "autofix",
+        error,
+      });
+    } catch (commentError) {
+      console.warn(
+        `Failed to create GitHub client for autofix failure notice on ${owner}/${repo}#${pullNumber}:`,
+        commentError
+      );
+    }
 
     // Notify server that the fix failed so it reverts to PENDING
     const SETTINGS_API_URL = process.env.SETTINGS_API_URL;

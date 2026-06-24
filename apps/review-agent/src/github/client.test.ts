@@ -15,6 +15,10 @@ const mockOctokit = {
     repos: {
       getContent: vi.fn(),
     },
+    reactions: {
+      createForIssue: vi.fn(),
+      deleteForIssue: vi.fn(),
+    },
   },
 } as unknown as Octokit;
 
@@ -238,6 +242,37 @@ describe("GitHubClient", () => {
           event: "COMMENT",
         })
       );
+    });
+  });
+
+  describe("pull request reactions", () => {
+    it("should create an eyes reaction on the PR main post", async () => {
+      mockOctokit.rest.reactions.createForIssue.mockResolvedValue({
+        data: { id: 9876 },
+      });
+
+      const result = await client.createPullRequestEyesReaction("owner", "repo", 42);
+
+      expect(mockOctokit.rest.reactions.createForIssue).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        issue_number: 42,
+        content: "eyes",
+      });
+      expect(result).toEqual({ id: 9876 });
+    });
+
+    it("should remove the eyes reaction from the PR main post", async () => {
+      mockOctokit.rest.reactions.deleteForIssue.mockResolvedValue({});
+
+      await client.deletePullRequestEyesReaction("owner", "repo", 42, 9876);
+
+      expect(mockOctokit.rest.reactions.deleteForIssue).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        issue_number: 42,
+        reaction_id: 9876,
+      });
     });
   });
 
