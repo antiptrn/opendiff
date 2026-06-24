@@ -12,8 +12,10 @@ import { ReviewFormatter } from "./review/formatter";
 import { AsyncJobQueue } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
+import { isOpenCodeAuthError } from "./utils/opencode";
 import {
   type ReviewFailureCommentKind,
+  type ReviewFailureCommentReason,
   type TokenQuotaAwareRepositorySettings,
   upsertReviewFailureComment,
   upsertTokenQuotaBlockedComment,
@@ -248,6 +250,10 @@ async function commentOnPullRequestFailure(options: {
   deliveryId?: string | null;
   error?: unknown;
 }): Promise<void> {
+  const reason: ReviewFailureCommentReason | undefined = isOpenCodeAuthError(options.error)
+    ? "opencode_auth"
+    : undefined;
+
   try {
     await upsertReviewFailureComment(
       options.githubClient,
@@ -257,6 +263,7 @@ async function commentOnPullRequestFailure(options: {
       BOT_USERNAME,
       {
         kind: options.kind,
+        reason,
         deliveryId: options.deliveryId,
       }
     );

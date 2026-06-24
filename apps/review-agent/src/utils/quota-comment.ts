@@ -5,6 +5,7 @@ export const TOKEN_QUOTA_BLOCKED_COMMENT_MARKER = "<!-- opendiff-token-quota-blo
 export const REVIEW_FAILURE_COMMENT_MARKER = "<!-- opendiff-review-failed -->";
 
 export type ReviewFailureCommentKind = "review" | "autofix" | "comment_reply";
+export type ReviewFailureCommentReason = "internal_error" | "opencode_auth";
 
 export type TokenQuotaAwareRepositorySettings = RepositorySettings & {
   disabledReason?:
@@ -85,10 +86,20 @@ function reviewFailureActionLabel(kind: ReviewFailureCommentKind): string {
 
 export function buildReviewFailureCommentBody(options: {
   kind: ReviewFailureCommentKind;
+  reason?: ReviewFailureCommentReason;
   deliveryId?: string | null;
 }): string {
   const deliveryDetails = options.deliveryId ? `\n\nDelivery ID: \`${options.deliveryId}\`` : "";
   const action = reviewFailureActionLabel(options.kind);
+
+  if (options.reason === "opencode_auth") {
+    return `${REVIEW_FAILURE_COMMENT_MARKER}
+## Opendiff needs updated OpenCode auth
+
+I couldn't complete the requested ${action} because the review agent's OpenCode auth credentials are expired or invalid.${deliveryDetails}
+
+Update the OpenCode auth credentials on the deployment, then retry the ${action}.`;
+  }
 
   return `${REVIEW_FAILURE_COMMENT_MARKER}
 ## Opendiff couldn't complete
@@ -106,6 +117,7 @@ export async function upsertReviewFailureComment(
   botUsername: string,
   options: {
     kind: ReviewFailureCommentKind;
+    reason?: ReviewFailureCommentReason;
     deliveryId?: string | null;
   }
 ): Promise<void> {
