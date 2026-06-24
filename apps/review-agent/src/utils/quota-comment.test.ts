@@ -104,11 +104,39 @@ describe("quota comment", () => {
     expect(body).toContain("delivery-123");
   });
 
+  it("includes sanitized internal error details when available", () => {
+    const body = buildReviewFailureCommentBody({
+      kind: "review",
+      deliveryId: "delivery-123",
+      error: new Error(
+        'Unprocessable Entity: "Review This pull request has been updated since you started reviewing. Please review the latest changes and resubmit."'
+      ),
+    });
+
+    expect(body).toContain("The service reported:");
+    expect(body).toContain("pull request has been updated since you started reviewing");
+    expect(body).toContain("delivery-123");
+  });
+
+  it("redacts tokens from internal error details", () => {
+    const body = buildReviewFailureCommentBody({
+      kind: "review",
+      error:
+        "failed to clone https://x-access-token:ghs_abcdefghijklmnopqrstuvwxyz123456@github.com/owner/repo.git with Bearer super-secret-token",
+    });
+
+    expect(body).toContain("https://x-access-token:[redacted]@github.com");
+    expect(body).toContain("Bearer [redacted]");
+    expect(body).not.toContain("abcdefghijklmnopqrstuvwxyz");
+    expect(body).not.toContain("super-secret-token");
+  });
+
   it("explains that OpenCode auth credentials need to be updated", () => {
     const body = buildReviewFailureCommentBody({
       kind: "review",
       reason: "opencode_auth",
       deliveryId: "delivery-123",
+      error: new Error("refresh failed"),
     });
 
     expect(body).toContain(REVIEW_FAILURE_COMMENT_MARKER);
@@ -116,6 +144,7 @@ describe("quota comment", () => {
     expect(body).toContain("credentials are expired or invalid");
     expect(body).toContain("delivery-123");
     expect(body).not.toContain("internal error");
+    expect(body).not.toContain("refresh failed");
   });
 
   it("creates a PR comment when no failure notice exists", async () => {
