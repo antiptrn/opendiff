@@ -7,11 +7,11 @@ import type { GitHubClient } from "../github/client";
 import { withRetry } from "./retry";
 import { cleanupUserSkills, hydrateSkills } from "./skill-hydrator";
 
+const WORKTREE_META_FILE = ".opendiff-worktree.json";
 /** Patterns that should never be committed by the bot */
-const GIT_EXCLUDE_PATTERNS = ["core", "core.*", "*.core", ".claude/"];
+const GIT_EXCLUDE_PATTERNS = ["core", "core.*", "*.core", ".claude/", WORKTREE_META_FILE];
 const REF_META_DIR = "opendiff-ref-meta";
 const LAST_USED_FILE = "opendiff-last-used";
-const WORKTREE_META_FILE = ".opendiff-worktree.json";
 const DEFAULT_FETCH_DEPTH = 1;
 const DEFAULT_REPO_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_REF_TTL_MS = 24 * 60 * 60 * 1000;
