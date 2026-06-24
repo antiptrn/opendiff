@@ -31,7 +31,10 @@ function matchesIgnoredPathPattern(filePath: string, pattern: string): boolean {
   }
 
   if (!normalizedPattern.includes("*")) {
-    return normalizedPath === normalizedPattern;
+    return (
+      normalizedPath === normalizedPattern ||
+      normalizedPath.startsWith(`${normalizedPattern}/`)
+    );
   }
 
   const regex = new RegExp(`^${normalizedPattern.split("*").map(escapeRegExp).join(".*")}$`);

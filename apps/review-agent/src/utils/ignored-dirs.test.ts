@@ -27,9 +27,9 @@ describe("ignored path pattern matching", () => {
     expect(getIgnoredDirForPath("/vendor/pkg/a.ts", ["vendor/"])).toBe("vendor/*");
   });
 
-  it("does not treat bare path entries as directory prefixes", () => {
+  it("treats bare path entries as exact matches and legacy directory prefixes", () => {
     expect(getIgnoredDirForPath("generated", ["generated"])).toBe("generated");
-    expect(getIgnoredDirForPath("generated/client.ts", ["generated"])).toBeNull();
+    expect(getIgnoredDirForPath("generated/client.ts", ["generated"])).toBe("generated");
     expect(getIgnoredDirForPath("src/generated.ts", ["generated"])).toBeNull();
     expect(getIgnoredDirForPath("src/apps/bff.ts", ["src/apps/bff/*"])).toBeNull();
   });
