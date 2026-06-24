@@ -11,7 +11,7 @@ import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
 import { AsyncJobQueue, type QueueJobContext } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
-import { withClonedRepo } from "./utils/git";
+import { isCommitDriftError, withClonedRepo } from "./utils/git";
 import { parseIgnoredDirs } from "./utils/ignored-dirs";
 import { isOpenCodeAuthError } from "./utils/opencode";
 import {
@@ -569,24 +569,39 @@ async function processPullRequestReviewJob(
       ),
     };
 
-    const result =
-      reviewPayload.action === "review_requested"
-        ? await handler.handlePullRequestReviewRequested(
-            reviewPayload,
-            BOT_USERNAME,
-            BOT_TEAMS,
-            customRules,
-            settings.sensitivity,
-            reviewIgnoredDirs
-          )
-        : await handler.handlePullRequestOpened(
-            reviewPayload,
-            BOT_USERNAME,
-            customRules,
-            triageOptions,
-            settings.sensitivity,
-            reviewIgnoredDirs
+    const result = await (async () => {
+      try {
+        return reviewPayload.action === "review_requested"
+          ? await handler.handlePullRequestReviewRequested(
+              reviewPayload,
+              BOT_USERNAME,
+              BOT_TEAMS,
+              customRules,
+              settings.sensitivity,
+              reviewIgnoredDirs
+            )
+          : await handler.handlePullRequestOpened(
+              reviewPayload,
+              BOT_USERNAME,
+              customRules,
+              triageOptions,
+              settings.sensitivity,
+              reviewIgnoredDirs
+            );
+      } catch (error) {
+        if (isCommitDriftError(error)) {
+          console.log(
+            `Skipping stale queued PR review for ${owner}/${repo}#${reviewPayload.pull_request.number}: ${error.message}`
           );
+          return null;
+        }
+        throw error;
+      }
+    })();
+
+    if (!result) {
+      return;
+    }
 
     if (result.skipped) {
       console.log(

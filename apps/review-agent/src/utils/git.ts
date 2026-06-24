@@ -79,6 +79,23 @@ interface RepoCacheEntry {
   sizeBytes: number;
 }
 
+export class CommitDriftError extends Error {
+  constructor(
+    readonly owner: string,
+    readonly repo: string,
+    readonly branch: string,
+    readonly actualSha: string,
+    readonly expectedSha: string
+  ) {
+    super(`Fetched ${owner}/${repo}@${branch} at ${actualSha}, expected ${expectedSha}`);
+    this.name = "CommitDriftError";
+  }
+}
+
+export function isCommitDriftError(error: unknown): error is CommitDriftError {
+  return error instanceof CommitDriftError;
+}
+
 const repoLocks = new Map<string, Promise<void>>();
 const activeWorktrees = new Set<string>();
 let lastCleanupAt = 0;
@@ -442,8 +459,12 @@ async function fetchBranch(
   if (opts.commitSha) {
     const fetchedSha = (await git.raw(["rev-parse", paths.branchRef])).trim();
     if (fetchedSha !== opts.commitSha) {
-      throw new Error(
-        `Fetched ${opts.owner}/${opts.repo}@${opts.branch} at ${fetchedSha}, expected ${opts.commitSha}`
+      throw new CommitDriftError(
+        opts.owner,
+        opts.repo,
+        opts.branch,
+        fetchedSha,
+        opts.commitSha
       );
     }
   }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getGitCacheConfig, pruneGitCache } from "./git";
+import { CommitDriftError, getGitCacheConfig, isCommitDriftError, pruneGitCache } from "./git";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -100,5 +100,16 @@ describe("pruneGitCache", () => {
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("isCommitDriftError", () => {
+  it("identifies commit drift as a dedicated stale-job error", () => {
+    expect(
+      isCommitDriftError(
+        new CommitDriftError("owner", "repo", "main", "actual-sha", "expected-sha")
+      )
+    ).toBe(true);
+    expect(isCommitDriftError(new Error("other"))).toBe(false);
   });
 });
