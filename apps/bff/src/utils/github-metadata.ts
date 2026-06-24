@@ -74,7 +74,8 @@ export async function fetchRepoMetadata(owner: string, repo: string): Promise<Re
 export async function fetchPRMetadata(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  githubToken?: string | null
 ): Promise<PRMeta | null> {
   const cacheKey = `${owner}/${repo}#${pullNumber}`;
   const cached = prCache.get(cacheKey);
@@ -82,7 +83,7 @@ export async function fetchPRMetadata(
     return cached.data;
   }
 
-  const token = await getInstallationTokenForRepo(owner, repo);
+  const token = githubToken || (await getInstallationTokenForRepo(owner, repo));
   if (!token) return null;
 
   try {
@@ -139,7 +140,8 @@ export async function fetchPRMetadata(
 
 // Batch fetch PR metadata for multiple reviews
 export async function fetchPRMetadataBatch(
-  reviews: Array<{ owner: string; repo: string; pullNumber: number }>
+  reviews: Array<{ owner: string; repo: string; pullNumber: number }>,
+  githubToken?: string | null
 ): Promise<Map<string, PRMeta | null>> {
   const results = new Map<string, PRMeta | null>();
 
@@ -149,7 +151,7 @@ export async function fetchPRMetadataBatch(
     const batch = reviews.slice(i, i + BATCH_SIZE);
     const promises = batch.map(async (r) => {
       const key = `${r.owner}/${r.repo}#${r.pullNumber}`;
-      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber);
+      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber, githubToken);
       results.set(key, meta);
     });
     await Promise.all(promises);

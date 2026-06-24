@@ -5,8 +5,16 @@ import { ChevronLeft, ChevronRight, ExternalLink, GitPullRequest } from "lucide-
 import { useState } from "react";
 import type { PullRequestSummary } from "../hooks/use-pull-requests";
 
+function getPullRequestDisplayTitle(pullRequest: PullRequestSummary) {
+  const fallbackTitle = `PR #${pullRequest.pullNumber}`;
+  const title = pullRequest.pullTitle?.trim();
+
+  return title && title !== fallbackTitle ? `#${pullRequest.pullNumber} ${title}` : fallbackTitle;
+}
+
 function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; showRepo?: boolean }) {
   const [hovered, setHovered] = useState(false);
+  const title = getPullRequestDisplayTitle(pullRequest);
 
   return (
     <button
@@ -19,10 +27,7 @@ function PullRequestRow({ pullRequest }: { pullRequest: PullRequestSummary; show
         <GitPullRequest className="size-5 text-foreground" />
         <div className="min-w-0 flex flex-col">
           <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-lg truncate">
-              {`#${pullRequest.pullNumber} ${pullRequest.pullTitle}` ||
-                `PR #${pullRequest.pullNumber}`}
-            </span>
+            <span className="text-lg truncate">{title}</span>
             {pullRequest.pullUrl && (
               <motion.div
                 initial={false}
