@@ -106,6 +106,7 @@ export function RepositoriesPage() {
 
   const saveEditSettings = async (localSettings: {
     enabled: boolean;
+    reviewIgnoredDirs: string;
     autofixEnabled: boolean;
     autofixIgnoredDirs: string;
     sensitivity: number;
@@ -118,6 +119,7 @@ export function RepositoriesPage() {
         owner: editingRepo.owner,
         repo: editingRepo.repo,
         enabled: localSettings.enabled,
+        reviewIgnoredDirs: localSettings.reviewIgnoredDirs,
         autofixEnabled: localSettings.autofixEnabled,
         autofixIgnoredDirs: localSettings.autofixIgnoredDirs,
         sensitivity: localSettings.sensitivity,
@@ -142,6 +144,7 @@ export function RepositoriesPage() {
 
   const saveSettings = async (localSettings: {
     enabled: boolean;
+    reviewIgnoredDirs: string;
     autofixEnabled: boolean;
     autofixIgnoredDirs: string;
     sensitivity: number;
@@ -154,6 +157,7 @@ export function RepositoriesPage() {
         owner: selectedRepo.owner,
         repo: selectedRepo.name,
         enabled: localSettings.enabled,
+        reviewIgnoredDirs: localSettings.reviewIgnoredDirs,
         autofixEnabled: localSettings.autofixEnabled,
         autofixIgnoredDirs: localSettings.autofixIgnoredDirs,
         sensitivity: localSettings.sensitivity,
@@ -285,9 +289,10 @@ export function RepositoriesPage() {
 
           {editingRepo && editSettings && !isLoadingEditSettings && (
             <RepoSettingsForm
-              key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.autofixEnabled}-${editSettings.autofixIgnoredDirs || ""}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
+              key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.reviewIgnoredDirs || ""}-${editSettings.autofixEnabled}-${editSettings.autofixIgnoredDirs || ""}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
               initialSettings={{
                 enabled: editSettings.enabled,
+                reviewIgnoredDirs: editSettings.reviewIgnoredDirs || "",
                 autofixEnabled: editSettings.autofixEnabled ?? true,
                 autofixIgnoredDirs: editSettings.autofixIgnoredDirs || "",
                 sensitivity: editSettings.sensitivity ?? 50,

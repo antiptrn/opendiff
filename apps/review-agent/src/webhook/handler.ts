@@ -5,6 +5,7 @@ import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import type { DiffPatches } from "../review/types";
 import { withClonedRepo } from "../utils/git";
+import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import {
   type StoredIssueRecord,
@@ -250,6 +251,17 @@ async function getHistoricalIssues(
   return issues;
 }
 
+function filterIssuesOutsideIgnoredDirs(
+  issues: Map<string, StoredIssueRecord>,
+  ignoredDirs: string[]
+): Map<string, StoredIssueRecord> {
+  if (ignoredDirs.length === 0) {
+    return issues;
+  }
+
+  return new Map([...issues].filter(([, issue]) => !getIgnoredDirForPath(issue.file, ignoredDirs)));
+}
+
 async function buildPullRequestConversationContext(
   github: GitHubClient,
   owner: string,
@@ -460,7 +472,8 @@ export class WebhookHandler {
     botUsername: string,
     customRules?: string | null,
     triageOptions?: TriageOptions,
-    sensitivity?: number
+    sensitivity?: number,
+    reviewIgnoredDirs: string[] = []
   ): Promise<HandlerResult> {
     if (!payload.pull_request) {
       return { success: true, skipped: true };
@@ -471,7 +484,13 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    const reviewResult = await this.performReview(payload, botUsername, customRules, sensitivity);
+    const reviewResult = await this.performReview(
+      payload,
+      botUsername,
+      customRules,
+      sensitivity,
+      reviewIgnoredDirs
+    );
 
     // If review succeeded and triage is enabled, run auto-fix
     if (
@@ -517,7 +536,8 @@ export class WebhookHandler {
     botUsername: string,
     botTeams: string[] = [],
     customRules?: string | null,
-    sensitivity?: number
+    sensitivity?: number,
+    reviewIgnoredDirs: string[] = []
   ): Promise<HandlerResult> {
     // Check if the review was requested from our bot
     const isRequestedFromBot =
@@ -528,14 +548,15 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload, botUsername, customRules, sensitivity);
+    return this.performReview(payload, botUsername, customRules, sensitivity, reviewIgnoredDirs);
   }
 
   private async performReview(
     payload: WebhookPayload,
     botUsername: string,
     customRules?: string | null,
-    sensitivity?: number
+    sensitivity?: number,
+    reviewIgnoredDirs: string[] = []
   ): Promise<HandlerResult> {
     const { repository, pull_request } = payload;
 
@@ -546,6 +567,7 @@ export class WebhookHandler {
     const owner = repository.owner.login;
     const repo = repository.name;
     const prNumber = pull_request.number;
+    const normalizedReviewIgnoredDirs = normalizeIgnoredDirs(reviewIgnoredDirs);
 
     try {
       console.log(`Cloning ${owner}/${repo} branch ${pull_request.head.ref} for review`);
@@ -568,6 +590,11 @@ export class WebhookHandler {
             if (file.status === "removed") return false;
             if (!this.isCodeFile(file.filename)) return false;
             if (this.shouldSkipFile(file.filename)) return false;
+            const ignoredDir = getIgnoredDirForPath(file.filename, normalizedReviewIgnoredDirs);
+            if (ignoredDir) {
+              console.log(`Skipping review for ${file.filename}; ignored by ${ignoredDir}`);
+              return false;
+            }
             return true;
           });
 
@@ -591,6 +618,10 @@ export class WebhookHandler {
             prNumber,
             botUsername
           );
+          const reviewableHistoricalIssues = filterIssuesOutsideIgnoredDirs(
+            historicalIssues,
+            normalizedReviewIgnoredDirs
+          );
           const reviewResult = await this.agent.reviewFiles(
             filesToReview,
             {
@@ -598,15 +629,22 @@ export class WebhookHandler {
               prBody: pull_request.body,
               sensitivity,
               conversationContext,
-              priorReviewContext: buildPriorReviewPromptContext(historicalIssues),
+              priorReviewContext: buildPriorReviewPromptContext(reviewableHistoricalIssues),
             },
             tempDir,
             customRules
           );
 
-          const issueFingerprints = reviewResult.issues.map((issue) =>
-            buildIssueFingerprint(issue)
-          );
+          const reviewableIssues = reviewResult.issues.filter((issue) => {
+            const ignoredDir = getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs);
+            if (ignoredDir) {
+              console.log(`Dropping review finding for ${issue.file}; ignored by ${ignoredDir}`);
+              return false;
+            }
+            return true;
+          });
+
+          const issueFingerprints = reviewableIssues.map((issue) => buildIssueFingerprint(issue));
           const suppressed = await getSuppressedIssueFingerprints(
             owner,
             repo,
@@ -621,7 +659,7 @@ export class WebhookHandler {
             botUsername
           );
 
-          const filteredIssues = reviewResult.issues.filter((issue) => {
+          const filteredIssues = reviewableIssues.filter((issue) => {
             const fingerprint = buildIssueFingerprint(issue);
             return !suppressed.has(fingerprint) && !existingMentioned.has(fingerprint);
           });
@@ -632,7 +670,7 @@ export class WebhookHandler {
             );
           }
           if (existingMentioned.size > 0) {
-            const duplicateCount = reviewResult.issues.filter((issue) =>
+            const duplicateCount = reviewableIssues.filter((issue) =>
               existingMentioned.has(buildIssueFingerprint(issue))
             ).length;
             if (duplicateCount > 0) {
@@ -647,11 +685,21 @@ export class WebhookHandler {
             issues: filteredIssues,
           };
           const currentIssueMap = new Map(
-            reviewResult.issues
+            reviewableIssues
               .filter((issue) => !suppressed.has(buildIssueFingerprint(issue)))
               .map((issue) => [buildIssueFingerprint(issue), toStoredIssueRecord(issue)])
           );
-          const history = buildReviewHistoryContext(historicalIssues, currentIssueMap);
+          const history = buildReviewHistoryContext(reviewableHistoricalIssues, currentIssueMap);
+          const unresolvedHistoricalIssueFingerprints = new Set(
+            [...historicalIssues].flatMap(([fingerprint, issue]) => {
+              // Ignored historical findings should stay unresolved until they are reviewed again.
+              if (getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs)) {
+                return fingerprint;
+              }
+
+              return currentIssueMap.has(fingerprint) ? fingerprint : [];
+            })
+          );
 
           await cleanupResolvedPreviousReviews(
             this.github,
@@ -659,7 +707,7 @@ export class WebhookHandler {
             repo,
             prNumber,
             botUsername,
-            new Set(history.unresolvedHistoricalIssues.map((issue) => issue.fingerprint))
+            unresolvedHistoricalIssueFingerprints
           );
 
           // Build patches map for filtering inline comments to valid diff lines
