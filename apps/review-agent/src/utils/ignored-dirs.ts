@@ -30,15 +30,39 @@ function matchesIgnoredPathPattern(filePath: string, pattern: string): boolean {
     return false;
   }
 
+  return getEquivalentPathPatterns(normalizedPattern).some((candidatePattern) =>
+    matchesNormalizedIgnoredPathPattern(normalizedPath, candidatePattern)
+  );
+}
+
+function matchesNormalizedIgnoredPathPattern(
+  normalizedPath: string,
+  normalizedPattern: string
+): boolean {
   if (!normalizedPattern.includes("*")) {
     return (
-      normalizedPath === normalizedPattern ||
-      normalizedPath.startsWith(`${normalizedPattern}/`)
+      normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`)
     );
   }
 
   const regex = new RegExp(`^${normalizedPattern.split("*").map(escapeRegExp).join(".*")}$`);
   return regex.test(normalizedPath);
+}
+
+function getEquivalentPathPatterns(normalizedPattern: string): string[] {
+  const patterns = [normalizedPattern];
+  const workspaceSourceMatch = normalizedPattern.match(
+    /^src\/(apps|packages)\/([^/]+)(?:\/(.*))?$/
+  );
+
+  if (workspaceSourceMatch) {
+    const [, workspaceDir, workspaceName, rest] = workspaceSourceMatch;
+    patterns.push(
+      rest ? `${workspaceDir}/${workspaceName}/src/${rest}` : `${workspaceDir}/${workspaceName}/src`
+    );
+  }
+
+  return Array.from(new Set(patterns));
 }
 
 export function parseIgnoredDirs(value?: string): string[] {
