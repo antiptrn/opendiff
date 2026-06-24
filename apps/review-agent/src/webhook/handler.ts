@@ -847,6 +847,7 @@ export class WebhookHandler {
             botUsername
           );
 
+          let reviewSummaryCaptured = true;
           try {
             await upsertReviewSummaryComment(
               this.github,
@@ -857,12 +858,14 @@ export class WebhookHandler {
               historicalSummaryBody || summaryBody
             );
           } catch (error) {
+            reviewSummaryCaptured = false;
             console.error("Failed to upsert review summary comment:", error);
           }
 
           let reviewId: number | undefined;
           const resolvedComments = validInlineComments.length > 0 ? validInlineComments : undefined;
           const shouldPostStatusUpdate =
+            !reviewSummaryCaptured ||
             hasOpenIssuesToReport(
               validInlineComments,
               bodyOnlyIssues,
@@ -900,7 +903,7 @@ export class WebhookHandler {
             );
             reviewId = id;
           } else {
-            console.log("Skipped GitHub review submission; summary captured the current state");
+            console.log("Skipped GitHub review submission; summary comment captured the current state");
           }
 
           return {
