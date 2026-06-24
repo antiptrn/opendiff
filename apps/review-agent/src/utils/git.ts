@@ -76,6 +76,7 @@ interface CachedWorkspace {
 }
 
 interface RepoCacheEntry {
+  repoId: string;
   path: string;
   lastUsedAt: number;
   sizeBytes: number;
@@ -196,12 +197,18 @@ export async function pruneGitCache(config = getGitCacheConfig()): Promise<void>
 
   const repoEntries = await getRepoCacheEntries(config);
   for (const entry of repoEntries) {
+    if (await hasActiveRepoLock(config, entry.repoId)) {
+      continue;
+    }
     await pruneCachedRefs(entry.path, config.refTtlMs);
     await pruneGitWorktreeMetadata(entry.path);
   }
 
   const now = Date.now();
   for (const entry of repoEntries) {
+    if (await hasActiveRepoLock(config, entry.repoId)) {
+      continue;
+    }
     if (now - entry.lastUsedAt < config.repoTtlMs) {
       continue;
     }
@@ -600,6 +607,7 @@ async function getRepoCacheEntries(config: GitCacheConfig): Promise<RepoCacheEnt
 
     const repoPath = join(config.reposDir, entry.name);
     repos.push({
+      repoId: entry.name.slice(0, -".git".length),
       path: repoPath,
       lastUsedAt: await getPathMtimeMs(join(repoPath, LAST_USED_FILE), repoPath),
       sizeBytes: 0,
@@ -674,6 +682,9 @@ async function enforceRepoCacheLimits(config: GitCacheConfig): Promise<void> {
       if (reposToRemove <= 0) {
         break;
       }
+      if (await hasActiveRepoLock(config, entry.repoId)) {
+        continue;
+      }
       if (await hasLinkedWorktrees(entry.path)) {
         continue;
       }
@@ -697,6 +708,9 @@ async function enforceRepoCacheLimits(config: GitCacheConfig): Promise<void> {
     if (totalBytes <= config.maxBytes) {
       break;
     }
+    if (await hasActiveRepoLock(config, entry.repoId)) {
+      continue;
+    }
     if (await hasLinkedWorktrees(entry.path)) {
       continue;
     }
@@ -708,6 +722,10 @@ async function enforceRepoCacheLimits(config: GitCacheConfig): Promise<void> {
 async function removeRepoCache(repoPath: string, reason: string): Promise<void> {
   console.log(`Removing git cache repo ${repoPath} (${reason})`);
   await rm(repoPath, { recursive: true, force: true });
+}
+
+async function hasActiveRepoLock(config: GitCacheConfig, repoId: string): Promise<boolean> {
+  return await pathExists(join(config.locksDir, `${repoId}.lock`));
 }
 
 async function hasLinkedWorktrees(mirrorDir: string): Promise<boolean> {
