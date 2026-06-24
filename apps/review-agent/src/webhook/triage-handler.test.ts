@@ -109,7 +109,7 @@ describe("handleTriageAfterReview", () => {
     expect(body).not.toContain("  >");
   });
 
-  it("should refresh existing remediation summary comments when no autofix actions occur", async () => {
+  it("should not touch an existing remediation summary when no autofix actions occur", async () => {
     mockGitHubClient.getIssueComments = vi.fn().mockResolvedValue([
       {
         id: 100,
@@ -134,12 +134,7 @@ describe("handleTriageAfterReview", () => {
 
     expect(result.success).toBe(true);
     expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
-    expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
-      "owner",
-      "repo",
-      100,
-      expect.stringContaining("## Autofix Summary\n\nNo autofix actions were needed for this push.")
-    );
+    expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
   });
 
   it("should not post an autofix summary on a clean pass when autofix is off", async () => {
