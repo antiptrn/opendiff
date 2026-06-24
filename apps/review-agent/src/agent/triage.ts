@@ -43,7 +43,7 @@ export class TriageAgent {
         : "",
       ignoredDirsSection:
         context?.autofixIgnoredDirs && context.autofixIgnoredDirs.length > 0
-          ? `\n## Autofix Ignored Directories\nDo not edit files under these directories:\n${context.autofixIgnoredDirs.map((dir) => `- ${dir}`).join("\n")}\n`
+          ? `\n## Autofix Ignored Paths\nDo not edit files under these paths:\n${context.autofixIgnoredDirs.map((dir) => `- ${dir}`).join("\n")}\n`
           : "",
     });
 
