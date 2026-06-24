@@ -385,9 +385,11 @@ async function resolvePullRequestForCiFailure(
       .filter((pullNumber): pullNumber is number => Boolean(pullNumber));
 
     if (pullNumbers && pullNumbers.length > 0) {
-      const pulls = await Promise.all(
-        pullNumbers.map((pullNumber) => githubClient.getPullRequest(owner, repo, pullNumber))
-      );
+      const pulls = (
+        await Promise.allSettled(
+          pullNumbers.map((pullNumber) => githubClient.getPullRequest(owner, repo, pullNumber))
+        )
+      ).flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
       const openPull = pulls.find((pull) => pull.state === "open" && pull.head.sha === sha);
 
       if (openPull) {
