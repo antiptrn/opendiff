@@ -982,11 +982,12 @@ app.post("/webhook", async (c) => {
       return c.json({ status: "ignored", reason: "not_pull_request" });
     }
 
-    if (!commentMentionsBot(payload.comment?.body, BOT_USERNAME)) {
+    const commentBody = payload.comment?.body;
+    if (!commentBody) {
       return c.json({ status: "ignored", reason: "bot_not_mentioned" });
     }
 
-    if (isBareBotMention(payload.comment?.body, BOT_USERNAME)) {
+    if (isBareBotMention(commentBody, BOT_USERNAME)) {
       try {
         await getRepositorySettings(
           payload.repository.owner.login,
@@ -1035,6 +1036,10 @@ app.post("/webhook", async (c) => {
         },
         202
       );
+    }
+
+    if (!commentBody.includes(`@${BOT_USERNAME}`)) {
+      return c.json({ status: "ignored", reason: "bot_not_mentioned" });
     }
 
     try {
