@@ -104,6 +104,20 @@ describe("quota comment", () => {
     expect(body).toContain("delivery-123");
   });
 
+  it("explains that OpenCode auth credentials need to be updated", () => {
+    const body = buildReviewFailureCommentBody({
+      kind: "review",
+      reason: "opencode_auth",
+      deliveryId: "delivery-123",
+    });
+
+    expect(body).toContain(REVIEW_FAILURE_COMMENT_MARKER);
+    expect(body).toContain("updated OpenCode auth");
+    expect(body).toContain("credentials are expired or invalid");
+    expect(body).toContain("delivery-123");
+    expect(body).not.toContain("internal error");
+  });
+
   it("creates a PR comment when no failure notice exists", async () => {
     await upsertReviewFailureComment(github as GitHubClient, "owner", "repo", 42, "opendiff-bot", {
       kind: "autofix",

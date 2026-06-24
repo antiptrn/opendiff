@@ -35,6 +35,13 @@ interface RunOpencodePromptResult {
   tokensUsed: number;
 }
 
+export class OpenCodeAuthError extends Error {
+  constructor(message = "OpenCode authentication failed: update the OpenCode auth credentials.") {
+    super(message);
+    this.name = "OpenCodeAuthError";
+  }
+}
+
 let executionQueue: Promise<void> = Promise.resolve();
 
 function queueOp<T>(fn: () => Promise<T>): Promise<T> {
@@ -124,6 +131,67 @@ function extractTokens(info: unknown): number {
     return inputTokens + outputTokens;
   }
   return 0;
+}
+
+function messageFromOpenCodeError(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return error ? String(error) : "Unknown OpenCode error";
+  }
+
+  const record = error as Record<string, unknown>;
+  const data = record.data;
+  const parts = [
+    typeof record.name === "string" ? record.name : "",
+    typeof record.message === "string" ? record.message : "",
+    typeof record.statusCode === "number" ? String(record.statusCode) : "",
+    data &&
+    typeof data === "object" &&
+    typeof (data as Record<string, unknown>).message === "string"
+      ? String((data as Record<string, unknown>).message)
+      : "",
+  ].filter(Boolean);
+
+  return parts.join(": ") || "Unknown OpenCode error";
+}
+
+export function isOpenCodeAuthError(error: unknown): boolean {
+  if (error instanceof OpenCodeAuthError) {
+    return true;
+  }
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : messageFromOpenCodeError(error);
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("opencode authentication failed") ||
+    (/(^|[^0-9])401([^0-9]|$)/.test(normalized) &&
+      /(auth|credential|token|refresh|unauthorized|api key)/.test(normalized))
+  );
+}
+
+function errorFromOpenCodeInfo(info: unknown): Error | null {
+  if (!info || typeof info !== "object" || !("error" in info)) {
+    return null;
+  }
+
+  const error = (info as { error?: unknown }).error;
+  if (!error) {
+    return null;
+  }
+
+  const message = messageFromOpenCodeError(error);
+  if (isOpenCodeAuthError(message)) {
+    return new OpenCodeAuthError(
+      "OpenCode authentication failed: update the OpenCode auth credentials for the review agent."
+    );
+  }
+
+  return new Error(`OpenCode provider error: ${message}`);
 }
 
 function providerFromModel(model: string): "anthropic" | "openai" | null {
@@ -404,6 +472,11 @@ export async function runOpencodePrompt(
 
       const payload = promptResult.data ?? promptResult;
       const info = payload.info ?? {};
+      const providerError = errorFromOpenCodeInfo(info);
+      if (providerError) {
+        throw providerError;
+      }
+
       const structured = info.structured_output;
 
       let text = extractTextFromParts(payload.parts);
