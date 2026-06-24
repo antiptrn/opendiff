@@ -6,6 +6,12 @@ const repositorySettings = {
   findUnique: mock((_args: unknown): Promise<unknown | null> => Promise.resolve(null)),
   update: mock((_args: unknown): Promise<unknown> => Promise.resolve({})),
 };
+const organization = {
+  update: mock((_args: unknown): Promise<unknown> => Promise.resolve({})),
+};
+const review = {
+  create: mock((_args: unknown): Promise<unknown> => Promise.resolve({ id: "review-1" })),
+};
 const getOrgQuotaPool = mock(() =>
   Promise.resolve({ total: 1_000_000, used: 10_000, hasUnlimited: false })
 );
@@ -13,6 +19,8 @@ const getOrgQuotaPool = mock(() =>
 mock.module("../db", () => ({
   prisma: {
     repositorySettings,
+    organization,
+    review,
   },
 }));
 
@@ -55,10 +63,14 @@ describe("internal settings routes", () => {
     repositorySettings.findFirst.mockReset();
     repositorySettings.findUnique.mockReset();
     repositorySettings.update.mockReset();
+    organization.update.mockReset();
+    review.create.mockReset();
     getOrgQuotaPool.mockReset();
     repositorySettings.findFirst.mockResolvedValue(null);
     repositorySettings.findUnique.mockResolvedValue(null);
     repositorySettings.update.mockResolvedValue({});
+    organization.update.mockResolvedValue({});
+    review.create.mockResolvedValue({ id: "review-1" });
     getOrgQuotaPool.mockResolvedValue({
       total: 1_000_000,
       used: 10_000,
@@ -201,6 +213,56 @@ describe("internal settings routes", () => {
     expect(body.effectiveEnabled).toBe(true);
     expect(body.disabledReason).toBeUndefined();
     expect(body.quota).toEqual({ total: 100, used: 99, hasUnlimited: false });
+  });
+
+  it("records stable pull request metadata when creating a review", async () => {
+    repositorySettings.findFirst.mockResolvedValue({
+      id: "repo-settings-1",
+      owner: "owner",
+      repo: "repo",
+      githubRepoId: 123n,
+      organizationId: "org-1",
+      organization: { id: "org-1", tokensUsedThisCycle: 0 },
+    });
+
+    const app = createApp();
+    const response = await app.fetch(
+      new Request("http://localhost/api/internal/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "internal-secret",
+        },
+        body: JSON.stringify({
+          githubRepoId: 123,
+          owner: "owner",
+          repo: "repo",
+          pullNumber: 124,
+          reviewType: "initial",
+          reviewId: 456,
+          pullTitle: " Improve PR title display ",
+          pullAuthor: " octocat ",
+          tokensUsed: 42,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ id: "review-1", created: true });
+    expect(review.create).toHaveBeenCalledWith({
+      data: {
+        repositorySettingsId: "repo-settings-1",
+        pullNumber: 124,
+        reviewType: "initial",
+        reviewId: 456,
+        commentId: null,
+        pullTitle: "Improve PR title display",
+        pullAuthor: "octocat",
+        organizationId: "org-1",
+        tokensUsed: 42,
+      },
+    });
   });
 
   it("disables repository settings that are not attached to an organization", async () => {

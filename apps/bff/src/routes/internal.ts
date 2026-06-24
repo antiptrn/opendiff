@@ -641,8 +641,18 @@ internalRoutes.post("/reviews", async (c) => {
   }
 
   const body = await c.req.json();
-  const { githubRepoId, owner, repo, pullNumber, reviewType, reviewId, commentId, tokensUsed } =
-    body;
+  const {
+    githubRepoId,
+    owner,
+    repo,
+    pullNumber,
+    reviewType,
+    reviewId,
+    commentId,
+    pullTitle,
+    pullAuthor,
+    tokensUsed,
+  } = body;
 
   if (!githubRepoId || !pullNumber || !reviewType) {
     return c.json({ error: "Missing required fields" }, 400);
@@ -701,6 +711,8 @@ internalRoutes.post("/reviews", async (c) => {
         reviewType,
         reviewId: reviewId || null,
         commentId: commentId || null,
+        pullTitle: typeof pullTitle === "string" && pullTitle.trim() ? pullTitle.trim() : null,
+        pullAuthor: typeof pullAuthor === "string" && pullAuthor.trim() ? pullAuthor.trim() : null,
         organizationId: org?.id || null,
         tokensUsed: tokensUsed || null,
       },

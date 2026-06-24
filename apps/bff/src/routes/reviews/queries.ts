@@ -9,6 +9,14 @@ const queryRoutes = new Hono();
 
 // ==================== REVIEWS LIST & DETAIL ENDPOINTS ====================
 
+function resolveGitHubToken(c: Parameters<typeof getAuthToken>[0]) {
+  const user = getAuthUser(c);
+  const token = getAuthToken(c);
+  const isGitHubToken = /^(gho_|ghu_|ghp_|github_pat_)/.test(token);
+
+  return isGitHubToken ? token : user.githubAccessToken || null;
+}
+
 // Get paginated reviews for org
 queryRoutes.get("/reviews", requireAuth(), async (c) => {
   const orgId = await requireOrgAccess(c);
@@ -53,6 +61,7 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
   ]);
 
   // Batch fetch PR metadata from GitHub
+  const githubToken = resolveGitHubToken(c);
   const prRequests = reviews
     .filter((r) => r.repositorySettings)
     .map((r) => ({
@@ -61,7 +70,7 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       pullNumber: r.pullNumber,
     }));
 
-  const prMetaMap = await fetchPRMetadataBatch(prRequests);
+  const prMetaMap = await fetchPRMetadataBatch(prRequests, githubToken);
 
   const items = reviews.map((r) => {
     const commentCount = r.comments.length;
@@ -82,11 +91,11 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       owner,
       repo,
       pullNumber: r.pullNumber,
-      pullTitle: prMeta?.title ?? `PR #${r.pullNumber}`,
+      pullTitle: prMeta?.title ?? r.pullTitle ?? null,
       pullUrl:
         prMeta?.htmlUrl ??
         (owner && repo ? `https://github.com/${owner}/${repo}/pull/${r.pullNumber}` : null),
-      pullAuthor: prMeta?.author ?? null,
+      pullAuthor: prMeta?.author ?? r.pullAuthor ?? null,
       reviewType: r.reviewType,
       commentCount,
       fixCount,
@@ -144,7 +153,7 @@ queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
   let prMeta = null;
   if (owner && repo) {
     try {
-      prMeta = await fetchPRMetadata(owner, repo, review.pullNumber);
+      prMeta = await fetchPRMetadata(owner, repo, review.pullNumber, resolveGitHubToken(c));
     } catch (err) {
       console.warn(`Failed to fetch PR metadata for review ${id}:`, err);
     }
@@ -172,9 +181,9 @@ queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
         repo,
         pullNumber: review.pullNumber,
         headBranch: prMeta.headBranch,
-        pullTitle: prMeta.title ?? null,
+        pullTitle: prMeta.title ?? review.pullTitle ?? null,
         pullBody: prMeta.body ?? null,
-        pullAuthor: prMeta.author ?? null,
+        pullAuthor: prMeta.author ?? review.pullAuthor ?? null,
         baseBranch: prMeta.baseBranch ?? null,
         comments: review.comments.map((c) => ({
           body: c.body,
@@ -217,9 +226,9 @@ queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
     fileTitles: (review.fileTitles as Record<string, string>) ?? null,
     fileTitlesStatus: triggeredSummary ? 1 : review.fileTitlesStatus,
     // GitHub data (fetched on-demand)
-    pullTitle: prMeta?.title ?? null,
+    pullTitle: prMeta?.title ?? review.pullTitle ?? null,
     pullBody: prMeta?.body ?? null,
-    pullAuthor: prMeta?.author ?? null,
+    pullAuthor: prMeta?.author ?? review.pullAuthor ?? null,
     pullUrl:
       prMeta?.htmlUrl ??
       (owner && repo ? `https://github.com/${owner}/${repo}/pull/${review.pullNumber}` : null),
