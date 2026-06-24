@@ -592,7 +592,7 @@ async function pruneStaleWorktrees(config: GitCacheConfig): Promise<void> {
       continue;
     }
 
-    await rm(worktreeDir, { recursive: true, force: true });
+    await cleanupWorkspace(worktreeDir, config);
   }
 }
 
