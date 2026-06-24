@@ -485,6 +485,84 @@ describe("WebhookHandler", () => {
       );
     });
 
+    it("should not coerce a filtered comment review into an approval", async () => {
+      const repeatedIssue = {
+        type: "style" as const,
+        severity: "warning" as const,
+        file: "src/index.ts",
+        line: 5,
+        message: "Repeated issue",
+      };
+      const resolvedIssue = {
+        type: "bug-risk" as const,
+        severity: "warning" as const,
+        file: "src/old.ts",
+        line: 3,
+        message: "Resolved issue",
+      };
+      const repeatedFingerprint = buildIssueFingerprint(repeatedIssue);
+
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+        },
+      ]);
+      mockGitHubClient.getIssueComments.mockResolvedValue([
+        {
+          id: 101,
+          user: "opendiff-bot",
+          body: `## Summary\n\nOld summary\n\n${buildIssueMarker(resolvedIssue)}`,
+        },
+      ]);
+      mockGitHubClient.getReviewComments.mockResolvedValue([
+        {
+          id: 201,
+          nodeId: "node-201",
+          path: "src/index.ts",
+          line: 10,
+          user: "opendiff-bot",
+          body: `Existing comment\n\n<!-- opendiff-fingerprint:${repeatedFingerprint} -->`,
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Status update only.",
+        issues: [repeatedIssue],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nStatus update only.",
+        event: "COMMENT",
+      });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nStatus update only.");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue(
+          "## Review Summary\n\nStatus update only.\n\n### Addressed Since Earlier Reviews\n\n- `src/old.ts:3` Resolved issue"
+        );
+      mockFormatter.formatReviewBody = vi
+        .fn()
+        .mockReturnValue("## Status Update\n\nResolved earlier issues.");
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.reviewId).toBeUndefined();
+      expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        101,
+        "## Review Summary\n\nStatus update only.\n\n### Addressed Since Earlier Reviews\n\n- `src/old.ts:3` Resolved issue"
+      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+    });
+
     it("should update the existing review summary comment on re-review", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([

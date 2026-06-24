@@ -683,7 +683,6 @@ export class WebhookHandler {
           const effectiveReviewResult = {
             ...reviewResult,
             issues: filteredIssues,
-            verdict: filteredIssues.length === 0 ? "approve" : reviewResult.verdict,
           };
           const currentIssueMap = new Map(
             reviewableIssues
