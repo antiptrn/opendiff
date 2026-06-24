@@ -92,7 +92,7 @@ export async function fetchPRMetadata(
         },
       });
 
-    const installationToken = githubToken ? await getInstallationTokenForRepo(owner, repo) : null;
+    const installationToken = await getInstallationTokenForRepo(owner, repo);
     const token = githubToken || installationToken;
     if (!token) return null;
 
