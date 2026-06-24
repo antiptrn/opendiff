@@ -470,16 +470,11 @@ async function removeReviewInProgressReaction(
   }
 }
 
-function shouldPostQueuedFailureComment(context: QueueJobContext): boolean {
-  return context.attempt >= context.maxAttempts;
-}
-
 async function processPullRequestReviewJob(
   job: PullRequestReviewJob,
-  context: QueueJobContext
+  _context: QueueJobContext
 ): Promise<void> {
   const { payload, deliveryId } = job;
-  const shouldPostFailureComment = shouldPostQueuedFailureComment(context);
 
   if (!payload.pull_request) {
     console.log(
@@ -489,7 +484,6 @@ async function processPullRequestReviewJob(
   }
 
   let githubClient: GitHubClient | undefined;
-  let failureCommentPosted = false;
   let reviewReaction: {
     githubClient: GitHubClient;
     owner: string;
@@ -602,20 +596,7 @@ async function processPullRequestReviewJob(
     }
 
     if (!result.success) {
-      const error = new Error(result.error || "Review failed");
-      if (shouldPostFailureComment) {
-        await commentOnPullRequestFailure({
-          githubClient,
-          owner,
-          repo,
-          pullNumber: reviewPayload.pull_request.number,
-          kind: "review",
-          deliveryId,
-          error,
-        });
-        failureCommentPosted = true;
-      }
-      throw error;
+      throw new Error(result.error || "Review failed");
     }
 
     const dbReviewId = await recordReview({
@@ -634,9 +615,6 @@ async function processPullRequestReviewJob(
 
     console.log(`Queued review submitted successfully: ${result.reviewId}`);
   } catch (error) {
-    if (shouldPostFailureComment && !failureCommentPosted) {
-      await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId, githubClient);
-    }
     throw error;
   } finally {
     if (reviewReaction) {
@@ -667,6 +645,9 @@ const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
       `Review queue job ${context.id} failed for ${repo}#${pullNumber} (attempt ${context.attempt}/${context.maxAttempts}):`,
       error
     );
+  },
+  onTerminalFailure: async (error, job) => {
+    await commentOnWebhookPullRequestFailure(job.payload, "review", error, job.deliveryId);
   },
 });
 
