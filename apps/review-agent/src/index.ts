@@ -10,6 +10,7 @@ import { runLocalReview } from "./internal/local-review";
 import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
 import { AsyncJobQueue, type QueueJobContext } from "./utils/async-job-queue";
+import { commentMentionsBot, isBareBotMention } from "./utils/bot-mentions";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import { parseIgnoredDirs } from "./utils/ignored-dirs";
@@ -192,40 +193,6 @@ function buildPullRequestReviewJobKey(payload: PullRequestReviewJobPayload): str
   const repo = payload.repository.name;
   const pullNumber = payload.pull_request?.number ?? "unknown";
   return `${owner}/${repo}#${pullNumber}`;
-}
-
-function getBotMentionAliases(botUsername: string): string[] {
-  const aliases = new Set([botUsername]);
-  if (botUsername === "opendiff-bot") {
-    aliases.add("opendiff");
-  }
-  return [...aliases];
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function commentMentionsBot(body: string | undefined, botUsername: string): boolean {
-  if (!body) {
-    return false;
-  }
-
-  return getBotMentionAliases(botUsername).some((alias) => {
-    const mentionPattern = new RegExp(`(^|\\s)@${escapeRegex(alias)}(?=$|\\s|[^\\w-])`, "i");
-    return mentionPattern.test(body);
-  });
-}
-
-function isBareBotMention(body: string | undefined, botUsername: string): boolean {
-  if (!body) {
-    return false;
-  }
-
-  const normalized = body.trim().replace(/\s+/g, " ").toLowerCase();
-  return getBotMentionAliases(botUsername).some(
-    (alias) => normalized === `@${alias.toLowerCase()}`
-  );
 }
 
 function hasPullRequestDetails(
@@ -1027,7 +994,7 @@ app.post("/webhook", async (c) => {
       );
     }
 
-    if (!commentBody.includes(`@${BOT_USERNAME}`)) {
+    if (!commentMentionsBot(commentBody, BOT_USERNAME)) {
       return c.json({ status: "ignored", reason: "bot_not_mentioned" });
     }
 
