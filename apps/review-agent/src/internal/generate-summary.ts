@@ -1,7 +1,9 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadPrompt } from "@opendiff/prompts";
-import simpleGit from "simple-git";
 import type { GitHubClient } from "../github/client";
+import { withClonedRepo } from "../utils/git";
 import type { AiRuntimeConfig } from "../utils/opencode";
 import { runOpencodePrompt } from "../utils/opencode";
 
@@ -53,36 +55,9 @@ export async function generateReviewSummary(
   github: GitHubClient,
   aiConfig?: AiRuntimeConfig | null
 ): Promise<GenerateSummaryResult> {
-  const token = await github.getInstallationToken();
-  if (!token) {
-    throw new Error(`Could not get installation token for ${input.owner}/${input.repo}`);
-  }
-
   const files = await fetchPRFiles(github, input.owner, input.repo, input.pullNumber);
 
-  const tempDir = `/tmp/summary-${input.owner}-${input.repo}-${input.pullNumber}-${Date.now()}`;
-  await mkdir(tempDir, { recursive: true });
-
-  try {
-    const cloneUrl = `https://x-access-token:${token}@github.com/${input.owner}/${input.repo}.git`;
-    let cloneSucceeded = false;
-    try {
-      const git = simpleGit(tempDir);
-      await git.clone(cloneUrl, ".", [
-        "--branch",
-        input.headBranch,
-        "--depth",
-        "1",
-        "--single-branch",
-      ]);
-      cloneSucceeded = true;
-    } catch (err) {
-      console.warn(
-        `Clone failed for ${input.owner}/${input.repo}@${input.headBranch}, proceeding with diffs only:`,
-        err
-      );
-    }
-
+  const runSummary = async (cwd: string, cloneSucceeded: boolean) => {
     const commentsList = input.comments
       .map((c, i) => {
         const parts = [`Comment ${i + 1}: ${c.body}`];
@@ -121,7 +96,7 @@ export async function generateReviewSummary(
 
     const result = (
       await runOpencodePrompt({
-        cwd: tempDir,
+        cwd,
         prompt,
         mode: cloneSucceeded ? "read_only" : "no_tools",
         aiConfig,
@@ -151,6 +126,30 @@ export async function generateReviewSummary(
     }
 
     return { summary: result, fileTitles: {} };
+  };
+
+  try {
+    return await withClonedRepo(
+      {
+        mode: "read-only",
+        github,
+        owner: input.owner,
+        repo: input.repo,
+        branch: input.headBranch,
+        label: `summary-${input.pullNumber}`,
+      },
+      async (tempDir) => runSummary(tempDir, true)
+    );
+  } catch (err) {
+    console.warn(
+      `Workspace setup failed for ${input.owner}/${input.repo}@${input.headBranch}, proceeding with diffs only:`,
+      err
+    );
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "opendiff-summary-"));
+  try {
+    return await runSummary(tempDir, false);
   } finally {
     try {
       await rm(tempDir, { recursive: true, force: true });

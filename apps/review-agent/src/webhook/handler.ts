@@ -593,7 +593,9 @@ export class WebhookHandler {
     const normalizedReviewIgnoredDirs = normalizeIgnoredDirs(reviewIgnoredDirs);
 
     try {
-      console.log(`Cloning ${owner}/${repo} branch ${pull_request.head.ref} for review`);
+      console.log(
+        `Preparing workspace for ${owner}/${repo} branch ${pull_request.head.ref} review`
+      );
 
       return await withClonedRepo(
         {
@@ -602,6 +604,7 @@ export class WebhookHandler {
           owner,
           repo,
           branch: pull_request.head.ref,
+          commitSha: pull_request.head.sha,
           label: `review-${prNumber}`,
         },
         async (tempDir) => {

@@ -97,7 +97,7 @@ export async function handleTriageAfterReview(
   }
 
   try {
-    console.log(`Cloning ${owner}/${repo} branch ${pullRequest.head.ref} for triage`);
+    console.log(`Preparing workspace for ${owner}/${repo} branch ${pullRequest.head.ref} triage`);
 
     await withClonedRepo(
       {

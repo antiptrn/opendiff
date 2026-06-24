@@ -6,20 +6,17 @@ import type { ReviewFormatter } from "../review/formatter";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import { buildIssueMarker } from "../utils/issue-markers";
 
+process.env.OPENDIFF_GIT_CACHE_DISABLED = "true";
+
 // Mock simple-git before importing handler
 mock.module("simple-git", () => ({
-  simpleGit: () => ({
-    clone: async () => undefined,
-  }),
-}));
-
-// Mock fs/promises before importing handler
-mock.module("node:fs/promises", () => ({
-  mkdir: async () => undefined,
-  rm: async () => undefined,
-  readdir: async () => [],
-  readFile: async () => "",
-  writeFile: async () => undefined,
+  simpleGit: () => {
+    const git = {
+      env: () => git,
+      clone: async () => undefined,
+    };
+    return git;
+  },
 }));
 
 // Now import handler after mocks are set up

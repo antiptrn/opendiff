@@ -38,6 +38,13 @@ Copy `.env.example` to `.env` and configure values.
 | `REVIEW_QUEUE_MAX_SIZE` | Optional | Maximum queued full PR reviews before returning `503` for GitHub retry. Defaults to `100`. |
 | `REVIEW_QUEUE_MAX_ATTEMPTS` | Optional | Attempts per queued full PR review. Defaults to `2`. |
 | `REVIEW_QUEUE_RETRY_DELAY_MS` | Optional | Delay before retrying a failed queued review. Defaults to `15000`. |
+| `OPENDIFF_GIT_CACHE_DIR` | Optional | Directory for bare repo cache and temporary worktrees. Defaults to the OS temp dir under `opendiff-git-cache`. |
+| `OPENDIFF_GIT_CACHE_REPO_TTL` | Optional | Removes bare repos inactive longer than this duration. Defaults to `6h`. |
+| `OPENDIFF_GIT_CACHE_REF_TTL` | Optional | Removes cached branch refs older than this duration. Defaults to `24h`. |
+| `OPENDIFF_GIT_CACHE_WORKTREE_TTL` | Optional | Removes leftover worktrees older than this duration. Defaults to `12h`. |
+| `OPENDIFF_GIT_CACHE_MAX_REPOS` | Optional | LRU cap for cached bare repos. Defaults to `100`; `0` disables this cap. |
+| `OPENDIFF_GIT_CACHE_MAX_BYTES` | Optional | LRU cap for total bare repo cache size. Defaults to `10gb`; `0` disables this cap. |
+| `OPENDIFF_GIT_CACHE_DISABLED` | Optional | Set to `true` to use fresh shallow clones instead of the worktree cache. |
 
 \* At least one default credential should be set for non-Self-sufficient organizations.
 
@@ -46,6 +53,7 @@ Important behavior:
 - If `SETTINGS_API_URL` is missing, repository features are treated as disabled (`effectiveEnabled=false`).
 - If both GitHub App and token auth are set, GitHub App auth is preferred for webhook processing.
 - For Self-sufficient organizations, review-agent reads org-level auth method, model, and credential from BFF internal APIs.
+- Review-agent uses a bounded bare-repo cache plus per-job worktrees for Git operations. For production, set `OPENDIFF_GIT_CACHE_DIR` to a writable directory on local disk for each worker, such as `/var/lib/opendiff/git-cache` or a container volume mounted on one host. Do not point it at the application checkout, a shared NFS/network filesystem, or a directory shared by multiple concurrently running workers; Git worktree metadata and lock behavior assume low-latency local filesystem semantics. Leaving the default under the OS temp directory is safe, but cache reuse may be lost on container restart.
 
 ## Local development
 
