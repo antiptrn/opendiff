@@ -125,12 +125,40 @@ interface TriageOptions {
   botUsername: string;
 }
 
+type IssueComment = Awaited<ReturnType<GitHubClient["getIssueComments"]>>[number];
+
 function isReviewSummaryComment(body: string): boolean {
   return (
     body.startsWith("## OpenDiff Summary") ||
     body.startsWith("## Summary") ||
     body.startsWith("## Review Summary")
   );
+}
+
+function isBotUser(username: string, botUsername: string): boolean {
+  return username === botUsername || username === `${botUsername}[bot]`;
+}
+
+function findReviewSummaryComment(
+  issueComments: IssueComment[],
+  botUsername: string
+): IssueComment | undefined {
+  return [...issueComments]
+    .reverse()
+    .find(
+      (comment) => isBotUser(comment.user, botUsername) && isReviewSummaryComment(comment.body)
+    );
+}
+
+async function hasExistingReviewSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string
+): Promise<boolean> {
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  return Boolean(findReviewSummaryComment(issueComments, botUsername));
 }
 
 async function upsertReviewSummaryComment(
@@ -142,13 +170,7 @@ async function upsertReviewSummaryComment(
   summaryBody: string
 ): Promise<void> {
   const issueComments = await github.getIssueComments(owner, repo, pullNumber);
-  const existingSummary = [...issueComments]
-    .reverse()
-    .find(
-      (comment) =>
-        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
-        isReviewSummaryComment(comment.body)
-    );
+  const existingSummary = findReviewSummaryComment(issueComments, botUsername);
 
   if (existingSummary) {
     await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
@@ -817,7 +839,15 @@ export class WebhookHandler {
             ),
             [...bodyOnlyIssues, ...invalidInlineIssues]
           );
+          const hadPriorReviewSummary = await hasExistingReviewSummaryComment(
+            this.github,
+            owner,
+            repo,
+            prNumber,
+            botUsername
+          );
 
+          let reviewSummaryCaptured = true;
           try {
             await upsertReviewSummaryComment(
               this.github,
@@ -828,19 +858,24 @@ export class WebhookHandler {
               historicalSummaryBody || summaryBody
             );
           } catch (error) {
+            reviewSummaryCaptured = false;
             console.error("Failed to upsert review summary comment:", error);
           }
 
           let reviewId: number | undefined;
           const resolvedComments = validInlineComments.length > 0 ? validInlineComments : undefined;
-          const shouldPostStatusUpdate = hasOpenIssuesToReport(
-            validInlineComments,
-            bodyOnlyIssues,
-            invalidInlineIssues,
-            history
-          );
+          const shouldPostStatusUpdate =
+            !reviewSummaryCaptured ||
+            hasOpenIssuesToReport(
+              validInlineComments,
+              bodyOnlyIssues,
+              invalidInlineIssues,
+              history
+            ) ||
+            (review.event === "APPROVE" && hadPriorReviewSummary);
+          const shouldPostApprovalReview = review.event === "APPROVE" && shouldPostStatusUpdate;
           const hasExistingApprovalForHead =
-            review.event === "APPROVE" &&
+            shouldPostApprovalReview &&
             (await hasBotApprovedHead(
               this.github,
               owner,
@@ -849,10 +884,9 @@ export class WebhookHandler {
               botUsername,
               pull_request.head.sha
             ));
-          const shouldPostApproval = review.event === "APPROVE" && !hasExistingApprovalForHead;
           const shouldPostReview =
             review.event === "APPROVE"
-              ? !hasExistingApprovalForHead && (shouldPostStatusUpdate || shouldPostApproval)
+              ? shouldPostApprovalReview && !hasExistingApprovalForHead
               : shouldPostStatusUpdate;
 
           if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
@@ -869,7 +903,7 @@ export class WebhookHandler {
             );
             reviewId = id;
           } else {
-            console.log("Skipped GitHub review submission; summary captured the current state");
+            console.log("Skipped GitHub review submission; summary comment captured the current state");
           }
 
           return {
