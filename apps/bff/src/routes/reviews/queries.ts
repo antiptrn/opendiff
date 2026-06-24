@@ -1,5 +1,5 @@
 /** Review query endpoints: list reviews, get review details, update metadata, and accept/reject fixes. */
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { prisma } from "../../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../../middleware/auth";
@@ -16,6 +16,37 @@ function resolveGitHubToken(c: Parameters<typeof getAuthToken>[0]) {
   const isGitHubToken = /^(gho_|ghu_|ghp_|github_pat_)/.test(token);
 
   return isGitHubToken ? token : user.githubAccessToken || null;
+}
+
+async function countReviewGroups(where: Prisma.ReviewWhereInput) {
+  const filters = [
+    Prisma.sql`r."organizationId" = ${where.organizationId as string}`,
+    Prisma.sql`r."repositorySettingsId" IS NOT NULL`,
+  ];
+
+  if (where.repositorySettings && "owner" in where.repositorySettings) {
+    const ownerFilter = where.repositorySettings.owner;
+    if (ownerFilter && typeof ownerFilter === "object" && "contains" in ownerFilter) {
+      filters.push(Prisma.sql`rs."owner" ILIKE ${`%${ownerFilter.contains}%`}`);
+    }
+
+    const repoFilter = where.repositorySettings.repo;
+    if (repoFilter && typeof repoFilter === "object" && "contains" in repoFilter) {
+      filters.push(Prisma.sql`rs."repo" ILIKE ${`%${repoFilter.contains}%`}`);
+    }
+  }
+
+  const [result] = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
+    SELECT COUNT(*) AS count
+    FROM (
+      SELECT DISTINCT r."repositorySettingsId", r."pullNumber"
+      FROM "Review" r
+      LEFT JOIN "RepositorySettings" rs ON rs."id" = r."repositorySettingsId"
+      WHERE ${Prisma.join(filters, " AND ")}
+    ) grouped_reviews
+  `);
+
+  return Number(result?.count ?? 0);
 }
 
 // Get paginated reviews for org
@@ -49,7 +80,7 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     }
   }
 
-  const [reviewGroups, totalGroups] = await Promise.all([
+  const [reviewGroups, total] = await Promise.all([
     prisma.review.groupBy({
       by: ["repositorySettingsId", "pullNumber"],
       where,
@@ -62,10 +93,7 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.review.groupBy({
-      by: ["repositorySettingsId", "pullNumber"],
-      where,
-    }),
+    countReviewGroups(where),
   ]);
 
   const latestReviewSelectors = reviewGroups.flatMap((group) => {
@@ -107,8 +135,6 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
   const reviews = reviewGroups
     .map((group) => reviewByPullRequest.get(`${group.repositorySettingsId}:${group.pullNumber}`))
     .filter((review): review is (typeof candidateReviews)[number] => Boolean(review));
-
-  const total = totalGroups.length;
 
   // Batch fetch PR metadata from GitHub
   const githubToken = resolveGitHubToken(c);
