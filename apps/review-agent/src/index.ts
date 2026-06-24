@@ -33,6 +33,7 @@ import {
   recordReviewComments,
 } from "./utils/settings";
 import { WebhookHandler } from "./webhook/handler";
+import { handleCiFailureAutofix, handleMergeConflictAutofix } from "./webhook/triage-handler";
 import { validateWebhookSignature } from "./webhook/validator";
 
 // Configuration from environment
@@ -95,6 +96,50 @@ interface PullRequestReviewJob {
   payload: PullRequestReviewJobPayload;
   deliveryId: string | null;
 }
+
+type CiFailureWebhookEvent = "check_run" | "status";
+
+interface CheckRunWebhookPayload {
+  action: string;
+  installation?: { id: number };
+  repository: PullRequestWebhookPayload["repository"];
+  check_run: {
+    id: number;
+    name: string;
+    head_sha: string;
+    status?: string;
+    conclusion?: string | null;
+    html_url?: string | null;
+    details_url?: string | null;
+    output?: {
+      title?: string | null;
+      summary?: string | null;
+      text?: string | null;
+    } | null;
+    pull_requests?: Array<{ number: number }>;
+  };
+}
+
+interface StatusWebhookPayload {
+  installation?: { id: number };
+  repository: PullRequestWebhookPayload["repository"];
+  state: string;
+  sha: string;
+  context?: string;
+  description?: string | null;
+  target_url?: string | null;
+}
+
+type CiFailureWebhookPayload = CheckRunWebhookPayload | StatusWebhookPayload;
+
+interface CiFailureJob {
+  event: CiFailureWebhookEvent;
+  payload: CiFailureWebhookPayload;
+  deliveryId: string | null;
+}
+
+const FAILING_CHECK_RUN_CONCLUSIONS = new Set(["failure", "timed_out"]);
+const FAILING_STATUS_STATES = new Set(["failure", "error"]);
 
 // Load private key from file or environment
 function getPrivateKey(): string | undefined {
@@ -253,6 +298,142 @@ function buildCommentTriggeredReviewPayload(payload: {
     pull_request: {
       number: payload.issue.number,
     },
+  };
+}
+
+function isFailingCiWebhook(
+  event: string | undefined,
+  payload: unknown
+): payload is CiFailureWebhookPayload {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const maybePayload = payload as Partial<CiFailureWebhookPayload>;
+  if (
+    typeof maybePayload.repository?.owner?.login !== "string" ||
+    typeof maybePayload.repository?.name !== "string" ||
+    typeof maybePayload.repository?.id !== "number"
+  ) {
+    return false;
+  }
+
+  if (event === "check_run") {
+    const checkRunPayload = payload as Partial<CheckRunWebhookPayload>;
+    return (
+      checkRunPayload.action === "completed" &&
+      typeof checkRunPayload.check_run?.head_sha === "string" &&
+      typeof checkRunPayload.check_run?.name === "string" &&
+      typeof checkRunPayload.check_run?.conclusion === "string" &&
+      FAILING_CHECK_RUN_CONCLUSIONS.has(checkRunPayload.check_run.conclusion)
+    );
+  }
+
+  if (event === "status") {
+    const statusPayload = payload as Partial<StatusWebhookPayload>;
+    return (
+      typeof statusPayload.sha === "string" &&
+      typeof statusPayload.state === "string" &&
+      FAILING_STATUS_STATES.has(statusPayload.state)
+    );
+  }
+
+  return false;
+}
+
+function getCiFailureHeadSha(
+  event: CiFailureWebhookEvent,
+  payload: CiFailureWebhookPayload
+): string {
+  return event === "check_run"
+    ? (payload as CheckRunWebhookPayload).check_run.head_sha
+    : (payload as StatusWebhookPayload).sha;
+}
+
+function getCiFailureName(event: CiFailureWebhookEvent, payload: CiFailureWebhookPayload): string {
+  if (event === "check_run") {
+    return (payload as CheckRunWebhookPayload).check_run.name;
+  }
+
+  return (payload as StatusWebhookPayload).context || "commit status";
+}
+
+function buildCiFailureJobKey(
+  event: CiFailureWebhookEvent,
+  payload: CiFailureWebhookPayload
+): string {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const sha = getCiFailureHeadSha(event, payload);
+  const name = getCiFailureName(event, payload).toLowerCase().replace(/\s+/g, "-");
+  const id = event === "check_run" ? (payload as CheckRunWebhookPayload).check_run.id : name;
+  return `${owner}/${repo}:${sha}:${event}:${id}`;
+}
+
+async function resolvePullRequestForCiFailure(
+  event: CiFailureWebhookEvent,
+  payload: CiFailureWebhookPayload,
+  githubClient: GitHubClient
+) {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const sha = getCiFailureHeadSha(event, payload);
+
+  if (event === "check_run") {
+    const pullNumber = (payload as CheckRunWebhookPayload).check_run.pull_requests?.[0]?.number;
+    if (pullNumber) {
+      return githubClient.getPullRequest(owner, repo, pullNumber);
+    }
+  }
+
+  const pullRequests = await githubClient.getPullRequestsForCommit(owner, repo, sha);
+  return pullRequests.find((pull) => pull.state === "open") ?? pullRequests[0] ?? null;
+}
+
+async function buildCiFailureDetails(
+  event: CiFailureWebhookEvent,
+  payload: CiFailureWebhookPayload,
+  githubClient: GitHubClient
+) {
+  if (event === "check_run") {
+    const checkRunPayload = payload as CheckRunWebhookPayload;
+    let annotations: Awaited<ReturnType<GitHubClient["getCheckRunAnnotations"]>> = [];
+    try {
+      annotations = await githubClient.getCheckRunAnnotations(
+        payload.repository.owner.login,
+        payload.repository.name,
+        checkRunPayload.check_run.id
+      );
+    } catch (error) {
+      console.warn(
+        `Failed to fetch annotations for check run ${checkRunPayload.check_run.id}:`,
+        error
+      );
+    }
+
+    return {
+      name: checkRunPayload.check_run.name,
+      conclusion: checkRunPayload.check_run.conclusion || "failure",
+      headSha: checkRunPayload.check_run.head_sha,
+      url: checkRunPayload.check_run.html_url || checkRunPayload.check_run.details_url || null,
+      summary:
+        checkRunPayload.check_run.output?.summary ||
+        checkRunPayload.check_run.output?.title ||
+        null,
+      text: checkRunPayload.check_run.output?.text || null,
+      annotations,
+    };
+  }
+
+  const statusPayload = payload as StatusWebhookPayload;
+  return {
+    name: statusPayload.context || "commit status",
+    conclusion: statusPayload.state,
+    headSha: statusPayload.sha,
+    url: statusPayload.target_url || null,
+    summary: statusPayload.description || null,
+    text: null,
+    annotations: [],
   };
 }
 
@@ -536,6 +717,45 @@ async function processPullRequestReviewJob(
       ),
     };
 
+    if (settings.autofixEnabled && triageEnabled) {
+      const mergeConflictResult = await handleMergeConflictAutofix(
+        githubClient,
+        triageAgent,
+        {
+          number: reviewPayload.pull_request.number,
+          head: reviewPayload.pull_request.head,
+          base: reviewPayload.pull_request.base,
+        },
+        owner,
+        repo,
+        BOT_USERNAME,
+        settings.autofixEnabled,
+        { autofixIgnoredDirs: triageOptions.autofixIgnoredDirs }
+      );
+
+      if (!mergeConflictResult.success) {
+        throw new Error(mergeConflictResult.error || "Merge conflict autofix failed");
+      }
+
+      if (mergeConflictResult.conflictFound) {
+        await recordReview({
+          githubRepoId: payload.repository.id,
+          owner,
+          repo,
+          pullNumber: reviewPayload.pull_request.number,
+          reviewType: "merge_conflict_autofix",
+          tokensUsed: mergeConflictResult.tokensUsed,
+        });
+
+        if (mergeConflictResult.fixedIssues.length > 0) {
+          console.log(
+            `Merge conflicts resolved for ${owner}/${repo}#${reviewPayload.pull_request.number}; skipping stale review until the synchronize webhook`
+          );
+          return;
+        }
+      }
+    }
+
     const result =
       reviewPayload.action === "review_requested"
         ? await handler.handlePullRequestReviewRequested(
@@ -594,6 +814,129 @@ async function processPullRequestReviewJob(
   }
 }
 
+async function processCiFailureJob(job: CiFailureJob, _context: QueueJobContext): Promise<void> {
+  const { event, payload } = job;
+  let reviewReaction: {
+    githubClient: GitHubClient;
+    owner: string;
+    repo: string;
+    pullNumber: number;
+    id: number | null;
+  } | null = null;
+
+  try {
+    const { owner, repo, settings, githubClient, triageAgent } = await initWebhookContext(payload);
+    const quotaExhausted = settings.disabledReason === "quota_exhausted";
+
+    if (!settings.effectiveEnabled && !quotaExhausted) {
+      console.log(
+        `CI autofix disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled}, reason: ${settings.disabledReason ?? "unknown"})`
+      );
+      return;
+    }
+
+    const pullRequest = await resolvePullRequestForCiFailure(event, payload, githubClient);
+
+    if (!pullRequest) {
+      console.log(
+        `Skipping CI autofix for ${owner}/${repo}; no pull request found for ${getCiFailureHeadSha(event, payload)}`
+      );
+      return;
+    }
+
+    if (pullRequest.state && pullRequest.state !== "open") {
+      console.log(
+        `Skipping CI autofix for ${owner}/${repo}#${pullRequest.number}; pull request is ${pullRequest.state}`
+      );
+      return;
+    }
+
+    if (pullRequest.draft) {
+      console.log(`Skipping CI autofix for draft PR ${owner}/${repo}#${pullRequest.number}`);
+      return;
+    }
+
+    const failureSha = getCiFailureHeadSha(event, payload);
+    if (pullRequest.head.sha !== failureSha) {
+      console.log(
+        `Skipping stale CI failure for ${owner}/${repo}#${pullRequest.number}; check was for ${failureSha}, current head is ${pullRequest.head.sha}`
+      );
+      return;
+    }
+
+    if (!settings.effectiveEnabled) {
+      console.log(
+        `CI autofix disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled}, reason: ${settings.disabledReason ?? "unknown"})`
+      );
+      await commentOnTokenQuotaBlocked({
+        githubClient,
+        owner,
+        repo,
+        pullNumber: pullRequest.number,
+        settings,
+      });
+      return;
+    }
+
+    if (!settings.autofixEnabled) {
+      console.log(
+        `Skipping CI autofix for ${owner}/${repo}#${pullRequest.number}; autofix disabled`
+      );
+      return;
+    }
+
+    const failure = await buildCiFailureDetails(event, payload, githubClient);
+
+    reviewReaction = {
+      githubClient,
+      owner,
+      repo,
+      pullNumber: pullRequest.number,
+      id: await addReviewInProgressReaction(githubClient, owner, repo, pullRequest.number),
+    };
+
+    const result = await handleCiFailureAutofix(
+      githubClient,
+      triageAgent,
+      {
+        number: pullRequest.number,
+        head: pullRequest.head,
+      },
+      failure,
+      owner,
+      repo,
+      BOT_USERNAME,
+      settings.autofixEnabled,
+      { autofixIgnoredDirs: parseIgnoredDirs(settings.autofixIgnoredDirs) }
+    );
+
+    if (!result.success) {
+      throw new Error(result.error || "CI autofix failed");
+    }
+
+    await recordReview({
+      githubRepoId: payload.repository.id,
+      owner,
+      repo,
+      pullNumber: pullRequest.number,
+      reviewType: "ci_failure_autofix",
+      tokensUsed: result.tokensUsed,
+    });
+
+    console.log(`CI autofix completed for ${owner}/${repo}#${pullRequest.number}`);
+  } finally {
+    if (reviewReaction) {
+      await removeReviewInProgressReaction(
+        reviewReaction.githubClient,
+        reviewReaction.owner,
+        reviewReaction.repo,
+        reviewReaction.pullNumber,
+        reviewReaction.id
+      );
+    }
+  }
+}
+
 const app = new Hono();
 
 const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
@@ -613,6 +956,28 @@ const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
   },
   onTerminalFailure: async (error, job) => {
     await commentOnWebhookPullRequestFailure(job.payload, "review", error, job.deliveryId);
+  },
+});
+
+const ciFailureQueue = new AsyncJobQueue<CiFailureJob>({
+  name: "ci-autofix",
+  concurrency: REVIEW_QUEUE_CONCURRENCY,
+  maxQueuedJobs: REVIEW_QUEUE_MAX_SIZE,
+  maxAttempts: REVIEW_QUEUE_MAX_ATTEMPTS,
+  retryDelayMs: REVIEW_QUEUE_RETRY_DELAY_MS,
+  processor: processCiFailureJob,
+  onError: (error, job, context) => {
+    const repo = `${job.payload.repository.owner.login}/${job.payload.repository.name}`;
+    const sha = getCiFailureHeadSha(job.event, job.payload);
+    console.error(
+      `CI autofix queue job ${context.id} failed for ${repo}@${sha} (attempt ${context.attempt}/${context.maxAttempts}):`,
+      error
+    );
+  },
+  onTerminalFailure: async (error, job) => {
+    const repo = `${job.payload.repository.owner.login}/${job.payload.repository.name}`;
+    const sha = getCiFailureHeadSha(job.event, job.payload);
+    console.error(`CI autofix permanently failed for ${repo}@${sha}:`, error);
   },
 });
 
@@ -650,6 +1015,7 @@ app.get("/health", (c) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     reviewQueue: reviewQueue.getStats(),
+    ciFailureQueue: ciFailureQueue.getStats(),
   });
 });
 
@@ -784,6 +1150,54 @@ app.post("/webhook", async (c) => {
   const deliveryId = c.req.header("x-github-delivery") || null;
 
   console.log(`Received webhook: ${event} - ${payload.action || "no action"}`);
+
+  if ((event === "check_run" || event === "status") && isFailingCiWebhook(event, payload)) {
+    try {
+      await getRepositorySettings(
+        payload.repository.owner.login,
+        payload.repository.name,
+        payload.repository.id
+      );
+    } catch (error) {
+      if (isSettingsApiUnavailableError(error)) {
+        return settingsApiUnavailableResponse(c, error);
+      }
+      throw error;
+    }
+
+    const key = buildCiFailureJobKey(event, payload);
+    const enqueueResult = ciFailureQueue.enqueue(key, {
+      event,
+      payload,
+      deliveryId,
+    });
+
+    if (!enqueueResult.accepted) {
+      console.warn(`CI autofix queue full; rejecting ${key} for GitHub retry`);
+      return c.json(
+        {
+          status: "busy",
+          reason: "ci_autofix_queue_full",
+          ciFailureQueue: enqueueResult.stats,
+        },
+        503
+      );
+    }
+
+    console.log(`Queued CI autofix ${enqueueResult.jobId} for ${key} (${enqueueResult.status})`);
+
+    return c.json(
+      {
+        status: "queued",
+        trigger: "ci_failure",
+        queueStatus: enqueueResult.status,
+        jobId: enqueueResult.jobId,
+        key,
+        ciFailureQueue: enqueueResult.stats,
+      },
+      202
+    );
+  }
 
   // Handle pull request events
   if (event === "pull_request") {

@@ -7,6 +7,16 @@ interface FileWithSha {
   sha: string;
 }
 
+export interface CheckRunAnnotation {
+  path: string;
+  startLine: number;
+  endLine: number;
+  annotationLevel: string;
+  message: string;
+  title: string | null;
+  rawDetails: string | null;
+}
+
 type PendingReviewComment = NonNullable<Review["comments"]>[number];
 
 export class GitHubClient {
@@ -20,6 +30,71 @@ export class GitHubClient {
     });
 
     return data as PullRequest;
+  }
+
+  async getPullRequestsForCommit(owner: string, repo: string, sha: string): Promise<PullRequest[]> {
+    const { data } = await this.octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+      owner,
+      repo,
+      commit_sha: sha,
+    });
+
+    return data.map((pull) => ({
+      number: pull.number,
+      title: pull.title,
+      body: pull.body,
+      draft: pull.draft,
+      state: pull.state,
+      head: {
+        sha: pull.head.sha,
+        ref: pull.head.ref,
+      },
+      base: {
+        sha: pull.base.sha,
+        ref: pull.base.ref,
+      },
+      user: {
+        login: pull.user?.login || "unknown",
+      },
+    }));
+  }
+
+  async getCheckRunAnnotations(
+    owner: string,
+    repo: string,
+    checkRunId: number
+  ): Promise<CheckRunAnnotation[]> {
+    const annotations: CheckRunAnnotation[] = [];
+    let page = 1;
+
+    while (annotations.length < 50) {
+      const { data } = await this.octokit.rest.checks.listAnnotations({
+        owner,
+        repo,
+        check_run_id: checkRunId,
+        per_page: 100,
+        page,
+      });
+
+      annotations.push(
+        ...data.slice(0, Math.max(0, 50 - annotations.length)).map((annotation) => ({
+          path: annotation.path,
+          startLine: annotation.start_line,
+          endLine: annotation.end_line,
+          annotationLevel: annotation.annotation_level ?? "notice",
+          message: annotation.message ?? "",
+          title: annotation.title ?? null,
+          rawDetails: annotation.raw_details ?? null,
+        }))
+      );
+
+      if (data.length < 100) {
+        break;
+      }
+      page++;
+    }
+
+    return annotations;
   }
 
   async getPullRequestFiles(

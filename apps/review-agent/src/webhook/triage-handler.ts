@@ -1,4 +1,5 @@
-import type { TriageAgent } from "../agent/triage";
+import type { SimpleGit } from "simple-git";
+import type { CiFailureDetails, MergeConflictDetails, TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import { withClonedRepo } from "../utils/git";
@@ -7,6 +8,7 @@ import { withRetry } from "../utils/retry";
 
 interface TriageResult {
   success: boolean;
+  tokensUsed?: number;
   fixedIssues: Array<{
     issue: CodeIssue;
     commitSha: string;
@@ -33,6 +35,17 @@ interface PullRequestInfo {
     sha: string;
     ref: string;
   };
+}
+
+interface MergeConflictPullRequestInfo extends PullRequestInfo {
+  base: {
+    sha: string;
+    ref: string;
+  };
+}
+
+interface MergeConflictAutofixResult extends TriageResult {
+  conflictFound: boolean;
 }
 
 // Maximum number of issues to process per triage cycle to prevent runaway loops
@@ -164,6 +177,7 @@ export async function handleTriageAfterReview(
               conversationContext,
               autofixIgnoredDirs,
             });
+            result.tokensUsed = (result.tokensUsed ?? 0) + (fix.tokensUsed ?? 0);
 
             if (!fix.fixed) {
               if (fix.requiresClarification) {
@@ -304,11 +318,460 @@ export async function handleTriageAfterReview(
   return result;
 }
 
+export async function handleCiFailureAutofix(
+  github: GitHubClient,
+  triageAgent: TriageAgent,
+  pullRequest: PullRequestInfo,
+  failure: CiFailureDetails,
+  owner: string,
+  repo: string,
+  botUsername: string,
+  autofixEnabled: boolean,
+  options?: {
+    autofixIgnoredDirs?: string[];
+  }
+): Promise<TriageResult> {
+  const result: TriageResult = {
+    success: true,
+    fixedIssues: [],
+    skippedIssues: [],
+    clarificationIssues: [],
+  };
+  const autofixIgnoredDirs = normalizeIgnoredDirs(options?.autofixIgnoredDirs ?? []);
+  const issue = createCiFailureIssue(failure);
+
+  try {
+    console.log(`Cloning ${owner}/${repo} branch ${pullRequest.head.ref} for CI autofix`);
+
+    await withClonedRepo(
+      {
+        mode: "read-write",
+        github,
+        owner,
+        repo,
+        branch: pullRequest.head.ref,
+        label: `ci-autofix-${pullRequest.number}`,
+        botUsername,
+      },
+      async (_tempDir, git) => {
+        const fix = await triageAgent.fixCiFailure(failure, _tempDir, {
+          autofixIgnoredDirs,
+        });
+        result.tokensUsed = (result.tokensUsed ?? 0) + (fix.tokensUsed ?? 0);
+
+        if (!fix.fixed) {
+          if (fix.requiresClarification) {
+            result.clarificationIssues.push({
+              issue,
+              question:
+                fix.clarificationQuestion || "Can you clarify how this CI failure should be fixed?",
+              reason: fix.explanation,
+            });
+          } else {
+            result.skippedIssues.push({
+              issue,
+              reason: fix.explanation,
+            });
+          }
+          return;
+        }
+
+        await git.add(".");
+        const stagedFiles = (await git.diff(["--cached", "--name-only", "--no-renames"]))
+          .split("\n")
+          .map((file) => file.trim())
+          .filter(Boolean);
+        const ignoredChangedDir =
+          stagedFiles
+            .map((file) => getAutofixIgnoredDirForPath(file, autofixIgnoredDirs))
+            .find((dir): dir is string => Boolean(dir)) ?? null;
+        if (ignoredChangedDir) {
+          await git.raw(["reset", "--hard"]);
+          await git.raw(["clean", "-fd"]);
+
+          result.skippedIssues.push({
+            issue,
+            reason: `Autofix produced changes matching ignored path pattern \`${ignoredChangedDir}\`.`,
+          });
+          return;
+        }
+
+        const stagedDiff = await git.diff(["--cached", "--no-color"]);
+        const shortName = failure.name.slice(0, 50);
+        const commitMessage = `fix(ci): ${shortName}${failure.name.length > 50 ? "..." : ""}`;
+        const commitResult = await git.commit(commitMessage);
+
+        console.log(`Committed CI autofix: ${commitResult.commit}`);
+        result.fixedIssues.push({
+          issue,
+          commitSha: commitResult.commit,
+          explanation: fix.explanation,
+          diff: stagedDiff,
+        });
+
+        if (autofixEnabled) {
+          console.log(`Pushing CI autofix commit to ${pullRequest.head.ref}`);
+          await withRetry(() => git.push("origin", pullRequest.head.ref), "git push");
+        }
+      }
+    );
+
+    if (autofixEnabled) {
+      await upsertCiAutofixSummaryComment(
+        github,
+        owner,
+        repo,
+        pullRequest.number,
+        botUsername,
+        failure,
+        result
+      );
+    }
+  } catch (error) {
+    console.error("CI autofix error:", error);
+    result.success = false;
+    result.error = error instanceof Error ? error.message : String(error);
+  }
+
+  return result;
+}
+
+export async function handleMergeConflictAutofix(
+  github: GitHubClient,
+  triageAgent: TriageAgent,
+  pullRequest: MergeConflictPullRequestInfo,
+  owner: string,
+  repo: string,
+  botUsername: string,
+  autofixEnabled: boolean,
+  options?: {
+    autofixIgnoredDirs?: string[];
+  }
+): Promise<MergeConflictAutofixResult> {
+  const result: MergeConflictAutofixResult = {
+    success: true,
+    conflictFound: false,
+    fixedIssues: [],
+    skippedIssues: [],
+    clarificationIssues: [],
+  };
+  const autofixIgnoredDirs = normalizeIgnoredDirs(options?.autofixIgnoredDirs ?? []);
+  let conflictDetails: MergeConflictDetails | null = null;
+
+  try {
+    console.log(
+      `Checking ${owner}/${repo}#${pullRequest.number} for merge conflicts with ${pullRequest.base.ref}`
+    );
+
+    await withClonedRepo(
+      {
+        mode: "read-write",
+        github,
+        owner,
+        repo,
+        branch: pullRequest.head.ref,
+        label: `merge-autofix-${pullRequest.number}`,
+        botUsername,
+      },
+      async (_tempDir, git) => {
+        const mergeAttempt = await attemptBaseMergeForConflicts(git, pullRequest.base.ref);
+
+        if (!mergeAttempt.conflictFound) {
+          await abortMergeIfPossible(git);
+          console.log(
+            `No merge conflicts found for ${owner}/${repo}#${pullRequest.number} against ${pullRequest.base.ref}`
+          );
+          return;
+        }
+
+        result.conflictFound = true;
+        conflictDetails = await buildMergeConflictDetails(git, pullRequest, mergeAttempt.files);
+        const issue = createMergeConflictIssue(conflictDetails);
+
+        console.log(
+          `Merge conflicts found in ${mergeAttempt.files.length} file(s): ${mergeAttempt.files.join(", ")}`
+        );
+
+        const fix = await triageAgent.fixMergeConflict(conflictDetails, _tempDir, {
+          autofixIgnoredDirs,
+        });
+        result.tokensUsed = (result.tokensUsed ?? 0) + (fix.tokensUsed ?? 0);
+
+        if (!fix.fixed) {
+          if (fix.requiresClarification) {
+            result.clarificationIssues.push({
+              issue,
+              question:
+                fix.clarificationQuestion ||
+                "Can you clarify how these merge conflicts should be resolved?",
+              reason: fix.explanation,
+            });
+          } else {
+            result.skippedIssues.push({
+              issue,
+              reason: fix.explanation,
+            });
+          }
+          return;
+        }
+
+        const postFixStatus = await git.status();
+        if (postFixStatus.conflicted.length > 0) {
+          result.skippedIssues.push({
+            issue,
+            reason: `Autofix left unresolved merge conflicts in ${postFixStatus.conflicted.join(", ")}.`,
+          });
+          return;
+        }
+
+        const filesWithMarkers = await findConflictMarkerFiles(
+          git,
+          conflictDetails.conflictedFiles
+        );
+        if (filesWithMarkers.length > 0) {
+          result.skippedIssues.push({
+            issue,
+            reason: `Autofix left conflict markers in ${filesWithMarkers.join(", ")}.`,
+          });
+          return;
+        }
+
+        await git.add(".");
+        const stagedFiles = (await git.diff(["--cached", "--name-only", "--no-renames"]))
+          .split("\n")
+          .map((file) => file.trim())
+          .filter(Boolean);
+        const ignoredChangedDir =
+          stagedFiles
+            .map((file) => getAutofixIgnoredDirForPath(file, autofixIgnoredDirs))
+            .find((dir): dir is string => Boolean(dir)) ?? null;
+        if (ignoredChangedDir) {
+          await abortMergeIfPossible(git);
+          await git.raw(["reset", "--hard"]);
+          await git.raw(["clean", "-fd"]);
+
+          result.skippedIssues.push({
+            issue,
+            reason: `Autofix produced changes matching ignored path pattern \`${ignoredChangedDir}\`.`,
+          });
+          return;
+        }
+
+        const stagedDiff = await git.diff(["--cached", "--no-color"]);
+        const commitMessage = `fix(merge): resolve ${pullRequest.base.ref} conflicts`;
+        const commitResult = await git.commit(commitMessage);
+
+        console.log(`Committed merge conflict autofix: ${commitResult.commit}`);
+        result.fixedIssues.push({
+          issue,
+          commitSha: commitResult.commit,
+          explanation: fix.explanation,
+          diff: stagedDiff,
+        });
+
+        if (autofixEnabled) {
+          console.log(`Pushing merge conflict autofix commit to ${pullRequest.head.ref}`);
+          await withRetry(() => git.push("origin", pullRequest.head.ref), "git push");
+        }
+      }
+    );
+
+    if (result.conflictFound && autofixEnabled && conflictDetails) {
+      await upsertMergeConflictAutofixSummaryComment(
+        github,
+        owner,
+        repo,
+        pullRequest.number,
+        botUsername,
+        conflictDetails,
+        result
+      );
+    }
+  } catch (error) {
+    console.error("Merge conflict autofix error:", error);
+    result.success = false;
+    result.error = error instanceof Error ? error.message : String(error);
+  }
+
+  return result;
+}
+
 export function getAutofixIgnoredDirForPath(
   filePath: string,
   ignoredDirs: string[]
 ): string | null {
   return getIgnoredDirForPath(filePath, ignoredDirs);
+}
+
+function createCiFailureIssue(failure: CiFailureDetails): CodeIssue {
+  return {
+    type: "bug-risk",
+    severity: "warning",
+    file: "CI",
+    line: 1,
+    message: `CI failed: ${failure.name}`,
+    suggestion: failure.url ? `Inspect failing CI details: ${failure.url}` : undefined,
+  };
+}
+
+function createMergeConflictIssue(conflict: MergeConflictDetails): CodeIssue {
+  const primaryFile = conflict.conflictedFiles[0] ?? "merge-conflict";
+  return {
+    type: "bug-risk",
+    severity: "critical",
+    file: primaryFile,
+    line: 1,
+    message: `Merge conflicts with ${conflict.baseBranch}`,
+    suggestion: `Resolve conflicts between ${conflict.headBranch} and ${conflict.baseBranch}.`,
+  };
+}
+
+interface BaseMergeAttemptResult {
+  conflictFound: boolean;
+  files: string[];
+  retryWithFullHistory?: boolean;
+}
+
+async function attemptBaseMergeForConflicts(
+  git: SimpleGit,
+  baseBranch: string
+): Promise<BaseMergeAttemptResult> {
+  const baseRef = `refs/remotes/origin/${baseBranch}`;
+  await fetchBaseBranchForMerge(git, baseBranch, true);
+
+  const firstAttempt = await runBaseMergeAttempt(git, baseRef);
+  if (!firstAttempt.retryWithFullHistory) {
+    return firstAttempt;
+  }
+
+  await abortMergeIfPossible(git);
+  await fetchFullHistoryForMerge(git);
+  await fetchBaseBranchForMerge(git, baseBranch, false);
+  return runBaseMergeAttempt(git, baseRef);
+}
+
+async function fetchBaseBranchForMerge(
+  git: SimpleGit,
+  baseBranch: string,
+  shallow: boolean
+): Promise<void> {
+  const refspec = `${baseBranch}:refs/remotes/origin/${baseBranch}`;
+  const args = ["fetch", "origin", refspec];
+  if (shallow) {
+    args.push("--depth=100");
+  }
+
+  await withRetry(() => git.raw(args), "git fetch base branch");
+}
+
+async function fetchFullHistoryForMerge(git: SimpleGit): Promise<void> {
+  try {
+    await git.raw(["fetch", "--unshallow", "origin"]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("does not make sense") && !message.includes("not a shallow repository")) {
+      throw error;
+    }
+  }
+}
+
+async function runBaseMergeAttempt(
+  git: SimpleGit,
+  baseRef: string
+): Promise<BaseMergeAttemptResult> {
+  try {
+    await git.raw(["merge", "--no-commit", "--no-ff", baseRef]);
+    return { conflictFound: false, files: [] };
+  } catch (error) {
+    const status = await git.status().catch(() => null);
+    if (status?.conflicted.length) {
+      return {
+        conflictFound: true,
+        files: status.conflicted,
+      };
+    }
+
+    if (isShallowMergeFailure(error)) {
+      return {
+        conflictFound: false,
+        files: [],
+        retryWithFullHistory: true,
+      };
+    }
+
+    throw error;
+  }
+}
+
+function isShallowMergeFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("refusing to merge unrelated histories") ||
+    message.includes("shallow") ||
+    message.includes("no merge base")
+  );
+}
+
+async function abortMergeIfPossible(git: SimpleGit): Promise<void> {
+  try {
+    await git.raw(["merge", "--abort"]);
+  } catch {
+    try {
+      await git.raw(["reset", "--hard", "HEAD"]);
+    } catch {
+      // Best-effort cleanup in a disposable clone.
+    }
+  }
+}
+
+async function buildMergeConflictDetails(
+  git: SimpleGit,
+  pullRequest: MergeConflictPullRequestInfo,
+  conflictedFiles: string[]
+): Promise<MergeConflictDetails> {
+  const status = await git.raw(["status", "--short"]).catch(() => "");
+  const diffArgs = ["diff", "--no-color", "--cc"];
+  if (conflictedFiles.length > 0) {
+    diffArgs.push("--", ...conflictedFiles);
+  }
+  const diff = await git.raw(diffArgs).catch(() => git.diff(["--no-color"]));
+
+  return {
+    baseBranch: pullRequest.base.ref,
+    baseSha: pullRequest.base.sha,
+    headBranch: pullRequest.head.ref,
+    headSha: pullRequest.head.sha,
+    conflictedFiles,
+    status,
+    diff,
+  };
+}
+
+async function findConflictMarkerFiles(git: SimpleGit, files: string[]): Promise<string[]> {
+  if (files.length === 0) {
+    return [];
+  }
+
+  try {
+    const output = await git.raw([
+      "grep",
+      "-n",
+      "-E",
+      "^(<<<<<<<|=======|>>>>>>>)",
+      "--",
+      ...files,
+    ]);
+    return [
+      ...new Set(
+        output
+          .split("\n")
+          .map((line) => line.split(":")[0]?.trim())
+          .filter((file): file is string => Boolean(file))
+      ),
+    ];
+  } catch {
+    return [];
+  }
 }
 
 interface BodyOnlyResult {
@@ -381,6 +844,30 @@ function isRemediationSummaryComment(body: string): boolean {
   return body.startsWith("## Remediation Summary");
 }
 
+function getCiAutofixMarker(failure: CiFailureDetails): string {
+  const checkSlug = failure.name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `<!-- opendiff-ci-autofix:${failure.headSha}:${checkSlug || "check"} -->`;
+}
+
+function isCiAutofixSummaryComment(body: string, failure: CiFailureDetails): boolean {
+  return body.includes(getCiAutofixMarker(failure));
+}
+
+function getMergeConflictAutofixMarker(conflict: MergeConflictDetails): string {
+  return `<!-- opendiff-merge-autofix:${conflict.headSha}:${conflict.baseSha} -->`;
+}
+
+function isMergeConflictAutofixSummaryComment(
+  body: string,
+  conflict: MergeConflictDetails
+): boolean {
+  return body.includes(getMergeConflictAutofixMarker(conflict));
+}
+
 async function upsertTriageSummaryComment(
   github: GitHubClient,
   owner: string,
@@ -406,6 +893,64 @@ async function upsertTriageSummaryComment(
 
   await github.createIssueComment(owner, repo, pullNumber, summaryBody);
   console.log("Posted triage summary comment");
+}
+
+async function upsertCiAutofixSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  failure: CiFailureDetails,
+  result: TriageResult
+): Promise<void> {
+  const body = formatCiAutofixSummary(failure, result);
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  const existingSummary = [...issueComments]
+    .reverse()
+    .find(
+      (comment) =>
+        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
+        isCiAutofixSummaryComment(comment.body, failure)
+    );
+
+  if (existingSummary) {
+    await github.updateIssueComment(owner, repo, existingSummary.id, body);
+    console.log(`Updated CI autofix summary comment ${existingSummary.id}`);
+    return;
+  }
+
+  await github.createIssueComment(owner, repo, pullNumber, body);
+  console.log("Posted CI autofix summary comment");
+}
+
+async function upsertMergeConflictAutofixSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  conflict: MergeConflictDetails,
+  result: TriageResult
+): Promise<void> {
+  const body = formatMergeConflictAutofixSummary(conflict, result);
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  const existingSummary = [...issueComments]
+    .reverse()
+    .find(
+      (comment) =>
+        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
+        isMergeConflictAutofixSummaryComment(comment.body, conflict)
+    );
+
+  if (existingSummary) {
+    await github.updateIssueComment(owner, repo, existingSummary.id, body);
+    console.log(`Updated merge conflict autofix summary comment ${existingSummary.id}`);
+    return;
+  }
+
+  await github.createIssueComment(owner, repo, pullNumber, body);
+  console.log("Posted merge conflict autofix summary comment");
 }
 
 async function replyToInlineComments(
@@ -609,5 +1154,78 @@ function formatTriageSummary(
     body += `---\n*${bodyOnlyCount} issue${bodyOnlyCount > 1 ? "s were" : " was"} found outside the diff (see above for details)*\n`;
   }
 
+  return body;
+}
+
+function formatCiAutofixSummary(failure: CiFailureDetails, result: TriageResult): string {
+  let body = `${getCiAutofixMarker(failure)}\n## CI Autofix Summary\n\n`;
+  body += `**Check:** ${failure.name}\n`;
+  body += `**Conclusion:** ${failure.conclusion}\n`;
+  body += `**Commit:** \`${failure.headSha.slice(0, 7)}\`\n`;
+  if (failure.url) {
+    body += `**Details:** ${failure.url}\n`;
+  }
+  body += "\n";
+
+  const fixed = result.fixedIssues[0];
+  if (fixed) {
+    body += `✅ **Fixed automatically in ${fixed.commitSha.slice(0, 7)}**\n\n`;
+    if (fixed.explanation) {
+      body += `${fixed.explanation}\n`;
+    }
+    return body;
+  }
+
+  const clarification = result.clarificationIssues[0];
+  if (clarification) {
+    body += "❓ **Need clarification before auto-fixing**\n\n";
+    body += `${clarification.reason}\n\n${clarification.question}\n`;
+    return body;
+  }
+
+  const skipped = result.skippedIssues[0];
+  if (skipped) {
+    body += "⏭️ **Could not auto-fix this CI failure**\n\n";
+    body += `${skipped.reason}\n`;
+    return body;
+  }
+
+  body += "ℹ️ **No remediation actions were needed for this CI failure**\n";
+  return body;
+}
+
+function formatMergeConflictAutofixSummary(
+  conflict: MergeConflictDetails,
+  result: TriageResult
+): string {
+  let body = `${getMergeConflictAutofixMarker(conflict)}\n## Merge Conflict Autofix Summary\n\n`;
+  body += `**Head:** ${conflict.headBranch} (\`${conflict.headSha.slice(0, 7)}\`)\n`;
+  body += `**Base:** ${conflict.baseBranch} (\`${conflict.baseSha.slice(0, 7)}\`)\n`;
+  body += `**Conflicted files:** ${conflict.conflictedFiles.map((file) => `\`${file}\``).join(", ")}\n\n`;
+
+  const fixed = result.fixedIssues[0];
+  if (fixed) {
+    body += `✅ **Resolved automatically in ${fixed.commitSha.slice(0, 7)}**\n\n`;
+    if (fixed.explanation) {
+      body += `${fixed.explanation}\n`;
+    }
+    return body;
+  }
+
+  const clarification = result.clarificationIssues[0];
+  if (clarification) {
+    body += "❓ **Need clarification before resolving these conflicts**\n\n";
+    body += `${clarification.reason}\n\n${clarification.question}\n`;
+    return body;
+  }
+
+  const skipped = result.skippedIssues[0];
+  if (skipped) {
+    body += "⏭️ **Could not auto-resolve these merge conflicts**\n\n";
+    body += `${skipped.reason}\n`;
+    return body;
+  }
+
+  body += "ℹ️ **No merge conflict remediation action was needed**\n";
   return body;
 }
