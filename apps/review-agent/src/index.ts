@@ -333,6 +333,7 @@ async function commentOnPullRequestFailure(options: {
         kind: options.kind,
         reason,
         deliveryId: options.deliveryId,
+        error: options.error,
       }
     );
   } catch (commentError) {
