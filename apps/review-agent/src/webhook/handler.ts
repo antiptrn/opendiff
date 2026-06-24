@@ -691,6 +691,16 @@ export class WebhookHandler {
               .map((issue) => [buildIssueFingerprint(issue), toStoredIssueRecord(issue)])
           );
           const history = buildReviewHistoryContext(reviewableHistoricalIssues, currentIssueMap);
+          const unresolvedHistoricalIssueFingerprints = new Set(
+            [...historicalIssues].flatMap(([fingerprint, issue]) => {
+              // Ignored historical findings should stay unresolved until they are reviewed again.
+              if (getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs)) {
+                return fingerprint;
+              }
+
+              return currentIssueMap.has(fingerprint) ? fingerprint : [];
+            })
+          );
 
           await cleanupResolvedPreviousReviews(
             this.github,
@@ -698,7 +708,7 @@ export class WebhookHandler {
             repo,
             prNumber,
             botUsername,
-            new Set(history.unresolvedHistoricalIssues.map((issue) => issue.fingerprint))
+            unresolvedHistoricalIssueFingerprints
           );
 
           // Build patches map for filtering inline comments to valid diff lines
