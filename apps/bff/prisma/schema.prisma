@@ -226,6 +226,8 @@ model Review {
   reviewType           String
   reviewId             BigInt?
   commentId            BigInt?
+  pullTitle            String?
+  pullAuthor           String?
   organizationId       String?
   organization         Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   tokensUsed           BigInt?

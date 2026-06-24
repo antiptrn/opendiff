@@ -215,6 +215,8 @@ export async function recordReview(data: {
   reviewType: "initial" | "comment_reply" | "ci_failure_autofix" | "merge_conflict_autofix";
   reviewId?: number;
   commentId?: number;
+  pullTitle?: string | null;
+  pullAuthor?: string | null;
   tokensUsed?: number;
 }): Promise<string | null> {
   if (!SETTINGS_API_URL) {

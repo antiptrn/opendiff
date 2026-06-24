@@ -27,6 +27,21 @@ describe("ignored path pattern matching", () => {
     expect(getIgnoredDirForPath("/vendor/pkg/a.ts", ["vendor/"])).toBe("vendor/*");
   });
 
+  it("matches workspace source path patterns against monorepo app and package paths", () => {
+    expect(getIgnoredDirForPath("apps/site/src/app.tsx", ["src/apps/site/*"])).toBe(
+      "src/apps/site/*"
+    );
+    expect(
+      getIgnoredDirForPath("apps/site/src/components/marketing/hero-section.tsx", [
+        "src/apps/site/*",
+      ])
+    ).toBe("src/apps/site/*");
+    expect(
+      getIgnoredDirForPath("packages/shared/src/auth/index.ts", ["src/packages/shared/*"])
+    ).toBe("src/packages/shared/*");
+    expect(getIgnoredDirForPath("apps/site/public/robots.txt", ["src/apps/site/*"])).toBeNull();
+  });
+
   it("treats bare path entries as exact matches and legacy directory prefixes", () => {
     expect(getIgnoredDirForPath("generated", ["generated"])).toBe("generated");
     expect(getIgnoredDirForPath("generated/client.ts", ["generated"])).toBe("generated");

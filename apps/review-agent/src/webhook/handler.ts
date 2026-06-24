@@ -409,7 +409,29 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
 }
 
 function resolvedReviewBody(): string {
-  return "Resolved in a later revision. See the living `OpenDiff Summary` comment for the current state of this PR.";
+  return "Resolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.";
+}
+
+function resolvedReviewBodyVariants(): string[] {
+  return [
+    resolvedReviewBody(),
+    "Resolved in a later revision. See the living `OpenDiff Summary` comment for the current state of this PR.",
+  ];
+}
+
+function isResolvedReviewBody(body: string): boolean {
+  return resolvedReviewBodyVariants().some((resolvedBody) => body.includes(resolvedBody));
+}
+
+function strikeThroughReviewBody(body: string): string {
+  return body
+    .split("\n")
+    .map((line) => (line.trim() ? `~~${line}~~` : line))
+    .join("\n");
+}
+
+function resolvedReviewBodyWithPreviousMessage(previousBody: string): string {
+  return `${strikeThroughReviewBody(previousBody)}\n\n${resolvedReviewBody()}`;
 }
 
 async function cleanupResolvedPreviousReviews(
@@ -441,6 +463,7 @@ async function cleanupResolvedPreviousReviews(
     if (!botUsers.has(review.user)) {
       continue;
     }
+    const reviewAlreadyResolved = isResolvedReviewBody(review.body);
 
     const relatedComments = commentsByReviewId.get(review.id) ?? [];
     const issueComments = relatedComments.filter(
@@ -490,13 +513,17 @@ async function cleanupResolvedPreviousReviews(
       }
     }
 
+    if (reviewAlreadyResolved) {
+      continue;
+    }
+
     try {
       await github.updatePullRequestReview(
         owner,
         repo,
         pullNumber,
         review.id,
-        resolvedReviewBody()
+        resolvedReviewBodyWithPreviousMessage(review.body)
       );
       console.log(`Minimized resolved review body ${review.id}`);
     } catch (error) {
@@ -874,7 +901,7 @@ export class WebhookHandler {
               history
             ) ||
             (review.event === "APPROVE" && hadPriorReviewSummary);
-          const shouldPostApprovalReview = review.event === "APPROVE" && shouldPostStatusUpdate;
+          const shouldPostApprovalReview = review.event === "APPROVE";
           const hasExistingApprovalForHead =
             shouldPostApprovalReview &&
             (await hasBotApprovedHead(
@@ -891,6 +918,7 @@ export class WebhookHandler {
               : shouldPostStatusUpdate;
 
           if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
+            const submittedReviewBody = shouldPostStatusUpdate ? reviewBody : "";
             const { id } = await this.github.submitReview(
               owner,
               repo,
@@ -898,7 +926,7 @@ export class WebhookHandler {
               pull_request.head.sha,
               {
                 ...review,
-                body: reviewBody,
+                body: submittedReviewBody,
                 comments: resolvedComments,
               }
             );
