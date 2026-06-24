@@ -232,7 +232,7 @@ describe("ReviewFormatter", () => {
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 critical issue."
       );
-      expect(body).toContain("`a.ts:1` is flagged as 🔒 Security for 'x'");
+      expect(body).toContain("`a.ts:1` is flagged as Security for 'x'");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).toContain("OpenDiff completed the review");
@@ -279,7 +279,7 @@ describe("ReviewFormatter", () => {
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 warning."
       );
-      expect(body).toContain("`src/a.ts:4` is flagged as ✨ Style for 'x'");
+      expect(body).toContain("`src/a.ts:4` is flagged as Style for 'x'");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).not.toContain("### Open Issue Summary");
@@ -287,7 +287,8 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("### Open Issues");
       expect(body).toContain("| Finding | Issue | Code |");
       expect(body).not.toContain("| Finding | Issue | Code | Suggestion |");
-      expect(body).toContain("| Style | X. | `src/a.ts:4` |");
+      expect(body).toContain("| Style | X. | `a.ts:4` |");
+      expect(body).not.toContain("| Style | X. | `src/a.ts:4` |");
       expect(body).not.toContain("#### ✨ Style in `src/a.ts:4`");
       expect(body).not.toContain("**Code reference:**");
       expect(body).not.toContain("### New Issues");
@@ -357,14 +358,16 @@ describe("ReviewFormatter", () => {
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 2 warnings."
       );
-      expect(body).toContain("`src/b.ts:8` is flagged as ✨ Style for 'y'");
-      expect(body).toContain("`src/old.ts:2` is flagged as 🐛 Bug Risk for 'old issue'");
+      expect(body).toContain("`src/b.ts:8` is flagged as Style for 'y'");
+      expect(body).toContain("`src/old.ts:2` is flagged as Bug Risk for 'old issue'");
       expect(body).toContain("### Still Open From Earlier Reviews");
       expect(body).toContain("### New Issues");
       expect(body).toContain("| Finding | Issue | Code |");
       expect(body).not.toContain("| Finding | Issue | Code | Suggestion |");
-      expect(body).toContain("| Bug&nbsp;Risk | Old issue. | `src/old.ts:2` |");
-      expect(body).toContain("| Style | Y. | `src/b.ts:8` |");
+      expect(body).toContain("| Bug&nbsp;Risk | Old issue. | `old.ts:2` |");
+      expect(body).toContain("| Style | Y. | `b.ts:8` |");
+      expect(body).not.toContain("| Bug&nbsp;Risk | Old issue. | `src/old.ts:2` |");
+      expect(body).not.toContain("| Style | Y. | `src/b.ts:8` |");
       expect(body).not.toContain("#### 🐛 Bug Risk in `src/old.ts:2`");
       expect(body).not.toContain("**Code reference:**");
       expect(body).toContain("**Rating:**");

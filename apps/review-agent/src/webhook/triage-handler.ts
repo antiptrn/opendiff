@@ -64,27 +64,6 @@ export async function handleTriageAfterReview(
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
-    if (autofixEnabled && postSummary) {
-      const summaryBody = formatTriageSummary(
-        result.fixedIssues,
-        result.skippedIssues,
-        result.clarificationIssues,
-        {
-          fixed: [],
-          skipped: [],
-          clarifications: [],
-        }
-      );
-      await upsertTriageSummaryComment(
-        github,
-        owner,
-        repo,
-        pullRequest.number,
-        botUsername,
-        summaryBody
-      );
-      console.log("Upserted triage summary: no remediation actions were needed for this push");
-    }
     return result;
   }
 
@@ -293,25 +272,7 @@ export async function handleTriageAfterReview(
             );
           }
         } else if (ignoredIssueCount > 0 && autofixEnabled && postSummary) {
-          const summaryBody = formatTriageSummary(
-            result.fixedIssues,
-            result.skippedIssues,
-            result.clarificationIssues,
-            {
-              fixed: [],
-              skipped: [],
-              clarifications: [],
-            }
-          );
-          await upsertTriageSummaryComment(
-            github,
-            owner,
-            repo,
-            pullRequest.number,
-            botUsername,
-            summaryBody
-          );
-          console.log("Upserted triage summary: no remediation actions were needed for this push");
+          console.log("Skipped triage summary: all issues matched ignored autofix paths");
         }
       }
     );

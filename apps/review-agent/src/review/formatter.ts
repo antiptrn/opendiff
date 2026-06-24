@@ -525,7 +525,7 @@ export class ReviewFormatter {
       const row = [
         this.escapeTableCell(this.formatTableFindingLabel(issue.type)),
         this.escapeTableCell(this.formatIssueSummary(issue)),
-        `\`${this.formatIssueLocation(issue)}\``,
+        `\`${this.formatIssueDisplayLocation(issue)}\``,
       ];
       if (hasSuggestions) {
         row.push(this.escapeTableCell(this.formatIssueSuggestion(issue)));
@@ -587,6 +587,13 @@ export class ReviewFormatter {
     return issue.endLine && issue.endLine > issue.line
       ? `${issue.file}:${issue.line}-${issue.endLine}`
       : `${issue.file}:${issue.line}`;
+  }
+
+  private formatIssueDisplayLocation(issue: Pick<CodeIssue, "file" | "line" | "endLine">): string {
+    const fileName = issue.file.split("/").filter(Boolean).at(-1) ?? issue.file;
+    return issue.endLine && issue.endLine > issue.line
+      ? `${fileName}:${issue.line}-${issue.endLine}`
+      : `${fileName}:${issue.line}`;
   }
 
   private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
