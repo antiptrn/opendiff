@@ -193,6 +193,9 @@ describe("WebhookHandler", () => {
         })),
       getPullRequestReviews: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
+      getReviewCommentThread: vi.fn(),
+      deleteReviewComment: vi.fn(),
+      updatePullRequestReview: vi.fn().mockResolvedValue({ id: 129 }),
       getIssueComments: vi.fn().mockResolvedValue([]),
       createIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
       updateIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
@@ -732,6 +735,72 @@ describe("WebhookHandler", () => {
         expect.objectContaining({
           body: "## Status Update\n\nAll previously reported issues are fixed.",
         })
+      );
+    });
+
+    it("should strike through resolved status update bodies before adding the resolved notice", async () => {
+      const addressedIssue = {
+        type: "bug-risk" as const,
+        severity: "warning" as const,
+        file: "src/index.ts",
+        line: 5,
+        message: "Previously reported issue",
+      };
+      const oldBody = `## Status Update\n\nFound an issue.\n\n${buildIssueMarker(addressedIssue)}`;
+
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockGitHubClient.getPullRequestReviews.mockResolvedValue([
+        {
+          id: 129,
+          user: "opendiff-bot",
+          body: oldBody,
+          state: "COMMENTED",
+          submittedAt: "2026-06-24T16:00:00Z",
+          commitId: "old-sha",
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "All previously reported issues are fixed.",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Status Update\n\nAll previously reported issues are fixed.",
+        event: "APPROVE",
+      });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## OpenDiff Summary\n\nAll previously reported issues are fixed.");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## OpenDiff Summary\n\nAll previously reported issues are fixed.");
+      mockFormatter.formatReviewBody = vi
+        .fn()
+        .mockReturnValue("## Status Update\n\nAll previously reported issues are fixed.");
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      const struckOldBody = oldBody
+        .split("\n")
+        .map((line) => (line.trim() ? `~~${line}~~` : line))
+        .join("\n");
+      const expectedBody = `${struckOldBody}\n\nResolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.`;
+      expect(result.success).toBe(true);
+      expect(mockGitHubClient.updatePullRequestReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        129,
+        expectedBody
       );
     });
 

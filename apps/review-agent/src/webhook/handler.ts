@@ -408,7 +408,18 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
 }
 
 function resolvedReviewBody(): string {
-  return "Resolved in a later revision. See the living `OpenDiff Summary` comment for the current state of this PR.";
+  return "Resolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.";
+}
+
+function strikeThroughReviewBody(body: string): string {
+  return body
+    .split("\n")
+    .map((line) => (line.trim() ? `~~${line}~~` : line))
+    .join("\n");
+}
+
+function resolvedReviewBodyWithPreviousMessage(previousBody: string): string {
+  return `${strikeThroughReviewBody(previousBody)}\n\n${resolvedReviewBody()}`;
 }
 
 async function cleanupResolvedPreviousReviews(
@@ -438,6 +449,9 @@ async function cleanupResolvedPreviousReviews(
 
   for (const review of reviews) {
     if (!botUsers.has(review.user)) {
+      continue;
+    }
+    if (review.body.includes(resolvedReviewBody())) {
       continue;
     }
 
@@ -495,7 +509,7 @@ async function cleanupResolvedPreviousReviews(
         repo,
         pullNumber,
         review.id,
-        resolvedReviewBody()
+        resolvedReviewBodyWithPreviousMessage(review.body)
       );
       console.log(`Minimized resolved review body ${review.id}`);
     } catch (error) {
@@ -903,7 +917,9 @@ export class WebhookHandler {
             );
             reviewId = id;
           } else {
-            console.log("Skipped GitHub review submission; summary comment captured the current state");
+            console.log(
+              "Skipped GitHub review submission; summary comment captured the current state"
+            );
           }
 
           return {
