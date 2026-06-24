@@ -91,7 +91,7 @@ describe("handleTriageAfterReview", () => {
     expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
   });
 
-  it("should silently skip issues matching autofix ignored path patterns", async () => {
+  it("should refresh the remediation summary when all issues match ignored autofix paths", async () => {
     const ignoredIssue: CodeIssue = {
       type: "bug-risk",
       severity: "warning",
@@ -121,8 +121,12 @@ describe("handleTriageAfterReview", () => {
     expect(result.clarificationIssues).toHaveLength(0);
     expect(mockTriageAgent.fixIssue).not.toHaveBeenCalled();
     expect(mockGitHubClient.replyToReviewComment).not.toHaveBeenCalled();
-    expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
-    expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+    expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+      "owner",
+      "repo",
+      42,
+      expect.stringContaining("No remediation actions were needed for this push")
+    );
   });
 
   it("should match autofix ignored path patterns", () => {

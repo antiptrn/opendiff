@@ -115,6 +115,7 @@ export async function handleTriageAfterReview(
           (c) => c.user === botUsername || c.user === `${botUsername}[bot]`
         );
         const threadContextByCommentId = new Map<number, string | undefined>();
+        let ignoredIssueCount = 0;
 
         // Process each issue one by one using the OpenCode SDK
         for (const issue of fixableIssues) {
@@ -126,6 +127,7 @@ export async function handleTriageAfterReview(
               console.log(
                 `Skipping issue matching ignored autofix path pattern ${ignoredDir}: ${issue.file}`
               );
+              ignoredIssueCount += 1;
               continue;
             }
 
@@ -290,6 +292,28 @@ export async function handleTriageAfterReview(
               `Matched GitHub comment IDs for ${result.fixedIssues.length} fixes (autofix off, no push/reply)`
             );
           }
+        } else if (ignoredIssueCount > 0 && autofixEnabled && postSummary) {
+          const summaryBody = formatTriageSummary(
+            result.fixedIssues,
+            result.skippedIssues,
+            result.clarificationIssues,
+            {
+              fixed: [],
+              skipped: [],
+              clarifications: [],
+            }
+          );
+          await upsertTriageSummaryComment(
+            github,
+            owner,
+            repo,
+            pullRequest.number,
+            botUsername,
+            summaryBody
+          );
+          console.log(
+            "Upserted triage summary: no remediation actions were needed for this push"
+          );
         }
       }
     );
