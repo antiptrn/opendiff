@@ -41,7 +41,7 @@ describe("handleTriageAfterReview", () => {
     };
   });
 
-  it("should upsert a remediation summary on a clean autofix push", async () => {
+  it("should upsert an autofix summary on a clean autofix push", async () => {
     const result = await handleTriageAfterReview(
       mockGitHubClient as GitHubClient,
       mockTriageAgent as TriageAgent,
@@ -61,17 +61,96 @@ describe("handleTriageAfterReview", () => {
       "owner",
       "repo",
       42,
-      expect.stringContaining("## Remediation Summary")
+      expect.stringContaining("## Autofix Summary")
     );
     expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
       "owner",
       "repo",
       42,
-      expect.stringContaining("No remediation actions were needed for this push")
+      expect.stringContaining("No autofix actions were needed for this push.")
     );
   });
 
-  it("should not post a remediation summary on a clean pass when autofix is off", async () => {
+  it("should format fixed autofix summaries as plain text and bullet points", async () => {
+    const issue: CodeIssue = {
+      type: "bug-risk",
+      severity: "warning",
+      file: "apps/review-agent/src/webhook/handler.ts",
+      line: 454,
+      message: "Resolved reviews can be processed repeatedly",
+    };
+    mockTriageAgent.fixIssue = vi.fn().mockResolvedValue({
+      fixed: true,
+      explanation:
+        "Adjusted cleanupResolvedPreviousReviews so resolved reviews are skipped.\nThe summary remains readable.",
+    });
+
+    const result = await handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      {
+        number: 42,
+        head: { sha: "abc123", ref: "feature-branch" },
+      },
+      [issue],
+      "owner",
+      "repo",
+      "opendiff-bot",
+      true
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.fixedIssues).toHaveLength(1);
+    const createIssueComment = mockGitHubClient.createIssueComment as unknown as {
+      mock: { calls: unknown[][] };
+    };
+    const body = String(createIssueComment.mock.calls[0]?.[3] ?? "");
+    expect(body).toContain("## Autofix Summary");
+    expect(body).toContain("1 issue fixed automatically.");
+    expect(body).toContain("### Fixed");
+    expect(body).toContain(
+      "- **bug-risk** in `apps/review-agent/src/webhook/handler.ts:454` — `abc123`: Adjusted cleanupResolvedPreviousReviews so resolved reviews are skipped. The summary remains readable."
+    );
+    expect(body).not.toContain("✅");
+    expect(body).not.toContain("### ✅ Fixed");
+    expect(body).not.toContain("  -");
+    expect(body).not.toContain("  >");
+  });
+
+  it("should update existing remediation summary comments with the autofix summary title", async () => {
+    mockGitHubClient.getIssueComments = vi.fn().mockResolvedValue([
+      {
+        id: 100,
+        user: "opendiff-bot",
+        body: "## Remediation Summary\n\nOld body",
+      },
+    ]);
+
+    const result = await handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      {
+        number: 42,
+        head: { sha: "abc123", ref: "feature-branch" },
+      },
+      [],
+      "owner",
+      "repo",
+      "opendiff-bot",
+      true
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+    expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+      "owner",
+      "repo",
+      100,
+      expect.stringContaining("## Autofix Summary")
+    );
+  });
+
+  it("should not post an autofix summary on a clean pass when autofix is off", async () => {
     const result = await handleTriageAfterReview(
       mockGitHubClient as GitHubClient,
       mockTriageAgent as TriageAgent,
@@ -91,7 +170,7 @@ describe("handleTriageAfterReview", () => {
     expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
   });
 
-  it("should refresh the remediation summary when all issues match ignored autofix paths", async () => {
+  it("should refresh the autofix summary when all issues match ignored autofix paths", async () => {
     const ignoredIssue: CodeIssue = {
       type: "bug-risk",
       severity: "warning",
@@ -125,7 +204,7 @@ describe("handleTriageAfterReview", () => {
       "owner",
       "repo",
       42,
-      expect.stringContaining("No remediation actions were needed for this push")
+      expect.stringContaining("No autofix actions were needed for this push.")
     );
   });
 
