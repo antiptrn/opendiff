@@ -89,7 +89,7 @@ let cleanupPromise: Promise<void> | null = null;
  *
  * By default this uses a bounded bare-repo cache plus one ephemeral worktree per job:
  * - fetch the requested branch into a cached bare repo
- * - create a detached worktree for the job
+ * - create a detached worktree for read-only jobs, or a checked-out branch for write jobs
  * - remove only the worktree when the job finishes
  * - opportunistically prune stale worktrees and inactive bare repos
  *
@@ -212,14 +212,24 @@ async function prepareCachedWorktree(
     try {
       await withRetry(
         () =>
-          bareGit.raw([
-            "worktree",
-            "add",
-            "--force",
-            "--detach",
-            paths.worktreeDir,
-            paths.branchRef,
-          ]),
+          opts.mode === "read-write"
+            ? bareGit.raw([
+                "worktree",
+                "add",
+                "--force",
+                "-B",
+                opts.branch,
+                paths.worktreeDir,
+                paths.branchRef,
+              ])
+            : bareGit.raw([
+                "worktree",
+                "add",
+                "--force",
+                "--detach",
+                paths.worktreeDir,
+                paths.branchRef,
+              ]),
         `git worktree add ${opts.owner}/${opts.repo}`
       );
       worktreeCreated = true;
