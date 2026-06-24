@@ -614,8 +614,6 @@ async function processPullRequestReviewJob(
     }
 
     console.log(`Queued review submitted successfully: ${result.reviewId}`);
-  } catch (error) {
-    throw error;
   } finally {
     if (reviewReaction) {
       await removeReviewInProgressReaction(

@@ -176,7 +176,7 @@ describe("AsyncJobQueue", () => {
       concurrency: 1,
       maxQueuedJobs: 1,
       maxAttempts: 2,
-      retryDelayMs: 20,
+      retryDelayMs: 100,
       processor: async (job) => {
         if (job === "first") {
           throw new Error("temporary failure");
@@ -199,9 +199,9 @@ describe("AsyncJobQueue", () => {
     queue.enqueue("owner/repo#2", "second");
     await waitFor(() => secondStarted);
     queue.enqueue("owner/repo#3", "third");
-    releaseFirst();
 
-    await waitFor(() => terminalFailure !== null);
+    await waitFor(() => terminalFailure !== null, 2_000);
+    releaseFirst();
 
     expect(terminalFailure).toEqual({ message: "temporary failure", attempt: 1 });
     expect(queue.getStats().failed).toBe(1);
