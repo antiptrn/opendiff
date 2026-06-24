@@ -1,5 +1,6 @@
 import type { CodeIssue, ReviewResult } from "../agent/types";
 import type { Review, ReviewComment } from "../github/types";
+import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import { type StoredIssueRecord, buildIssueMarker } from "../utils/issue-markers";
 import type { DiffPatches } from "./types";
 
@@ -247,8 +248,21 @@ export class ReviewFormatter {
     const hasHistoricalContext =
       (history?.unresolvedHistoricalIssues?.length ?? 0) > 0 ||
       (history?.addressedIssues?.length ?? 0) > 0;
-    const newIssues: SummaryIssue[] = history?.newIssues ?? result.issues;
-    const unresolvedHistoricalIssues: SummaryIssue[] = history?.unresolvedHistoricalIssues ?? [];
+    const currentIssuesByFingerprint = new Map(
+      result.issues.map((issue) => [buildIssueFingerprint(issue), issue])
+    );
+    const enrichIssue = (issue: SummaryIssue): SummaryIssue => {
+      if (!issue.fingerprint) {
+        return issue;
+      }
+
+      const currentIssue = currentIssuesByFingerprint.get(issue.fingerprint);
+      return currentIssue ? { ...currentIssue, ...issue } : issue;
+    };
+    const newIssues: SummaryIssue[] = (history?.newIssues ?? result.issues).map(enrichIssue);
+    const unresolvedHistoricalIssues: SummaryIssue[] = (
+      history?.unresolvedHistoricalIssues ?? []
+    ).map(enrichIssue);
     const openIssues = [
       ...unresolvedHistoricalIssues,
       ...newIssues.filter(
@@ -262,13 +276,13 @@ export class ReviewFormatter {
     summary += "### Findings\n\n";
     summary += `${this.formatFindings(result, counts)}\n\n`;
 
-    if (history?.unresolvedHistoricalIssues && history.unresolvedHistoricalIssues.length > 0) {
+    if (unresolvedHistoricalIssues.length > 0) {
       summary += "\n### Still Open From Earlier Reviews\n\n";
-      for (const issue of history.unresolvedHistoricalIssues.slice(0, 10)) {
+      for (const issue of unresolvedHistoricalIssues.slice(0, 10)) {
         summary += this.formatDetailedIssue(issue);
       }
-      if (history.unresolvedHistoricalIssues.length > 10) {
-        summary += `- ...and ${history.unresolvedHistoricalIssues.length - 10} more\n`;
+      if (unresolvedHistoricalIssues.length > 10) {
+        summary += `- ...and ${unresolvedHistoricalIssues.length - 10} more\n`;
       }
     }
 
