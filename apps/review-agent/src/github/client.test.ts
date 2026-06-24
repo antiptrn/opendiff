@@ -11,6 +11,7 @@ const mockOctokit = {
       listFiles: vi.fn(),
       createReview: vi.fn(),
       deletePendingReview: vi.fn(),
+      listReviews: vi.fn(),
     },
     repos: {
       getContent: vi.fn(),
@@ -273,6 +274,42 @@ describe("GitHubClient", () => {
         issue_number: 42,
         reaction_id: 9876,
       });
+    });
+  });
+
+  describe("getPullRequestReviews", () => {
+    it("should include the reviewed commit id", async () => {
+      mockOctokit.rest.pulls.listReviews.mockResolvedValue({
+        data: [
+          {
+            id: 123,
+            user: { login: "opendiff-bot" },
+            body: "Looks good",
+            state: "APPROVED",
+            submitted_at: "2026-06-24T16:00:00Z",
+            commit_id: "abc123",
+          },
+        ],
+      });
+
+      const result = await client.getPullRequestReviews("owner", "repo", 42);
+
+      expect(mockOctokit.rest.pulls.listReviews).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        pull_number: 42,
+        per_page: 100,
+      });
+      expect(result).toEqual([
+        {
+          id: 123,
+          user: "opendiff-bot",
+          body: "Looks good",
+          state: "APPROVED",
+          submittedAt: "2026-06-24T16:00:00Z",
+          commitId: "abc123",
+        },
+      ]);
     });
   });
 

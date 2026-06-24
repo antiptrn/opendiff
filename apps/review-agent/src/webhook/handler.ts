@@ -167,6 +167,25 @@ function shouldSubmitReview(review: {
   return review.event !== "COMMENT";
 }
 
+async function hasBotApprovedHead(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string,
+  headSha: string
+): Promise<boolean> {
+  const botUsers = new Set([botUsername, `${botUsername}[bot]`]);
+  const reviews = await github.getPullRequestReviews(owner, repo, pullNumber);
+
+  return reviews.some(
+    (review) =>
+      botUsers.has(review.user) &&
+      review.state.toUpperCase() === "APPROVED" &&
+      review.commitId === headSha
+  );
+}
+
 function hasOpenIssuesToReport(
   inlineComments: unknown[],
   bodyOnlyIssues: CodeIssue[],
@@ -816,11 +835,23 @@ export class WebhookHandler {
             invalidInlineIssues,
             history
           );
+          const hasExistingApprovalForHead =
+            review.event === "APPROVE" &&
+            (await hasBotApprovedHead(
+              this.github,
+              owner,
+              repo,
+              prNumber,
+              botUsername,
+              pull_request.head.sha
+            ));
+          const shouldPostApproval = review.event === "APPROVE" && !hasExistingApprovalForHead;
+          const shouldPostReview =
+            review.event === "APPROVE"
+              ? !hasExistingApprovalForHead && (shouldPostStatusUpdate || shouldPostApproval)
+              : shouldPostStatusUpdate;
 
-          if (
-            shouldPostStatusUpdate &&
-            shouldSubmitReview({ ...review, comments: resolvedComments })
-          ) {
+          if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
             const { id } = await this.github.submitReview(
               owner,
               repo,

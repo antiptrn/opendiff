@@ -267,14 +267,23 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
-      expect(result.reviewId).toBeUndefined();
+      expect(result.reviewId).toBe(123);
       expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         42,
         "Review body"
       );
-      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "Current review body",
+          event: "APPROVE",
+        })
+      );
     });
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
@@ -607,6 +616,60 @@ describe("WebhookHandler", () => {
         "## Review Summary\n\nNew summary"
       );
       expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+      expect(result.reviewId).toBe(129);
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "## Current Review\n\nNew summary",
+          event: "APPROVE",
+        })
+      );
+    });
+
+    it("should not duplicate an approval already submitted for the current head", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockGitHubClient.getPullRequestReviews.mockResolvedValue([
+        {
+          id: 129,
+          user: "opendiff-bot[bot]",
+          body: "## Current Review\n\nNew summary",
+          state: "APPROVED",
+          submittedAt: "2026-06-24T16:00:00Z",
+          commitId: "abc123",
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Updated summary",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nNew summary",
+        event: "APPROVE",
+      });
+      mockFormatter.formatSummaryBody = vi.fn().mockReturnValue("## Review Summary\n\nNew summary");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNew summary");
+      mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Current Review\n\nNew summary");
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 130 });
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.reviewId).toBeUndefined();
       expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
     });
 
