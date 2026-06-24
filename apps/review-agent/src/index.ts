@@ -732,7 +732,7 @@ async function processPullRequestReviewJob(
       ),
     };
 
-    if (settings.autofixEnabled && triageEnabled) {
+    if (triageEnabled) {
       const mergeConflictResult = await handleMergeConflictAutofix(
         githubClient,
         triageAgent,
@@ -753,18 +753,27 @@ async function processPullRequestReviewJob(
       }
 
       if (mergeConflictResult.conflictFound) {
-        await recordReview({
-          githubRepoId: payload.repository.id,
-          owner,
-          repo,
-          pullNumber: reviewPayload.pull_request.number,
-          reviewType: "merge_conflict_autofix",
-          tokensUsed: mergeConflictResult.tokensUsed,
-        });
+        if (settings.autofixEnabled) {
+          await recordReview({
+            githubRepoId: payload.repository.id,
+            owner,
+            repo,
+            pullNumber: reviewPayload.pull_request.number,
+            reviewType: "merge_conflict_autofix",
+            tokensUsed: mergeConflictResult.tokensUsed,
+          });
+        }
 
         if (mergeConflictResult.fixedIssues.length > 0) {
           console.log(
             `Merge conflicts resolved for ${owner}/${repo}#${reviewPayload.pull_request.number}; skipping stale review until the synchronize webhook`
+          );
+          return;
+        }
+
+        if (!settings.autofixEnabled) {
+          console.log(
+            `Merge conflicts detected for ${owner}/${repo}#${reviewPayload.pull_request.number}; skipping review until the conflicts are resolved`
           );
           return;
         }

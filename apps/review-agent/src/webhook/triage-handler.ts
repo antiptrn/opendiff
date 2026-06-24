@@ -508,11 +508,17 @@ export async function handleMergeConflictAutofix(
 
         result.conflictFound = true;
         conflictDetails = await buildMergeConflictDetails(git, pullRequest, mergeAttempt.files);
-        const issue = createMergeConflictIssue(conflictDetails);
 
         console.log(
           `Merge conflicts found in ${mergeAttempt.files.length} file(s): ${mergeAttempt.files.join(", ")}`
         );
+
+        if (!autofixEnabled) {
+          await abortMergeIfPossible(git);
+          return;
+        }
+
+        const issue = createMergeConflictIssue(conflictDetails);
 
         const fix = await triageAgent.fixMergeConflict(conflictDetails, _tempDir, {
           autofixIgnoredDirs,
