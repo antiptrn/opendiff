@@ -95,15 +95,15 @@ export async function fetchPRMetadata(
         },
       });
 
-    const installationToken = await getInstallationTokenForRepo(owner, repo);
-    const token = githubToken || installationToken;
-    if (!token) return null;
+    let installationToken: string | null = null;
+    let prRes = githubToken ? await fetchPR(githubToken) : null;
 
-    // Fetch PR data
-    let prRes = await fetchPR(token);
-    if (!prRes.ok && githubToken && installationToken && installationToken !== githubToken) {
+    if (!prRes?.ok) {
+      installationToken = await getInstallationTokenForRepo(owner, repo);
+      if (!installationToken) return null;
       prRes = await fetchPR(installationToken);
     }
+
     if (!prRes.ok) return null;
 
     const pr = (await prRes.json()) as {
