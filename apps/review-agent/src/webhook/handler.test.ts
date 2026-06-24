@@ -242,7 +242,7 @@ describe("WebhookHandler", () => {
       },
     };
 
-    it("should post only the summary comment for a first clean review", async () => {
+    it("should post the summary comment and approve a first clean review without a status update body", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
         {
@@ -270,14 +270,24 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
-      expect(result.reviewId).toBeUndefined();
+      expect(result.reviewId).toBe(123);
       expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         42,
         "Review body"
       );
-      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "",
+          event: "APPROVE",
+          comments: undefined,
+        })
+      );
     });
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
@@ -786,6 +796,7 @@ describe("WebhookHandler", () => {
       mockFormatter.formatReviewBody = vi
         .fn()
         .mockReturnValue("## Status Update\n\nAll previously reported issues are fixed.");
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 130 });
 
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
@@ -801,6 +812,16 @@ describe("WebhookHandler", () => {
         42,
         129,
         expectedBody
+      );
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "",
+          event: "APPROVE",
+        })
       );
     });
 
