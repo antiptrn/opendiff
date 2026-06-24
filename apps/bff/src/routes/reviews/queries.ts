@@ -24,7 +24,7 @@ async function countReviewGroups(where: Prisma.ReviewWhereInput) {
     Prisma.sql`r."repositorySettingsId" IS NOT NULL`,
   ];
 
-  if (where.repositorySettings && "owner" in where.repositorySettings) {
+  if (where.repositorySettings) {
     const ownerFilter = where.repositorySettings.owner;
     if (ownerFilter && typeof ownerFilter === "object" && "contains" in ownerFilter) {
       filters.push(Prisma.sql`rs."owner" ILIKE ${`%${ownerFilter.contains}%`}`);
