@@ -10,6 +10,7 @@ type VerificationStatus = "loading" | "ready" | "error";
 const TURNSTILE_SCRIPT_SRC =
   "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const TURNSTILE_LOAD_ERROR = "Human verification failed to load. Please refresh and try again.";
+const TURNSTILE_EXECUTE_ERROR = "Unable to start verification. Please refresh and try again.";
 
 declare global {
   interface Window {
@@ -23,10 +24,13 @@ declare global {
           "expired-callback"?: () => void;
           size?: "normal" | "compact" | "invisible";
           appearance?: "always" | "interaction-only" | "execute";
+          execution?: "render" | "execute";
           theme?: "light" | "dark" | "auto";
         }
       ) => string;
+      ready?: (callback: () => void) => void;
       execute: (widgetId: string) => void;
+      reset: (widgetId: string) => void;
       remove: (widgetId: string) => void;
     };
   }
@@ -56,8 +60,12 @@ export function LoginForm({
   );
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileTokenRef = useRef<string | null>(null);
   const pendingProviderRef = useRef<LoginProvider>(null);
   const eventListenerRef = useRef<{ script: HTMLScriptElement; listener: () => void } | null>(null);
+  const startProviderLoginRef = useRef<
+    (provider: Exclude<LoginProvider, null>, turnstileToken?: string) => void
+  >(() => {});
 
   const setVerificationStatus = useCallback(
     (status: VerificationStatus) => {
@@ -87,6 +95,10 @@ export function LoginForm({
     },
     [addAccount, login, loginWithGoogle, loginWithMicrosoft, redirectUrl, setAddingAccount]
   );
+
+  useEffect(() => {
+    startProviderLoginRef.current = startProviderLogin;
+  }, [startProviderLogin]);
 
   useEffect(() => {
     const siteKey = turnstileSiteKey?.trim();
@@ -128,36 +140,73 @@ export function LoginForm({
           sitekey: siteKey,
           size: "invisible",
           appearance: "execute",
+          execution: "execute",
           theme: "dark",
           callback: (token: string) => {
             const provider = pendingProviderRef.current;
             pendingProviderRef.current = null;
+            setTurnstileError(null);
 
             if (!provider) {
+              turnstileTokenRef.current = token;
+              setVerificationStatus("ready");
               return;
             }
 
-            setTurnstileError(null);
-            startProviderLogin(provider, token);
+            startProviderLoginRef.current(provider, token);
           },
           "error-callback": () => {
+            turnstileTokenRef.current = null;
             pendingProviderRef.current = null;
             setLoadingProvider(null);
+            setVerificationStatus("error");
             setTurnstileError("Verification failed. Please try again.");
           },
           "expired-callback": () => {
+            turnstileTokenRef.current = null;
             pendingProviderRef.current = null;
             setLoadingProvider(null);
-            setTurnstileError("Verification expired. Please try signing in again.");
+            setTurnstileError(null);
+            setVerificationStatus("loading");
+
+            if (turnstileWidgetIdRef.current && window.turnstile) {
+              try {
+                window.turnstile.reset(turnstileWidgetIdRef.current);
+                window.turnstile.execute(turnstileWidgetIdRef.current);
+              } catch {
+                setVerificationStatus("error");
+                setTurnstileError(TURNSTILE_EXECUTE_ERROR);
+              }
+            }
           },
         });
         setTurnstileError(null);
-        setVerificationStatus("ready");
       } catch {
         markScriptStatus("error");
         setVerificationStatus("error");
         setTurnstileError(TURNSTILE_LOAD_ERROR);
+        return;
       }
+
+      try {
+        window.turnstile.execute(turnstileWidgetIdRef.current);
+      } catch {
+        setVerificationStatus("error");
+        setTurnstileError(TURNSTILE_EXECUTE_ERROR);
+      }
+    };
+
+    const renderWhenReady = () => {
+      if (!window.turnstile) {
+        return;
+      }
+
+      if (window.turnstile.ready) {
+        window.turnstile.ready(renderWidget);
+        return;
+      }
+
+      renderWidget();
     };
 
     const existingScript = document.querySelector<HTMLScriptElement>(
@@ -166,7 +215,7 @@ export function LoginForm({
     const script = existingScript ?? document.createElement("script");
     const handleLoad = () => {
       script.dataset.turnstileStatus = "loaded";
-      renderWidget();
+      renderWhenReady();
     };
     const handleError = () => {
       if (!isMounted) {
@@ -179,7 +228,7 @@ export function LoginForm({
     };
 
     if (window.turnstile) {
-      renderWidget();
+      renderWhenReady();
     } else if (existingScript?.dataset.turnstileStatus === "error") {
       setVerificationStatus("error");
       setTurnstileError(TURNSTILE_LOAD_ERROR);
@@ -213,9 +262,10 @@ export function LoginForm({
         turnstileWidgetIdRef.current = null;
       }
 
+      turnstileTokenRef.current = null;
       pendingProviderRef.current = null;
     };
-  }, [hasTurnstile, setVerificationStatus, startProviderLogin]);
+  }, [hasTurnstile, setVerificationStatus]);
 
   const handleProviderLogin = (provider: Exclude<LoginProvider, null>) => {
     setLoadingProvider(provider);
@@ -238,6 +288,13 @@ export function LoginForm({
       return;
     }
 
+    if (turnstileTokenRef.current) {
+      const token = turnstileTokenRef.current;
+      turnstileTokenRef.current = null;
+      startProviderLogin(provider, token);
+      return;
+    }
+
     pendingProviderRef.current = provider;
 
     try {
@@ -245,7 +302,7 @@ export function LoginForm({
     } catch {
       pendingProviderRef.current = null;
       setLoadingProvider(null);
-      setTurnstileError("Unable to start verification. Please refresh and try again.");
+      setTurnstileError(TURNSTILE_EXECUTE_ERROR);
     }
   };
 
