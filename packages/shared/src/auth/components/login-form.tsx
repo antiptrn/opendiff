@@ -6,9 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../hooks/use-auth";
 
 type LoginProvider = "github" | "google" | "microsoft" | null;
-
-// Global flag to track if the Turnstile script has been injected
-let turnstileScriptInjected = false;
+type VerificationStatus = "loading" | "ready" | "error";
+const TURNSTILE_SCRIPT_SRC =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const TURNSTILE_LOAD_ERROR = "Human verification failed to load. Please refresh and try again.";
 
 declare global {
   interface Window {
@@ -34,19 +35,37 @@ declare global {
 interface LoginFormProps extends React.ComponentProps<"form"> {
   addAccount?: boolean;
   redirectUrl?: string | null;
+  onVerificationStatusChange?: (status: VerificationStatus) => void;
 }
 
 /** Renders login buttons for GitHub, Google, and Microsoft authentication providers. */
-export function LoginForm({ className, addAccount, redirectUrl, ...props }: LoginFormProps) {
+export function LoginForm({
+  className,
+  addAccount,
+  redirectUrl,
+  onVerificationStatusChange,
+  ...props
+}: LoginFormProps) {
   const { login, loginWithGoogle, loginWithMicrosoft, setAddingAccount } = useAuth();
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider>(null);
   const [turnstileError, setTurnstileError] = useState<string | null>(null);
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  const hasTurnstile = !import.meta.env.DEV && !!turnstileSiteKey?.trim();
+  const [verificationStatus, setVerificationStatusState] = useState<VerificationStatus>(
+    hasTurnstile ? "loading" : "ready"
+  );
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const pendingProviderRef = useRef<LoginProvider>(null);
   const eventListenerRef = useRef<{ script: HTMLScriptElement; listener: () => void } | null>(null);
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-  const hasTurnstile = !import.meta.env.DEV && !!turnstileSiteKey?.trim();
+
+  const setVerificationStatus = useCallback(
+    (status: VerificationStatus) => {
+      setVerificationStatusState(status);
+      onVerificationStatusChange?.(status);
+    },
+    [onVerificationStatusChange]
+  );
 
   const startProviderLogin = useCallback(
     (provider: Exclude<LoginProvider, null>, turnstileToken?: string) => {
@@ -72,82 +91,120 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   useEffect(() => {
     const siteKey = turnstileSiteKey?.trim();
 
-    if (!siteKey || !turnstileContainerRef.current) {
+    if (!hasTurnstile || !siteKey) {
+      setVerificationStatus("ready");
       return;
     }
 
+    setVerificationStatus("loading");
+
+    if (!turnstileContainerRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const markScriptStatus = (status: "loaded" | "error") => {
+      const script = document.querySelector<HTMLScriptElement>(
+        `script[src="${TURNSTILE_SCRIPT_SRC}"]`
+      );
+      if (script) {
+        script.dataset.turnstileStatus = status;
+      }
+    };
+
     const renderWidget = () => {
-      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+      if (
+        !isMounted ||
+        !window.turnstile ||
+        !turnstileContainerRef.current ||
+        turnstileWidgetIdRef.current
+      ) {
         return;
       }
 
-      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
-        sitekey: siteKey,
-        size: "invisible",
-        appearance: "execute",
-        theme: "dark",
-        callback: (token: string) => {
-          const provider = pendingProviderRef.current;
-          pendingProviderRef.current = null;
+      try {
+        turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+          sitekey: siteKey,
+          size: "invisible",
+          appearance: "execute",
+          theme: "dark",
+          callback: (token: string) => {
+            const provider = pendingProviderRef.current;
+            pendingProviderRef.current = null;
 
-          if (!provider) {
-            return;
-          }
+            if (!provider) {
+              return;
+            }
 
-          setTurnstileError(null);
-          startProviderLogin(provider, token);
-        },
-        "error-callback": () => {
-          pendingProviderRef.current = null;
-          setLoadingProvider(null);
-          setTurnstileError("Verification failed. Please try again.");
-        },
-        "expired-callback": () => {
-          pendingProviderRef.current = null;
-          setLoadingProvider(null);
-          setTurnstileError("Verification expired. Please try signing in again.");
-        },
-      });
+            setTurnstileError(null);
+            startProviderLogin(provider, token);
+          },
+          "error-callback": () => {
+            pendingProviderRef.current = null;
+            setLoadingProvider(null);
+            setTurnstileError("Verification failed. Please try again.");
+          },
+          "expired-callback": () => {
+            pendingProviderRef.current = null;
+            setLoadingProvider(null);
+            setTurnstileError("Verification expired. Please try signing in again.");
+          },
+        });
+        setTurnstileError(null);
+        setVerificationStatus("ready");
+      } catch {
+        markScriptStatus("error");
+        setVerificationStatus("error");
+        setTurnstileError(TURNSTILE_LOAD_ERROR);
+      }
     };
 
-    // Only inject the script once across all component instances
-    if (!turnstileScriptInjected) {
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
-      );
-
-      if (existingScript) {
-        if (window.turnstile) {
-          renderWidget();
-        } else {
-          const handleLoad = () => renderWidget();
-          existingScript.addEventListener("load", handleLoad);
-          eventListenerRef.current = { script: existingScript, listener: handleLoad };
-        }
-      } else {
-        const script = document.createElement("script");
-        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-        script.async = true;
-        script.defer = true;
-        const handleLoad = () => renderWidget();
-        script.addEventListener("load", handleLoad);
-        eventListenerRef.current = { script, listener: handleLoad };
-        document.head.appendChild(script);
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      `script[src="${TURNSTILE_SCRIPT_SRC}"]`
+    );
+    const script = existingScript ?? document.createElement("script");
+    const handleLoad = () => {
+      script.dataset.turnstileStatus = "loaded";
+      renderWidget();
+    };
+    const handleError = () => {
+      if (!isMounted) {
+        return;
       }
 
-      turnstileScriptInjected = true;
-    } else if (window.turnstile) {
-      // Script already injected and loaded, just render the widget
+      script.dataset.turnstileStatus = "error";
+      setVerificationStatus("error");
+      setTurnstileError(TURNSTILE_LOAD_ERROR);
+    };
+
+    if (window.turnstile) {
       renderWidget();
+    } else if (existingScript?.dataset.turnstileStatus === "error") {
+      setVerificationStatus("error");
+      setTurnstileError(TURNSTILE_LOAD_ERROR);
+    } else {
+      script.addEventListener("load", handleLoad);
+      script.addEventListener("error", handleError);
+      eventListenerRef.current = { script, listener: handleLoad };
+
+      if (!existingScript) {
+        script.src = TURNSTILE_SCRIPT_SRC;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
     }
 
     return () => {
-      // Clean up event listener if it exists
+      isMounted = false;
+
       if (eventListenerRef.current) {
         eventListenerRef.current.script.removeEventListener(
           "load",
           eventListenerRef.current.listener
         );
+        eventListenerRef.current.script.removeEventListener("error", handleError);
         eventListenerRef.current = null;
       }
 
@@ -158,7 +215,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
 
       pendingProviderRef.current = null;
     };
-  }, [startProviderLogin]);
+  }, [hasTurnstile, setVerificationStatus, startProviderLogin]);
 
   const handleProviderLogin = (provider: Exclude<LoginProvider, null>) => {
     setLoadingProvider(provider);
@@ -175,7 +232,7 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
       return;
     }
 
-    if (!window.turnstile || !turnstileWidgetIdRef.current) {
+    if (verificationStatus !== "ready" || !window.turnstile || !turnstileWidgetIdRef.current) {
       setLoadingProvider(null);
       setTurnstileError("Human verification is loading. Please try again.");
       return;
@@ -193,61 +250,70 @@ export function LoginForm({ className, addAccount, redirectUrl, ...props }: Logi
   };
 
   const isLoading = loadingProvider !== null;
+  const showVerificationGate = hasTurnstile && verificationStatus !== "ready";
 
   return (
-    <form
-      className={cn("flex flex-col items-center gap-3 w-full max-w-sm mx-auto", className)}
-      {...props}
-    >
-      <Button
-        size="lg"
-        variant="secondary"
-        type="button"
-        className="w-full"
-        onClick={() => handleProviderLogin("github")}
-        disabled={isLoading}
-      >
-        {loadingProvider === "github" ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <SiGithub className="size-4" />
-        )}
-        {addAccount ? "Add GitHub account" : "Login with GitHub"}
-      </Button>
-      <Button
-        size="lg"
-        variant="secondary"
-        type="button"
-        className="w-full"
-        onClick={() => handleProviderLogin("google")}
-        disabled={isLoading}
-      >
-        {loadingProvider === "google" ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <img src="/icons/google-icon.svg" alt="" className="size-4" />
-        )}
-        {addAccount ? "Add Google account" : "Login with Google"}
-      </Button>
-      <Button
-        size="lg"
-        variant="secondary"
-        type="button"
-        className="w-full"
-        onClick={() => handleProviderLogin("microsoft")}
-        disabled={isLoading}
-      >
-        {loadingProvider === "microsoft" ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <img src="/icons/microsoft-icon.svg" alt="" className="size-4" />
-        )}
-        {addAccount ? "Add Microsoft account" : "Login with Microsoft"}
-      </Button>
+    <form className={cn("grid w-full max-w-sm gap-3 mx-auto", className)} {...props}>
+      {showVerificationGate ? (
+        <div className="flex min-h-28 items-center justify-center text-center">
+          {verificationStatus === "loading" ? (
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          ) : (
+            <p className="text-sm text-destructive">{turnstileError || TURNSTILE_LOAD_ERROR}</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <Button
+            size="lg"
+            variant="secondary"
+            type="button"
+            onClick={() => handleProviderLogin("github")}
+            disabled={isLoading}
+          >
+            {loadingProvider === "github" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <SiGithub className="size-4" />
+            )}
+            {addAccount ? "Add GitHub account" : "Login with GitHub"}
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            type="button"
+            onClick={() => handleProviderLogin("google")}
+            disabled={isLoading}
+          >
+            {loadingProvider === "google" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <img src="/icons/google-icon.svg" alt="" className="size-4" />
+            )}
+            {addAccount ? "Add Google account" : "Login with Google"}
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            type="button"
+            onClick={() => handleProviderLogin("microsoft")}
+            disabled={isLoading}
+          >
+            {loadingProvider === "microsoft" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <img src="/icons/microsoft-icon.svg" alt="" className="size-4" />
+            )}
+            {addAccount ? "Add Microsoft account" : "Login with Microsoft"}
+          </Button>
+        </>
+      )}
       {hasTurnstile && (
         <>
           <div ref={turnstileContainerRef} className="h-0 w-0 overflow-hidden" aria-hidden="true" />
-          {turnstileError && <p className="text-sm text-destructive -mt-1">{turnstileError}</p>}
+          {!showVerificationGate && turnstileError && (
+            <p className="text-sm text-destructive -mt-1">{turnstileError}</p>
+          )}
         </>
       )}
     </form>
