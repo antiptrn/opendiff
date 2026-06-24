@@ -185,6 +185,29 @@ function opencodeServerTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 600000;
 }
 
+function opencodePromptTimeoutMs(): number {
+  const raw = Number(process.env.OPENCODE_PROMPT_TIMEOUT_MS?.trim() || "1800000");
+  return Number.isFinite(raw) && raw > 0 ? raw : 1_800_000;
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+  onTimeout?: () => void
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout>;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout));
+}
+
 function providerConfigFromAiConfig(aiConfig: AiRuntimeConfig): Record<string, unknown> {
   const provider = providerFromModel(aiConfig.model);
 
@@ -265,16 +288,12 @@ export async function runOpencodePrompt(
 
       const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
       const envProvider = model ? providerFromModel(model) : null;
-      const envOauthCredentials = !input.aiConfig && envProvider
-        ? loadOpencodeOauthCredentials(envProvider)
-        : null;
+      const envOauthCredentials =
+        !input.aiConfig && envProvider ? loadOpencodeOauthCredentials(envProvider) : null;
 
       // For BYOK OAuth users with refresh token, create a temp auth.json
       // so the opencode CodexAuthPlugin can authenticate via the Codex auth flow
-      if (
-        input.aiConfig?.authMethod === "OAUTH_TOKEN" &&
-        input.aiConfig.refreshToken
-      ) {
+      if (input.aiConfig?.authMethod === "OAUTH_TOKEN" && input.aiConfig.refreshToken) {
         tempAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-byok-"));
         const opencodeDir = path.join(tempAuthDir, "opencode");
         fs.mkdirSync(opencodeDir, { recursive: true, mode: 0o700 });
@@ -288,11 +307,9 @@ export async function runOpencodePrompt(
             expires: 0,
           },
         };
-        fs.writeFileSync(
-          path.join(opencodeDir, "auth.json"),
-          JSON.stringify(authJson, null, 2),
-          { mode: 0o600 }
-        );
+        fs.writeFileSync(path.join(opencodeDir, "auth.json"), JSON.stringify(authJson, null, 2), {
+          mode: 0o600,
+        });
 
         originalXdgDataHome = process.env.XDG_DATA_HOME;
         process.env.XDG_DATA_HOME = tempAuthDir;
@@ -313,11 +330,9 @@ export async function runOpencodePrompt(
             expires: envOauthCredentials.expires || 0,
           },
         };
-        fs.writeFileSync(
-          path.join(opencodeDir, "auth.json"),
-          JSON.stringify(authJson, null, 2),
-          { mode: 0o600 }
-        );
+        fs.writeFileSync(path.join(opencodeDir, "auth.json"), JSON.stringify(authJson, null, 2), {
+          mode: 0o600,
+        });
 
         originalXdgDataHome = process.env.XDG_DATA_HOME;
         process.env.XDG_DATA_HOME = tempAuthDir;
@@ -361,13 +376,24 @@ export async function runOpencodePrompt(
         throw new Error("Failed to create OpenCode session");
       }
 
-      const promptResult = (await opencode.client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          parts: [{ type: "text", text: input.prompt }],
-          ...(input.format ? { format: input.format } : {}),
-        },
-      })) as unknown as {
+      const promptResult = (await withTimeout(
+        opencode.client.session.prompt({
+          path: { id: sessionId },
+          body: {
+            parts: [{ type: "text", text: input.prompt }],
+            ...(input.format ? { format: input.format } : {}),
+          },
+        }),
+        opencodePromptTimeoutMs(),
+        input.title ?? "OpenCode prompt",
+        () => {
+          try {
+            opencode?.server.close();
+          } catch {
+            // best effort
+          }
+        }
+      )) as unknown as {
         data?: {
           info?: Record<string, unknown>;
           parts?: unknown;
@@ -403,7 +429,7 @@ export async function runOpencodePrompt(
         if (originalXdgDataHome !== undefined) {
           process.env.XDG_DATA_HOME = originalXdgDataHome;
         } else {
-          delete process.env.XDG_DATA_HOME;
+          process.env.XDG_DATA_HOME = undefined;
         }
         try {
           fs.rmSync(tempAuthDir, { recursive: true, force: true });

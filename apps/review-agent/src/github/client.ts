@@ -322,6 +322,35 @@ export class GitHubClient {
     return { id: data.id };
   }
 
+  async createPullRequestEyesReaction(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<{ id: number }> {
+    const { data } = await this.octokit.rest.reactions.createForIssue({
+      owner,
+      repo,
+      issue_number: pullNumber,
+      content: "eyes",
+    });
+
+    return { id: data.id };
+  }
+
+  async deletePullRequestEyesReaction(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    reactionId: number
+  ): Promise<void> {
+    await this.octokit.rest.reactions.deleteForIssue({
+      owner,
+      repo,
+      issue_number: pullNumber,
+      reaction_id: reactionId,
+    });
+  }
+
   async updatePullRequestReview(
     owner: string,
     repo: string,

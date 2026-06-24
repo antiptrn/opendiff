@@ -43,6 +43,81 @@ function buildDisabledSettings(
   };
 }
 
+type RepositorySettingsIdentity = {
+  id: string;
+  owner: string;
+  repo: string;
+  githubRepoId: bigint | null;
+};
+
+function parseGithubRepoIdParam(value: string | undefined): bigint | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = BigInt(value);
+    return parsed > 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveRepositorySettingsId(
+  owner: string,
+  repo: string,
+  githubRepoId: bigint | null
+): Promise<string | null> {
+  let settings: RepositorySettingsIdentity | null = null;
+  let foundByGithubRepoId = false;
+
+  if (githubRepoId) {
+    settings = await prisma.repositorySettings.findFirst({
+      where: { githubRepoId },
+      select: { id: true, owner: true, repo: true, githubRepoId: true },
+    });
+    foundByGithubRepoId = Boolean(settings);
+  }
+
+  if (!settings) {
+    settings = await prisma.repositorySettings.findUnique({
+      where: { owner_repo: { owner, repo } },
+      select: { id: true, owner: true, repo: true, githubRepoId: true },
+    });
+  }
+
+  if (!settings) {
+    return null;
+  }
+
+  const updateData: { owner?: string; repo?: string; githubRepoId?: bigint } = {};
+
+  if (githubRepoId && foundByGithubRepoId && (settings.owner !== owner || settings.repo !== repo)) {
+    updateData.owner = owner;
+    updateData.repo = repo;
+  }
+
+  if (githubRepoId && !foundByGithubRepoId && settings.githubRepoId === null) {
+    updateData.githubRepoId = githubRepoId;
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    try {
+      await prisma.repositorySettings.update({
+        where: { id: settings.id },
+        data: updateData,
+      });
+    } catch (error) {
+      console.warn(
+        `Failed to refresh repository settings identity for ${owner}/${repo} (${githubRepoId?.toString() ?? "no repo id"}):`,
+        error
+      );
+    }
+  }
+
+  return settings.id;
+}
+
 // Check if a user has an active seat for a given repo
 internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
   const apiKey = c.req.header("X-API-Key");
@@ -124,15 +199,20 @@ internalRoutes.get("/check-seat/:owner/:repo", async (c) => {
 internalRoutes.get("/settings/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
   const apiKey = c.req.header("X-API-Key");
+  const githubRepoId = parseGithubRepoIdParam(c.req.query("githubRepoId"));
 
   const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
   if (!expectedApiKey || !apiKey || !safeCompare(apiKey, expectedApiKey)) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const settings = await prisma.repositorySettings.findUnique({
-    where: { owner_repo: { owner, repo } },
-  });
+  const settingsId = await resolveRepositorySettingsId(owner, repo, githubRepoId);
+  const settings = settingsId
+    ? await prisma.repositorySettings.findUnique({
+        where: { id: settingsId },
+        include: { organization: true },
+      })
+    : null;
 
   if (!settings) {
     return c.json(buildDisabledSettings(owner, repo, "repository_not_configured"));
@@ -171,6 +251,7 @@ internalRoutes.get("/settings/:owner/:repo", async (c) => {
 internalRoutes.get("/review-rules/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
   const apiKey = c.req.header("X-API-Key");
+  const githubRepoId = parseGithubRepoIdParam(c.req.query("githubRepoId"));
 
   // Validate internal API key
   const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
@@ -178,10 +259,12 @@ internalRoutes.get("/review-rules/:owner/:repo", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Get repo settings to find custom review rules
-  const repoSettings = await prisma.repositorySettings.findUnique({
-    where: { owner_repo: { owner, repo } },
-  });
+  const settingsId = await resolveRepositorySettingsId(owner, repo, githubRepoId);
+  const repoSettings = settingsId
+    ? await prisma.repositorySettings.findUnique({
+        where: { id: settingsId },
+      })
+    : null;
 
   if (!repoSettings) {
     return c.json({ rules: null });
@@ -194,6 +277,7 @@ internalRoutes.get("/review-rules/:owner/:repo", async (c) => {
 internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
   const { owner, repo } = c.req.param();
   const apiKey = c.req.header("X-API-Key");
+  const githubRepoId = parseGithubRepoIdParam(c.req.query("githubRepoId"));
 
   // Validate internal API key
   const expectedApiKey = process.env.REVIEW_AGENT_API_KEY;
@@ -201,13 +285,15 @@ internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Get repo settings to find the organization
-  const repoSettings = await prisma.repositorySettings.findUnique({
-    where: { owner_repo: { owner, repo } },
-    include: {
-      organization: true,
-    },
-  });
+  const settingsId = await resolveRepositorySettingsId(owner, repo, githubRepoId);
+  const repoSettings = settingsId
+    ? await prisma.repositorySettings.findUnique({
+        where: { id: settingsId },
+        include: {
+          organization: true,
+        },
+      })
+    : null;
 
   if (!repoSettings?.organization) {
     return c.json({ error: "No organization associated with this repo" }, 404);

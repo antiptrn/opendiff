@@ -14,9 +14,64 @@ export interface RuntimeAiConfig {
 const SETTINGS_API_URL = process.env.SETTINGS_API_URL;
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
 
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const SETTINGS_API_TIMEOUT_MS = parsePositiveIntegerEnv("SETTINGS_API_TIMEOUT_MS", 10_000);
+
+export class SettingsApiUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number
+  ) {
+    super(message);
+    this.name = "SettingsApiUnavailableError";
+  }
+}
+
+export function isSettingsApiUnavailableError(
+  error: unknown
+): error is SettingsApiUnavailableError {
+  return error instanceof SettingsApiUnavailableError;
+}
+
+function buildSettingsApiUrl(pathname: string): URL | null {
+  if (!SETTINGS_API_URL) {
+    return null;
+  }
+  return new URL(pathname, SETTINGS_API_URL.replace(/\/?$/, "/"));
+}
+
+async function fetchSettingsApi(url: URL, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SETTINGS_API_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SettingsApiUnavailableError(`Settings API request failed: ${reason}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function headersWithApiKey(extra?: Record<string, string>): Record<string, string> {
+  return {
+    ...extra,
+    ...(REVIEW_AGENT_API_KEY ? { "X-API-Key": REVIEW_AGENT_API_KEY } : {}),
+  };
+}
+
 export async function getRepositorySettings(
   owner: string,
-  repo: string
+  repo: string,
+  githubRepoId?: number
 ): Promise<RepositorySettings> {
   const defaultSettings: RepositorySettings = {
     owner,
@@ -28,41 +83,58 @@ export async function getRepositorySettings(
   };
 
   if (!SETTINGS_API_URL) {
-    console.warn(`SETTINGS_API_URL not configured, reviews disabled for ${owner}/${repo}`);
+    const message = `SETTINGS_API_URL not configured, reviews disabled for ${owner}/${repo}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new SettingsApiUnavailableError(message);
+    }
+    console.warn(message);
     return defaultSettings;
   }
 
-  try {
-    const headers: Record<string, string> = {};
-    if (REVIEW_AGENT_API_KEY) {
-      headers["X-API-Key"] = REVIEW_AGENT_API_KEY;
-    }
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/settings/${owner}/${repo}`, {
-      headers,
-    });
-    if (!response.ok) {
-      console.warn(
-        `Failed to fetch settings for ${owner}/${repo} (${response.status}), features disabled`
-      );
-      return defaultSettings;
-    }
-    return (await response.json()) as RepositorySettings;
-  } catch (error) {
-    console.warn(`Error fetching settings for ${owner}/${repo}:`, error);
+  const url = buildSettingsApiUrl(
+    `/api/internal/settings/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+  );
+  if (!url) {
     return defaultSettings;
   }
+  if (githubRepoId) {
+    url.searchParams.set("githubRepoId", String(githubRepoId));
+  }
+
+  const response = await fetchSettingsApi(url, {
+    headers: headersWithApiKey(),
+  });
+  if (!response.ok) {
+    throw new SettingsApiUnavailableError(
+      `Failed to fetch settings for ${owner}/${repo} (${response.status})`,
+      response.status
+    );
+  }
+  return (await response.json()) as RepositorySettings;
 }
 
-export async function getCustomReviewRules(owner: string, repo: string): Promise<string | null> {
+export async function getCustomReviewRules(
+  owner: string,
+  repo: string,
+  githubRepoId?: number
+): Promise<string | null> {
   if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
     return null;
   }
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/review-rules/${owner}/${repo}`, {
-      headers: {
-        "X-API-Key": REVIEW_AGENT_API_KEY,
-      },
+    const url = buildSettingsApiUrl(
+      `/api/internal/review-rules/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    );
+    if (!url) {
+      return null;
+    }
+    if (githubRepoId) {
+      url.searchParams.set("githubRepoId", String(githubRepoId));
+    }
+
+    const response = await fetchSettingsApi(url, {
+      headers: headersWithApiKey(),
     });
     if (!response.ok) {
       return null;
@@ -77,17 +149,26 @@ export async function getCustomReviewRules(owner: string, repo: string): Promise
 
 export async function getRuntimeAiConfig(
   owner: string,
-  repo: string
+  repo: string,
+  githubRepoId?: number
 ): Promise<RuntimeAiConfig | null> {
   if (!SETTINGS_API_URL || !REVIEW_AGENT_API_KEY) {
     return null;
   }
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/ai-config/${owner}/${repo}`, {
-      headers: {
-        "X-API-Key": REVIEW_AGENT_API_KEY,
-      },
+    const url = buildSettingsApiUrl(
+      `/api/internal/ai-config/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    );
+    if (!url) {
+      return null;
+    }
+    if (githubRepoId) {
+      url.searchParams.set("githubRepoId", String(githubRepoId));
+    }
+
+    const response = await fetchSettingsApi(url, {
+      headers: headersWithApiKey(),
     });
 
     if (!response.ok) {
@@ -140,13 +221,13 @@ export async function recordReview(data: {
   }
 
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (REVIEW_AGENT_API_KEY) {
-      headers["X-API-Key"] = REVIEW_AGENT_API_KEY;
+    const url = buildSettingsApiUrl("/api/internal/reviews");
+    if (!url) {
+      return null;
     }
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/reviews`, {
+    const response = await fetchSettingsApi(url, {
       method: "POST",
-      headers,
+      headers: headersWithApiKey({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
     });
 
@@ -241,12 +322,13 @@ export async function recordReviewComments(
   });
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/reviews/${reviewId}/comments`, {
+    const url = buildSettingsApiUrl(`/api/internal/reviews/${reviewId}/comments`);
+    if (!url) {
+      return;
+    }
+    const response = await fetchSettingsApi(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": REVIEW_AGENT_API_KEY || "",
-      },
+      headers: headersWithApiKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ comments }),
     });
 
@@ -269,17 +351,15 @@ export async function getSuppressedIssueFingerprints(
   }
 
   try {
-    const response = await fetch(
-      `${SETTINGS_API_URL}/api/internal/clarification-locks/suppressions`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": REVIEW_AGENT_API_KEY,
-        },
-        body: JSON.stringify({ owner, repo, pullNumber, fingerprints }),
-      }
-    );
+    const url = buildSettingsApiUrl("/api/internal/clarification-locks/suppressions");
+    if (!url) {
+      return new Set();
+    }
+    const response = await fetchSettingsApi(url, {
+      method: "POST",
+      headers: headersWithApiKey({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ owner, repo, pullNumber, fingerprints }),
+    });
     if (!response.ok) {
       return new Set();
     }
@@ -300,12 +380,15 @@ export async function hasPendingClarificationLocks(
   }
 
   try {
-    const response = await fetch(
-      `${SETTINGS_API_URL}/api/internal/clarification-locks/pending/${owner}/${repo}/${pullNumber}`,
-      {
-        headers: { "X-API-Key": REVIEW_AGENT_API_KEY },
-      }
+    const url = buildSettingsApiUrl(
+      `/api/internal/clarification-locks/pending/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${pullNumber}`
     );
+    if (!url) {
+      return false;
+    }
+    const response = await fetchSettingsApi(url, {
+      headers: headersWithApiKey(),
+    });
     if (!response.ok) {
       return false;
     }
@@ -322,12 +405,13 @@ export async function acquireExecutionLock(key: string, context: string): Promis
   }
 
   try {
-    const response = await fetch(`${SETTINGS_API_URL}/api/internal/execution-locks/acquire`, {
+    const url = buildSettingsApiUrl("/api/internal/execution-locks/acquire");
+    if (!url) {
+      return true;
+    }
+    const response = await fetchSettingsApi(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": REVIEW_AGENT_API_KEY,
-      },
+      headers: headersWithApiKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ key, context }),
     });
     if (!response.ok) {
@@ -362,12 +446,15 @@ export async function getClarificationLockByThread(
   }
 
   try {
-    const response = await fetch(
-      `${SETTINGS_API_URL}/api/internal/clarification-locks/by-thread/${owner}/${repo}/${pullNumber}/${threadCommentId}`,
-      {
-        headers: { "X-API-Key": REVIEW_AGENT_API_KEY },
-      }
+    const url = buildSettingsApiUrl(
+      `/api/internal/clarification-locks/by-thread/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${pullNumber}/${threadCommentId}`
     );
+    if (!url) {
+      return null;
+    }
+    const response = await fetchSettingsApi(url, {
+      headers: headersWithApiKey(),
+    });
     if (!response.ok) {
       return null;
     }
@@ -390,12 +477,13 @@ export async function resolveClarificationLock(
   }
 
   try {
-    await fetch(`${SETTINGS_API_URL}/api/internal/clarification-locks/resolve`, {
+    const url = buildSettingsApiUrl("/api/internal/clarification-locks/resolve");
+    if (!url) {
+      return;
+    }
+    await fetchSettingsApi(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": REVIEW_AGENT_API_KEY,
-      },
+      headers: headersWithApiKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ owner, repo, pullNumber, fingerprint, commitSha }),
     });
   } catch {
