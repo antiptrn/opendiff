@@ -126,7 +126,11 @@ interface TriageOptions {
 }
 
 function isReviewSummaryComment(body: string): boolean {
-  return body.startsWith("## Summary") || body.startsWith("## Review Summary");
+  return (
+    body.startsWith("## OpenDiff Summary") ||
+    body.startsWith("## Summary") ||
+    body.startsWith("## Review Summary")
+  );
 }
 
 async function upsertReviewSummaryComment(
@@ -382,7 +386,7 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
 }
 
 function resolvedReviewBody(): string {
-  return "Resolved in a later revision. See the living `Summary` comment for the current state of this PR.";
+  return "Resolved in a later revision. See the living `OpenDiff Summary` comment for the current state of this PR.";
 }
 
 async function cleanupResolvedPreviousReviews(

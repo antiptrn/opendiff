@@ -198,16 +198,20 @@ describe("ReviewFormatter", () => {
     it("should keep the full PR summary format for the durable summary comment", () => {
       const reviewResult: ReviewResult = {
         summary: "Overall PR summary.",
-        issues: [
-          { type: "security", severity: "critical", file: "a.ts", line: 1, message: "x" },
-        ],
+        issues: [{ type: "security", severity: "critical", file: "a.ts", line: 1, message: "x" }],
         verdict: "comment",
       };
 
       const body = formatter.formatSummaryBody(reviewResult);
 
-      expect(body).toContain("## Summary");
+      expect(body).toContain("## OpenDiff Summary");
+      expect(body).toContain("### What This PR Changes");
       expect(body).toContain("Overall PR summary.");
+      expect(body.indexOf("### What This PR Changes")).toBeLessThan(
+        body.indexOf("### Review Judgement")
+      );
+      expect(body).toContain("OpenDiff completed the review");
+      expect(body).toContain("### Open Issue Summary");
       expect(body).toContain("**Rating:**");
       expect(body).toContain("**Confidence:**");
       expect(body).toContain("*Reviewed by [opendiff]");
@@ -216,9 +220,7 @@ describe("ReviewFormatter", () => {
     it("should use non-historical headings on the first review", () => {
       const reviewResult: ReviewResult = {
         summary: "Initial review summary.",
-        issues: [
-          { type: "style", severity: "warning", file: "src/a.ts", line: 4, message: "x" },
-        ],
+        issues: [{ type: "style", severity: "warning", file: "src/a.ts", line: 4, message: "x" }],
         verdict: "comment",
       };
 
@@ -237,7 +239,10 @@ describe("ReviewFormatter", () => {
         addressedIssues: [],
       });
 
-      expect(body).toContain("### Overview");
+      expect(body).toContain("## OpenDiff Summary");
+      expect(body).toContain("### What This PR Changes");
+      expect(body).toContain("### Review Judgement");
+      expect(body).toContain("### Open Issue Summary");
       expect(body).not.toContain("### Open Issues Across Reviews");
       expect(body).toContain("### Open Issues");
       expect(body).not.toContain("### New Issues");
@@ -245,12 +250,26 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("**Confidence:**");
     });
 
+    it("should include review judgement for clean PR summaries", () => {
+      const reviewResult: ReviewResult = {
+        summary: "This PR updates the login flow and keeps existing session behavior intact.",
+        issues: [],
+        verdict: "approve",
+      };
+
+      const body = formatter.formatSummaryBody(reviewResult);
+
+      expect(body).toContain("## OpenDiff Summary");
+      expect(body).toContain("### What This PR Changes");
+      expect(body).toContain("### Review Judgement");
+      expect(body).toContain("OpenDiff found no issues that require changes");
+      expect(body).not.toContain("### Open Issue Summary");
+    });
+
     it("should use historical headings on re-review", () => {
       const reviewResult: ReviewResult = {
         summary: "Rereview summary.",
-        issues: [
-          { type: "style", severity: "warning", file: "src/b.ts", line: 8, message: "y" },
-        ],
+        issues: [{ type: "style", severity: "warning", file: "src/b.ts", line: 8, message: "y" }],
         verdict: "comment",
       };
 

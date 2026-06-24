@@ -1,7 +1,7 @@
 import type { CodeIssue, ReviewResult } from "../agent/types";
 import type { Review, ReviewComment } from "../github/types";
+import { type StoredIssueRecord, buildIssueMarker } from "../utils/issue-markers";
 import type { DiffPatches } from "./types";
-import { buildIssueMarker, type StoredIssueRecord } from "../utils/issue-markers";
 
 export type { DiffPatches };
 
@@ -162,7 +162,9 @@ export class ReviewFormatter {
       }
     }
 
-    const issueMarkers = [...inlineIssues, ...bodyOnlyIssues].map((issue) => buildIssueMarker(issue));
+    const issueMarkers = [...inlineIssues, ...bodyOnlyIssues].map((issue) =>
+      buildIssueMarker(issue)
+    );
     if (issueMarkers.length > 0) {
       body += `\n\n${issueMarkers.join("\n")}`;
     }
@@ -250,11 +252,14 @@ export class ReviewFormatter {
       ),
     ];
     const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
-    let summary = "## Summary\n\n";
+    let summary = "## OpenDiff Summary\n\n";
+    summary += "### What This PR Changes\n\n";
     summary += `${result.summary}\n\n`;
+    summary += "### Review Judgement\n\n";
+    summary += `${this.formatReviewJudgement(result, counts)}\n\n`;
 
     if (openIssues.length > 0 || result.issues.length > 0) {
-      summary += `### ${hasHistoricalContext ? "Open Issues Across Reviews" : "Overview"}\n\n`;
+      summary += `### ${hasHistoricalContext ? "Open Issues Across Reviews" : "Open Issue Summary"}\n\n`;
 
       if (counts.critical > 0) {
         summary += `- 🚨 **${counts.critical} critical** issue${counts.critical > 1 ? "s" : ""}\n`;
@@ -326,6 +331,56 @@ export class ReviewFormatter {
     summary += "*Reviewed by [opendiff](https://opendiff.dev)*";
 
     return summary;
+  }
+
+  private formatReviewJudgement(
+    result: ReviewResult,
+    counts: Record<CodeIssue["severity"], number>
+  ): string {
+    const issueSummary = this.formatIssueCountSummary(counts);
+    const issueTotal = counts.critical + counts.warning + counts.suggestion;
+
+    if (issueSummary === "no open issues") {
+      return "OpenDiff found no issues that require changes in this review.";
+    }
+
+    if (result.verdict === "approve") {
+      return `OpenDiff's current pass is clean, but ${issueSummary} ${
+        issueTotal === 1 ? "remains" : "remain"
+      } tracked across reviews.`;
+    }
+
+    if (result.verdict === "request_changes") {
+      return `OpenDiff is requesting changes because it found ${issueSummary}.`;
+    }
+
+    return `OpenDiff completed the review and found ${issueSummary} to consider before merging.`;
+  }
+
+  private formatIssueCountSummary(counts: Record<CodeIssue["severity"], number>): string {
+    const parts = [
+      this.formatIssueCount(counts.critical, "critical issue"),
+      this.formatIssueCount(counts.warning, "warning"),
+      this.formatIssueCount(counts.suggestion, "suggestion"),
+    ].filter((part): part is string => Boolean(part));
+
+    if (parts.length === 0) {
+      return "no open issues";
+    }
+
+    if (parts.length === 1) {
+      return parts[0];
+    }
+
+    return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  }
+
+  private formatIssueCount(count: number, label: string): string | null {
+    if (count === 0) {
+      return null;
+    }
+
+    return `${count} ${label}${count === 1 ? "" : "s"}`;
   }
 
   private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {

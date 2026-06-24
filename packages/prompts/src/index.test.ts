@@ -36,6 +36,8 @@ describe("loadPrompt", () => {
   it("should load review prompt", () => {
     const result = loadPrompt("review");
     expect(result).toContain("You are opendiff, a code reviewer");
+    expect(result).toContain("what the PR actually changes");
+    expect(result).toContain("system effects");
   });
 
   it("should load respond-to-comment prompt", () => {
