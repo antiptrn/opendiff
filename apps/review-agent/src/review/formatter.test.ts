@@ -205,13 +205,16 @@ describe("ReviewFormatter", () => {
       const body = formatter.formatSummaryBody(reviewResult);
 
       expect(body).toContain("## OpenDiff Summary");
-      expect(body).toContain("### What This PR Changes");
       expect(body).toContain("Overall PR summary.");
-      expect(body.indexOf("### What This PR Changes")).toBeLessThan(
-        body.indexOf("### Review Judgement")
-      );
+      expect(body).not.toContain("### What This PR Changes");
+      expect(body).toContain("### Findings");
+      expect(body).not.toContain("### Review Judgement");
       expect(body).toContain("OpenDiff completed the review");
-      expect(body).toContain("### Open Issue Summary");
+      expect(body).not.toContain("### Open Issue Summary");
+      expect(body).toContain("### Open Issues");
+      expect(body).toContain("#### 🔒 Security in `a.ts:1`");
+      expect(body).toContain("**Code reference:** `a.ts:1`");
+      expect(body).toContain("**Issue:** x");
       expect(body).toContain("**Rating:**");
       expect(body).toContain("**Confidence:**");
       expect(body).toContain("*Reviewed by [opendiff]");
@@ -240,17 +243,21 @@ describe("ReviewFormatter", () => {
       });
 
       expect(body).toContain("## OpenDiff Summary");
-      expect(body).toContain("### What This PR Changes");
-      expect(body).toContain("### Review Judgement");
-      expect(body).toContain("### Open Issue Summary");
+      expect(body).not.toContain("### What This PR Changes");
+      expect(body).toContain("### Findings");
+      expect(body).not.toContain("### Review Judgement");
+      expect(body).not.toContain("### Open Issue Summary");
       expect(body).not.toContain("### Open Issues Across Reviews");
       expect(body).toContain("### Open Issues");
+      expect(body).toContain("#### ✨ Style in `src/a.ts:4`");
+      expect(body).toContain("**Code reference:** `src/a.ts:4`");
+      expect(body).toContain("**Issue:** x");
       expect(body).not.toContain("### New Issues");
       expect(body).toContain("**Rating:**");
       expect(body).toContain("**Confidence:**");
     });
 
-    it("should include review judgement for clean PR summaries", () => {
+    it("should include findings for clean PR summaries", () => {
       const reviewResult: ReviewResult = {
         summary: "This PR updates the login flow and keeps existing session behavior intact.",
         issues: [],
@@ -260,8 +267,9 @@ describe("ReviewFormatter", () => {
       const body = formatter.formatSummaryBody(reviewResult);
 
       expect(body).toContain("## OpenDiff Summary");
-      expect(body).toContain("### What This PR Changes");
-      expect(body).toContain("### Review Judgement");
+      expect(body).not.toContain("### What This PR Changes");
+      expect(body).toContain("### Findings");
+      expect(body).not.toContain("### Review Judgement");
       expect(body).toContain("OpenDiff found no issues that require changes");
       expect(body).not.toContain("### Open Issue Summary");
     });
@@ -297,8 +305,15 @@ describe("ReviewFormatter", () => {
         addressedIssues: [],
       });
 
-      expect(body).toContain("### Open Issues Across Reviews");
+      expect(body).not.toContain("### Open Issues Across Reviews");
+      expect(body).toContain("### Still Open From Earlier Reviews");
       expect(body).toContain("### New Issues");
+      expect(body).toContain("#### 🐛 Bug Risk in `src/old.ts:2`");
+      expect(body).toContain("**Code reference:** `src/old.ts:2`");
+      expect(body).toContain("**Issue:** old issue");
+      expect(body).toContain("#### ✨ Style in `src/b.ts:8`");
+      expect(body).toContain("**Code reference:** `src/b.ts:8`");
+      expect(body).toContain("**Issue:** y");
       expect(body).toContain("**Rating:**");
       expect(body).toContain("**Confidence:**");
       expect(body).toContain("<!-- opendiff-issue:");
@@ -327,7 +342,25 @@ describe("ReviewFormatter", () => {
       });
 
       expect(body).toContain("### Addressed Since Earlier Reviews");
+      expect(body).toContain("- ~~`src/c.ts:12` already fixed~~");
       expect(body).toContain("<!-- opendiff-issue:");
+    });
+
+    it("should render summary changes as an overview plus bullets when possible", () => {
+      const reviewResult: ReviewResult = {
+        summary:
+          "This PR wires the billing dialog into the settings flow. It adds the `BillingDialog` component. It updates `settings-page.tsx` to open the dialog from the plan card.",
+        issues: [],
+        verdict: "approve",
+      };
+
+      const body = formatter.formatSummaryBody(reviewResult);
+
+      expect(body).toContain("This PR wires the billing dialog into the settings flow.");
+      expect(body).toContain("- It adds the `BillingDialog` component.");
+      expect(body).toContain(
+        "- It updates `settings-page.tsx` to open the dialog from the plan card."
+      );
     });
   });
 
