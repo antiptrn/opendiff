@@ -36,6 +36,12 @@ export interface GenerateSummaryResult {
   fileTitles: Record<string, string>;
 }
 
+class SummaryExecutionError extends Error {
+  constructor(readonly originalError: unknown) {
+    super("Summary execution failed");
+  }
+}
+
 async function fetchPRFiles(
   github: GitHubClient,
   owner: string,
@@ -138,9 +144,19 @@ export async function generateReviewSummary(
         branch: input.headBranch,
         label: `summary-${input.pullNumber}`,
       },
-      async (tempDir) => runSummary(tempDir, true)
+      async (tempDir) => {
+        try {
+          return await runSummary(tempDir, true);
+        } catch (err) {
+          throw new SummaryExecutionError(err);
+        }
+      }
     );
   } catch (err) {
+    if (err instanceof SummaryExecutionError) {
+      throw err.originalError;
+    }
+
     console.warn(
       `Workspace setup failed for ${input.owner}/${input.repo}@${input.headBranch}, proceeding with diffs only:`,
       err
