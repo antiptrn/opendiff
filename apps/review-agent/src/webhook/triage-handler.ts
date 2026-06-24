@@ -64,6 +64,15 @@ export async function handleTriageAfterReview(
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
+    if (autofixEnabled && postSummary) {
+      await refreshNoActionTriageSummaryComment(
+        github,
+        owner,
+        repo,
+        pullRequest.number,
+        botUsername
+      );
+    }
     return result;
   }
 
@@ -272,7 +281,13 @@ export async function handleTriageAfterReview(
             );
           }
         } else if (ignoredIssueCount > 0 && autofixEnabled && postSummary) {
-          console.log("Skipped triage summary: all issues matched ignored autofix paths");
+          await refreshNoActionTriageSummaryComment(
+            github,
+            owner,
+            repo,
+            pullRequest.number,
+            botUsername
+          );
         }
       }
     );
@@ -387,6 +402,38 @@ async function upsertTriageSummaryComment(
 
   await github.createIssueComment(owner, repo, pullNumber, summaryBody);
   console.log("Posted triage summary comment");
+}
+
+async function refreshNoActionTriageSummaryComment(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  botUsername: string
+): Promise<void> {
+  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
+  const existingSummary = [...issueComments]
+    .reverse()
+    .find(
+      (comment) =>
+        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
+        isRemediationSummaryComment(comment.body)
+    );
+
+  if (!existingSummary) {
+    console.log("Skipped triage summary: no existing summary comment to refresh");
+    return;
+  }
+
+  const summaryBody = formatTriageSummary([], [], [], {
+    fixed: [],
+    skipped: [],
+    clarifications: [],
+  });
+  await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
+  console.log(
+    "Updated triage summary: no remediation actions were needed for this push"
+  );
 }
 
 async function replyToInlineComments(
