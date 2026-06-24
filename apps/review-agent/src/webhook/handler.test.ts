@@ -587,7 +587,7 @@ describe("WebhookHandler", () => {
         {
           id: 101,
           user: "opendiff-bot",
-          body: "## Review Summary\n\nOld summary",
+          body: "## OpenDiff Summary\n\nOld summary",
         },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
@@ -596,13 +596,15 @@ describe("WebhookHandler", () => {
         verdict: "approve",
       });
       mockFormatter.formatReview.mockReturnValue({
-        body: "## Review Summary\n\nNew summary",
+        body: "## OpenDiff Summary\n\nNew summary",
         event: "APPROVE",
       });
-      mockFormatter.formatSummaryBody = vi.fn().mockReturnValue("## Review Summary\n\nNew summary");
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## OpenDiff Summary\n\nNew summary");
       mockFormatter.formatHistoricalSummaryBody = vi
         .fn()
-        .mockReturnValue("## Review Summary\n\nNew summary");
+        .mockReturnValue("## OpenDiff Summary\n\nNew summary");
       mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Current Review\n\nNew summary");
       mockGitHubClient.submitReview.mockResolvedValue({ id: 129 });
 
@@ -613,7 +615,7 @@ describe("WebhookHandler", () => {
         "owner",
         "repo",
         101,
-        "## Review Summary\n\nNew summary"
+        "## OpenDiff Summary\n\nNew summary"
       );
       expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
       expect(result.reviewId).toBe(129);
