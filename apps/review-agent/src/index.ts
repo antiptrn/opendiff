@@ -380,9 +380,24 @@ async function resolvePullRequestForCiFailure(
   const sha = getCiFailureHeadSha(event, payload);
 
   if (event === "check_run") {
-    const pullNumber = (payload as CheckRunWebhookPayload).check_run.pull_requests?.[0]?.number;
-    if (pullNumber) {
-      return githubClient.getPullRequest(owner, repo, pullNumber);
+    const pullNumbers = (payload as CheckRunWebhookPayload).check_run.pull_requests
+      ?.map((pull) => pull.number)
+      .filter((pullNumber): pullNumber is number => Boolean(pullNumber));
+
+    if (pullNumbers && pullNumbers.length > 0) {
+      const pulls = await Promise.all(
+        pullNumbers.map((pullNumber) => githubClient.getPullRequest(owner, repo, pullNumber))
+      );
+      const openPull = pulls.find((pull) => pull.state === "open" && pull.head.sha === sha);
+
+      if (openPull) {
+        return openPull;
+      }
+
+      const openAssociatedPull = pulls.find((pull) => pull.state === "open");
+      if (openAssociatedPull) {
+        return openAssociatedPull;
+      }
     }
   }
 
