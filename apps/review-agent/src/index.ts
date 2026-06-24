@@ -9,7 +9,7 @@ import { generateReviewSummary } from "./internal/generate-summary";
 import { runLocalReview } from "./internal/local-review";
 import { getProviderModelsCatalog } from "./internal/provider-models";
 import { ReviewFormatter } from "./review/formatter";
-import { AsyncJobQueue } from "./utils/async-job-queue";
+import { AsyncJobQueue, type QueueJobContext } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
 import { parseIgnoredDirs } from "./utils/ignored-dirs";
@@ -470,8 +470,16 @@ async function removeReviewInProgressReaction(
   }
 }
 
-async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<void> {
+function shouldPostQueuedFailureComment(context: QueueJobContext): boolean {
+  return context.attempt >= context.maxAttempts;
+}
+
+async function processPullRequestReviewJob(
+  job: PullRequestReviewJob,
+  context: QueueJobContext
+): Promise<void> {
   const { payload, deliveryId } = job;
+  const shouldPostFailureComment = shouldPostQueuedFailureComment(context);
 
   if (!payload.pull_request) {
     console.log(
@@ -595,16 +603,18 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
 
     if (!result.success) {
       const error = new Error(result.error || "Review failed");
-      await commentOnPullRequestFailure({
-        githubClient,
-        owner,
-        repo,
-        pullNumber: reviewPayload.pull_request.number,
-        kind: "review",
-        deliveryId,
-        error,
-      });
-      failureCommentPosted = true;
+      if (shouldPostFailureComment) {
+        await commentOnPullRequestFailure({
+          githubClient,
+          owner,
+          repo,
+          pullNumber: reviewPayload.pull_request.number,
+          kind: "review",
+          deliveryId,
+          error,
+        });
+        failureCommentPosted = true;
+      }
       throw error;
     }
 
@@ -624,7 +634,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
 
     console.log(`Queued review submitted successfully: ${result.reviewId}`);
   } catch (error) {
-    if (!failureCommentPosted) {
+    if (shouldPostFailureComment && !failureCommentPosted) {
       await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId, githubClient);
     }
     throw error;
