@@ -29,12 +29,12 @@ const SEVERITY_EMOJI = {
 } as const;
 
 const TYPE_LABELS = {
-  "anti-pattern": "🔄 Anti-pattern",
-  security: "🔒 Security",
-  performance: "⚡ Performance",
-  style: "✨ Style",
-  "bug-risk": "🐛 Bug Risk",
-} as const;
+  "anti-pattern": "Anti-pattern",
+  security: "Security",
+  performance: "Performance",
+  style: "Style",
+  "bug-risk": "Bug Risk",
+} as const satisfies Record<CodeIssue["type"], string>;
 
 // Parse a unified diff patch to extract valid line numbers for comments
 // Returns a Set of line numbers (in the new file) that are within the diff
@@ -148,9 +148,9 @@ export class ReviewFormatter {
     }
 
     if (inlineIssues.length > 0) {
-      body += "\n### Highlighted In This Review\n\n";
+      body += "\n### Open Issues\n\n";
       for (const issue of inlineIssues.slice(0, 5)) {
-        body += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        body += `- \`${issue.file}:${issue.line}\` ${this.formatIssueSentence(issue.message)}\n`;
       }
       if (inlineIssues.length > 5) {
         body += `- ...and ${inlineIssues.length - 5} more inline issue${inlineIssues.length - 5 > 1 ? "s" : ""}\n`;
@@ -160,7 +160,7 @@ export class ReviewFormatter {
     if (bodyOnlyIssues.length > 0) {
       body += "\n### Kept In Summary Only\n\n";
       for (const issue of bodyOnlyIssues.slice(0, 5)) {
-        body += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        body += `- \`${issue.file}:${issue.line}\` ${this.formatIssueSentence(issue.message)}\n`;
       }
       if (bodyOnlyIssues.length > 5) {
         body += `- ...and ${bodyOnlyIssues.length - 5} more summary-only issue${bodyOnlyIssues.length - 5 > 1 ? "s" : ""}\n`;
@@ -194,11 +194,10 @@ export class ReviewFormatter {
   }
 
   formatComment(issue: CodeIssue): ReviewComment {
-    const emoji = SEVERITY_EMOJI[issue.severity];
     const typeLabel = TYPE_LABELS[issue.type];
 
-    let body = `${emoji} **${typeLabel}**: ${issue.message}\n\n`;
-    body += issue.description || issue.message;
+    let body = `**${typeLabel}:** ${this.formatIssueSentence(issue.message)}\n\n`;
+    body += issue.description || this.formatIssueSentence(issue.message);
 
     // If there's exact replacement code, format as GitHub suggested change
     if (issue.suggestedCode !== undefined) {
@@ -516,15 +515,22 @@ export class ReviewFormatter {
   }
 
   private formatIssuesTable(issues: SummaryIssue[]): string {
-    let body = "| Finding | Code | Issue | Suggestion |\n";
-    body += "| --- | --- | --- | --- |\n";
+    const hasSuggestions = issues.some((issue) => this.formatIssueSuggestion(issue) !== "");
+    let body = hasSuggestions
+      ? "| Finding | Issue | Code | Suggestion |\n"
+      : "| Finding | Issue | Code |\n";
+    body += hasSuggestions ? "| --- | --- | --- | --- |\n" : "| --- | --- | --- |\n";
 
     for (const issue of issues) {
-      body += `| ${this.escapeTableCell(TYPE_LABELS[issue.type])} | \`${this.formatIssueLocation(
-        issue
-      )}\` | ${this.escapeTableCell(this.formatIssueSummary(issue))} | ${this.escapeTableCell(
-        issue.suggestion ?? ""
-      )} |\n`;
+      const row = [
+        this.escapeTableCell(this.formatTableFindingLabel(issue.type)),
+        this.escapeTableCell(this.formatIssueSummary(issue)),
+        `\`${this.formatIssueLocation(issue)}\``,
+      ];
+      if (hasSuggestions) {
+        row.push(this.escapeTableCell(this.formatIssueSuggestion(issue)));
+      }
+      body += `| ${row.join(" | ")} |\n`;
     }
 
     body += "\n";
@@ -536,11 +542,41 @@ export class ReviewFormatter {
   }
 
   private formatIssueSummary(issue: SummaryIssue): string {
+    const message = this.formatIssueSentence(issue.message);
     if (!issue.description || issue.description === issue.message) {
-      return issue.message;
+      return message;
     }
 
-    return `${issue.message} ${issue.description}`;
+    return `${message} ${this.formatIssueSentence(issue.description)}`;
+  }
+
+  private formatIssueSuggestion(issue: SummaryIssue): string {
+    if (issue.suggestion) {
+      return this.formatIssueSentence(issue.suggestion);
+    }
+
+    if (issue.suggestedCode !== undefined) {
+      return "Suggested code change provided in the inline comment.";
+    }
+
+    return "";
+  }
+
+  private formatTableFindingLabel(type: CodeIssue["type"]): string {
+    return TYPE_LABELS[type].replace(/\s+/g, "&nbsp;");
+  }
+
+  private formatIssueSentence(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return trimmed;
+    }
+
+    const capitalized = /^[a-z]/.test(trimmed)
+      ? `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`
+      : trimmed;
+
+    return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
   }
 
   private escapeTableCell(value: string): string {

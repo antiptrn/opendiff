@@ -756,7 +756,7 @@ describe("WebhookHandler", () => {
         line: 5,
         message: "Previously reported issue",
       };
-      const oldBody = `## Status Update\n\nFound an issue.\n\n${buildIssueMarker(addressedIssue)}`;
+      const oldBody = `## Status Update\n\n### Overview\n\n- ⚠️ 1 warning\n\n### Open Issues\n\n- \`src/index.ts:5\` Previously reported issue.\n\n${buildIssueMarker(addressedIssue)}`;
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
@@ -801,6 +801,7 @@ describe("WebhookHandler", () => {
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       const quotedOldBody = oldBody
+        .replace(/^## Status Update\s*\n+/i, "")
         .trim()
         .split("\n")
         .map((line) => (line.trim() ? `> ${line}` : ">"))
@@ -809,6 +810,8 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(expectedBody).not.toContain("~~");
       expect(expectedBody).not.toContain("\n\n\nResolved in a later revision");
+      expect(expectedBody).not.toContain("> ## Status Update");
+      expect(expectedBody).toMatch(/^> ### Overview/);
       expect(mockGitHubClient.updatePullRequestReview).toHaveBeenCalledWith(
         "owner",
         "repo",
