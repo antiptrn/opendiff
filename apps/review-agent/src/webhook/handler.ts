@@ -901,7 +901,7 @@ export class WebhookHandler {
               history
             ) ||
             (review.event === "APPROVE" && hadPriorReviewSummary);
-          const shouldPostApprovalReview = review.event === "APPROVE" && shouldPostStatusUpdate;
+          const shouldPostApprovalReview = review.event === "APPROVE";
           const hasExistingApprovalForHead =
             shouldPostApprovalReview &&
             (await hasBotApprovedHead(
@@ -918,6 +918,7 @@ export class WebhookHandler {
               : shouldPostStatusUpdate;
 
           if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
+            const submittedReviewBody = shouldPostStatusUpdate ? reviewBody : "";
             const { id } = await this.github.submitReview(
               owner,
               repo,
@@ -925,7 +926,7 @@ export class WebhookHandler {
               pull_request.head.sha,
               {
                 ...review,
-                body: reviewBody,
+                body: submittedReviewBody,
                 comments: resolvedComments,
               }
             );
