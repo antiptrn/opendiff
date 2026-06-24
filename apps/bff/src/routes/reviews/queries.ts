@@ -54,7 +54,11 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       by: ["repositorySettingsId", "pullNumber"],
       where,
       _max: { createdAt: true },
-      orderBy: [{ _max: { createdAt: "desc" } }],
+      orderBy: [
+        { _max: { createdAt: "desc" } },
+        { repositorySettingsId: "desc" },
+        { pullNumber: "desc" },
+      ],
       skip: (page - 1) * limit,
       take: limit,
     }),
