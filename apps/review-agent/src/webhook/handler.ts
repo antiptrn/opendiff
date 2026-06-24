@@ -835,9 +835,9 @@ export class WebhookHandler {
             invalidInlineIssues,
             history
           );
-          const shouldPostApproval =
+          const hasExistingApprovalForHead =
             review.event === "APPROVE" &&
-            !(await hasBotApprovedHead(
+            (await hasBotApprovedHead(
               this.github,
               owner,
               repo,
@@ -845,11 +845,13 @@ export class WebhookHandler {
               botUsername,
               pull_request.head.sha
             ));
+          const shouldPostApproval = review.event === "APPROVE" && !hasExistingApprovalForHead;
+          const shouldPostReview =
+            review.event === "APPROVE"
+              ? !hasExistingApprovalForHead && (shouldPostStatusUpdate || shouldPostApproval)
+              : shouldPostStatusUpdate;
 
-          if (
-            (shouldPostStatusUpdate || shouldPostApproval) &&
-            shouldSubmitReview({ ...review, comments: resolvedComments })
-          ) {
+          if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
             const { id } = await this.github.submitReview(
               owner,
               repo,
