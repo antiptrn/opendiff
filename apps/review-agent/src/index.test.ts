@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { commentMentionsBot, getBotMentionAliases, isBareBotMention } from "./utils/bot-mentions";
 
 // Store original env vars
 const originalEnv = { ...process.env };
@@ -225,6 +226,49 @@ describe("Application endpoints", () => {
       expect(body.reviewQueue).toBeDefined();
     });
 
+    it("should enqueue deterministic review for bare @opendiff even with a different bot username", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "created",
+        sender: { login: "reviewer" },
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        issue: {
+          number: 43,
+          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/43" },
+        },
+        comment: {
+          id: 1002,
+          body: "  @opendiff  ",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "issue_comment",
+          "x-github-delivery": "delivery-comment-opendiff-alias",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.status).toBe("queued");
+      expect(body.trigger).toBe("issue_comment");
+      expect(body.key).toBe("owner/repo#43");
+    });
+
     it("should keep non-bare issue comment mentions on the comment response path", async () => {
       const { default: app } = await import("./index");
 
@@ -267,54 +311,46 @@ describe("Application endpoints", () => {
       expect(body.reason).toBe("disabled");
     });
 
-    it("should ignore non-bare alias mentions for issue comments", async () => {
-      vi.resetModules();
-      delete process.env.BOT_USERNAME;
+    it("should keep non-bare @opendiff alias mentions on the comment response path", async () => {
+      const { default: app } = await import("./index");
 
-      try {
-        const { default: app } = await import("./index");
+      const payload = JSON.stringify({
+        action: "created",
+        sender: { login: "reviewer" },
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        issue: {
+          number: 44,
+          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/44" },
+        },
+        comment: {
+          id: 1003,
+          body: "@opendiff can you explain this?",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
 
-        const payload = JSON.stringify({
-          action: "created",
-          sender: { login: "reviewer" },
-          repository: {
-            id: 1,
-            owner: { login: "owner" },
-            name: "repo",
-          },
-          issue: {
-            number: 44,
-            pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/44" },
-          },
-          comment: {
-            id: 1003,
-            body: "@opendiff can you explain this?",
-            user: { login: "reviewer" },
-          },
-        });
-        const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "issue_comment",
+          "x-github-delivery": "delivery-comment-alias",
+        },
+        body: payload,
+      });
 
-        const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-hub-signature-256": signature,
-            "x-github-event": "issue_comment",
-            "x-github-delivery": "delivery-comment-alias",
-          },
-          body: payload,
-        });
+      const response = await app.fetch(request);
+      const body = await response.json();
 
-        const response = await app.fetch(request);
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body.status).toBe("ignored");
-        expect(body.reason).toBe("bot_not_mentioned");
-      } finally {
-        process.env.BOT_USERNAME = "test-bot";
-        vi.resetModules();
-      }
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("skipped");
+      expect(body.reason).toBe("disabled");
     });
 
     it("should ignore review_requested events for other reviewers", async () => {
@@ -381,6 +417,17 @@ describe("Application endpoints", () => {
       expect(response.status).toBe(200);
       expect(body.status).toBe("ignored");
     });
+  });
+});
+
+describe("Bot mention aliases", () => {
+  it("should always include opendiff as a mention alias", () => {
+    const aliases = getBotMentionAliases("opendiff-agent[bot]");
+
+    expect(aliases).toContain("opendiff-agent[bot]");
+    expect(aliases).toContain("opendiff");
+    expect(isBareBotMention("  @opendiff  ", "opendiff-agent[bot]")).toBe(true);
+    expect(commentMentionsBot("@opendiff can you review this?", "opendiff-agent[bot]")).toBe(true);
   });
 });
 

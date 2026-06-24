@@ -125,7 +125,7 @@ export async function handleTriageAfterReview(
             if (ignoredDir) {
               const reason = `Autofix is configured to ignore \`${ignoredDir}\`.`;
               console.log(
-                `Skipping issue in ignored autofix directory ${ignoredDir}: ${issue.file}`
+                `Skipping issue matching ignored autofix path pattern ${ignoredDir}: ${issue.file}`
               );
               result.skippedIssues.push({ issue, reason });
               continue;
@@ -206,7 +206,7 @@ export async function handleTriageAfterReview(
               await git.raw(["reset", "--hard"]);
               await git.raw(["clean", "-fd"]);
 
-              const reason = `Autofix produced changes under ignored directory \`${ignoredChangedDir}\`.`;
+              const reason = `Autofix produced changes matching ignored path pattern \`${ignoredChangedDir}\`.`;
               console.log(reason);
               result.skippedIssues.push({ issue, reason });
               continue;
