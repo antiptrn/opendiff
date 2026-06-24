@@ -91,7 +91,7 @@ CRITICAL: The line number you report MUST exactly match the code you're commenti
 
 After your investigation, respond with ONLY valid JSON in this exact format (no other text):
 {
-  "summary": "Write 2-4 sentences explaining what the PR actually changes, what behavior or system effects those changes have, and how the main pieces fit together. Do not make this only 'LGTM', 'Found issues', or a verdict-only assessment.",
+  "summary": "Write rich markdown with a 1-2 sentence overview of what the PR changes, followed by 2-5 bullet points breaking down the individual concrete changes. Reference important files, functions, flows, or behavior with inline code. Do not make this only 'LGTM', 'Found issues', or a verdict-only assessment.",
   "issues": [
     {
       "type": "security|anti-pattern|performance|style|bug-risk",
@@ -110,7 +110,7 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
 
 ### Field Explanations:
 - **message**: A short label for the issue (like a commit subject line — e.g. "missing null check on user input"). Max ~60 characters. Used for autofix commit messages.
-- **summary**: Must summarize the PR's concrete changes and effects for a reader who has not inspected the diff. Mention important files, flows, or behavior when relevant. Keep it concise, usually 2-4 sentences total.
+- **summary**: Must summarize the PR's concrete changes and effects for a reader who has not inspected the diff. Start with a concise overview sentence or two, then list the individual changes as bullets. Mention important files, functions, flows, or behavior when relevant. Do not include markdown headings.
 - **description**: A detailed, thorough explanation of the issue. Explain **why** this is a problem, **what** could go wrong, and **how** it affects the codebase. Be specific — reference variable names, function behavior, and edge cases. This is what appears as the inline comment on the PR, so make it genuinely helpful to the developer. Aim for 2-4 sentences minimum.
 - **line**: The starting line number of the issue
 - **endLine**: (optional) The ending line number if the issue spans multiple lines

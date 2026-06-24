@@ -16,6 +16,11 @@ export interface SummaryHistory {
   addressedIssues?: StoredIssueRecord[];
 }
 
+type SummaryIssue = Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message"> &
+  Partial<Pick<CodeIssue, "description" | "suggestion" | "suggestedCode" | "endLine">> & {
+    fingerprint?: string;
+  };
+
 const SEVERITY_EMOJI = {
   critical: "🚨",
   warning: "⚠️",
@@ -242,62 +247,45 @@ export class ReviewFormatter {
     const hasHistoricalContext =
       (history?.unresolvedHistoricalIssues?.length ?? 0) > 0 ||
       (history?.addressedIssues?.length ?? 0) > 0;
+    const newIssues: SummaryIssue[] = history?.newIssues ?? result.issues;
+    const unresolvedHistoricalIssues: SummaryIssue[] = history?.unresolvedHistoricalIssues ?? [];
     const openIssues = [
-      ...(history?.unresolvedHistoricalIssues ?? []),
-      ...(history?.newIssues ?? []).filter(
+      ...unresolvedHistoricalIssues,
+      ...newIssues.filter(
         (issue) =>
-          !(history?.unresolvedHistoricalIssues ?? []).some(
-            (existing) => existing.fingerprint === issue.fingerprint
-          )
+          !unresolvedHistoricalIssues.some((existing) => existing.fingerprint === issue.fingerprint)
       ),
     ];
     const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
     let summary = "## OpenDiff Summary\n\n";
-    summary += "### What This PR Changes\n\n";
-    summary += `${result.summary}\n\n`;
-    summary += "### Review Judgement\n\n";
-    summary += `${this.formatReviewJudgement(result, counts)}\n\n`;
-
-    if (openIssues.length > 0 || result.issues.length > 0) {
-      summary += `### ${hasHistoricalContext ? "Open Issues Across Reviews" : "Open Issue Summary"}\n\n`;
-
-      if (counts.critical > 0) {
-        summary += `- 🚨 **${counts.critical} critical** issue${counts.critical > 1 ? "s" : ""}\n`;
-      }
-      if (counts.warning > 0) {
-        summary += `- ⚠️ **${counts.warning} warning${counts.warning > 1 ? "s" : ""}**\n`;
-      }
-      if (counts.suggestion > 0) {
-        summary += `- 💡 **${counts.suggestion} suggestion${counts.suggestion > 1 ? "s" : ""}**\n`;
-      }
-    }
+    summary += this.formatChangeSummary(result.summary);
+    summary += "### Findings\n\n";
+    summary += `${this.formatFindings(result, counts)}\n\n`;
 
     if (history?.unresolvedHistoricalIssues && history.unresolvedHistoricalIssues.length > 0) {
       summary += "\n### Still Open From Earlier Reviews\n\n";
       for (const issue of history.unresolvedHistoricalIssues.slice(0, 10)) {
-        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
-        summary += `${buildIssueMarker(issue)}\n`;
+        summary += this.formatDetailedIssue(issue);
       }
       if (history.unresolvedHistoricalIssues.length > 10) {
         summary += `- ...and ${history.unresolvedHistoricalIssues.length - 10} more\n`;
       }
     }
 
-    if (history?.newIssues && history.newIssues.length > 0) {
+    if (newIssues.length > 0) {
       summary += `\n### ${hasHistoricalContext ? "New Issues" : "Open Issues"}\n\n`;
-      for (const issue of history.newIssues.slice(0, 10)) {
-        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
-        summary += `${buildIssueMarker(issue)}\n`;
+      for (const issue of newIssues.slice(0, 10)) {
+        summary += this.formatDetailedIssue(issue);
       }
-      if (history.newIssues.length > 10) {
-        summary += `- ...and ${history.newIssues.length - 10} more\n`;
+      if (newIssues.length > 10) {
+        summary += `- ...and ${newIssues.length - 10} more\n`;
       }
     }
 
     if (history?.addressedIssues && history.addressedIssues.length > 0) {
       summary += "\n### Addressed Since Earlier Reviews\n\n";
       for (const issue of history.addressedIssues.slice(0, 10)) {
-        summary += `- \`${issue.file}:${issue.line}\` ${issue.message}\n`;
+        summary += `- ~~\`${this.formatIssueLocation(issue)}\` ${issue.message}~~\n`;
         summary += `${buildIssueMarker(issue)}\n`;
       }
       if (history.addressedIssues.length > 10) {
@@ -333,7 +321,7 @@ export class ReviewFormatter {
     return summary;
   }
 
-  private formatReviewJudgement(
+  private formatFindings(
     result: ReviewResult,
     counts: Record<CodeIssue["severity"], number>
   ): string {
@@ -381,6 +369,84 @@ export class ReviewFormatter {
     }
 
     return `${count} ${label}${count === 1 ? "" : "s"}`;
+  }
+
+  private formatChangeSummary(summary: string): string {
+    const normalized = summary.trim();
+
+    if (!normalized) {
+      return "";
+    }
+
+    const lines = normalized.split(/\r?\n/);
+    const hasExistingList = lines.some((line) => /^(\s*[-*]\s+|\s*\d+\.\s+)/.test(line));
+
+    if (hasExistingList) {
+      return `${normalized}\n\n`;
+    }
+
+    const sentences = this.splitSummarySentences(normalized);
+    if (sentences.length <= 2) {
+      return `${normalized}\n\n`;
+    }
+
+    return `${sentences[0]}\n\n${sentences
+      .slice(1)
+      .map((sentence) => `- ${sentence}`)
+      .join("\n")}\n\n`;
+  }
+
+  private splitSummarySentences(summary: string): string[] {
+    const codeSpans: string[] = [];
+    const protectedSummary = summary.replace(/`[^`]+`/g, (match) => {
+      const token = `__OPENDIFF_CODE_SPAN_${codeSpans.length}__`;
+      codeSpans.push(match);
+      return token;
+    });
+
+    return (
+      protectedSummary
+        .replace(/\s+/g, " ")
+        .match(/[^.!?]+(?:[.!?]+|$)/g)
+        ?.map((sentence) =>
+          sentence
+            .trim()
+            .replace(
+              /__OPENDIFF_CODE_SPAN_(\d+)__/g,
+              (_token, index) => codeSpans[Number(index)] ?? ""
+            )
+        )
+        .filter(Boolean) ?? [summary]
+    );
+  }
+
+  private formatDetailedIssue(issue: SummaryIssue): string {
+    let body = `#### ${TYPE_LABELS[issue.type]} in \`${this.formatIssueLocation(issue)}\`\n\n`;
+    body += `**Code reference:** \`${this.formatIssueLocation(issue)}\`\n\n`;
+    body += `**Issue:** ${issue.message}\n\n`;
+
+    if (issue.description && issue.description !== issue.message) {
+      body += `${issue.description}\n\n`;
+    }
+
+    if (issue.suggestion) {
+      body += `**Suggestion:** ${issue.suggestion}\n\n`;
+    }
+
+    if (issue.suggestedCode) {
+      body += "```suggestion\n";
+      body += issue.suggestedCode.endsWith("\n") ? issue.suggestedCode : `${issue.suggestedCode}\n`;
+      body += "```\n\n";
+    }
+
+    body += `${buildIssueMarker(issue)}\n\n`;
+    return body;
+  }
+
+  private formatIssueLocation(issue: Pick<CodeIssue, "file" | "line" | "endLine">): string {
+    return issue.endLine && issue.endLine > issue.line
+      ? `${issue.file}:${issue.line}-${issue.endLine}`
+      : `${issue.file}:${issue.line}`;
   }
 
   private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
