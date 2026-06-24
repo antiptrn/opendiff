@@ -4,7 +4,7 @@ import type { CodeIssue, FileToReview } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import type { DiffPatches } from "../review/types";
-import { withClonedRepo } from "../utils/git";
+import { isCommitDriftError, withClonedRepo } from "../utils/git";
 import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import {
@@ -884,6 +884,10 @@ export class WebhookHandler {
         }
       );
     } catch (error) {
+      if (isCommitDriftError(error)) {
+        throw error;
+      }
+
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),

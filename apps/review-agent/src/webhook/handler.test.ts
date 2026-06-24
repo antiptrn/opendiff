@@ -5,6 +5,7 @@ import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import { buildIssueMarker } from "../utils/issue-markers";
+import { CommitDriftError } from "../utils/git";
 
 process.env.OPENDIFF_GIT_CACHE_DISABLED = "true";
 
@@ -896,6 +897,16 @@ describe("WebhookHandler", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("API error");
+    });
+
+    it("should rethrow commit drift errors", async () => {
+      mockGitHubClient.getPullRequestFiles.mockImplementation(async () => {
+        throw new CommitDriftError("owner", "repo", "feature-branch", "actual-sha", "abc123");
+      });
+
+      await expect(
+        handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot")
+      ).rejects.toBeInstanceOf(CommitDriftError);
     });
 
     it("should skip deleted files", async () => {
