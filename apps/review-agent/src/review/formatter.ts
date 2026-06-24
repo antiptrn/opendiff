@@ -251,6 +251,9 @@ export class ReviewFormatter {
     const currentIssuesByFingerprint = new Map(
       result.issues.map((issue) => [buildIssueFingerprint(issue), issue])
     );
+    const bodyOnlyFingerprints = new Set(
+      bodyOnlyIssues.map((issue) => buildIssueFingerprint(issue))
+    );
     const enrichIssue = (issue: SummaryIssue): SummaryIssue => {
       if (!issue.fingerprint) {
         return issue;
@@ -259,16 +262,25 @@ export class ReviewFormatter {
       const currentIssue = currentIssuesByFingerprint.get(issue.fingerprint);
       return currentIssue ? { ...currentIssue, ...issue } : issue;
     };
-    const newIssues: SummaryIssue[] = (history?.newIssues ?? result.issues).map(enrichIssue);
+    const shouldRenderInOpenSections = (issue: SummaryIssue): boolean => {
+      const fingerprint = issue.fingerprint ?? buildIssueFingerprint(issue);
+      return !bodyOnlyFingerprints.has(fingerprint);
+    };
+    const newIssues: SummaryIssue[] = (history?.newIssues ?? result.issues)
+      .map(enrichIssue)
+      .filter(shouldRenderInOpenSections);
     const unresolvedHistoricalIssues: SummaryIssue[] = (
       history?.unresolvedHistoricalIssues ?? []
-    ).map(enrichIssue);
+    )
+      .map(enrichIssue)
+      .filter(shouldRenderInOpenSections);
     const openIssues = [
       ...unresolvedHistoricalIssues,
       ...newIssues.filter(
         (issue) =>
           !unresolvedHistoricalIssues.some((existing) => existing.fingerprint === issue.fingerprint)
       ),
+      ...bodyOnlyIssues,
     ];
     const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
     let summary = "## OpenDiff Summary\n\n";
