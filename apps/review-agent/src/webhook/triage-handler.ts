@@ -123,11 +123,9 @@ export async function handleTriageAfterReview(
           try {
             const ignoredDir = getAutofixIgnoredDirForPath(issue.file, autofixIgnoredDirs);
             if (ignoredDir) {
-              const reason = `Autofix is configured to ignore \`${ignoredDir}\`.`;
               console.log(
                 `Skipping issue matching ignored autofix path pattern ${ignoredDir}: ${issue.file}`
               );
-              result.skippedIssues.push({ issue, reason });
               continue;
             }
 
