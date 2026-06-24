@@ -78,8 +78,20 @@ interface PullRequestWebhookPayload {
   };
 }
 
+type PullRequestReviewJobPayload = Omit<PullRequestWebhookPayload, "pull_request"> & {
+  pull_request?: {
+    number: number;
+    title?: string;
+    body?: string | null;
+    draft?: boolean;
+    head?: { sha: string; ref: string };
+    base?: { sha: string; ref: string };
+    user?: { login: string };
+  };
+};
+
 interface PullRequestReviewJob {
-  payload: PullRequestWebhookPayload;
+  payload: PullRequestReviewJobPayload;
   deliveryId: string | null;
 }
 
@@ -175,11 +187,106 @@ async function initWebhookContext(payload: {
   return { owner, repo, settings, githubClient, handler, customRules, triageAgent };
 }
 
-function buildPullRequestReviewJobKey(payload: PullRequestWebhookPayload): string {
+function buildPullRequestReviewJobKey(payload: PullRequestReviewJobPayload): string {
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
   const pullNumber = payload.pull_request?.number ?? "unknown";
   return `${owner}/${repo}#${pullNumber}`;
+}
+
+function getBotMentionAliases(botUsername: string): string[] {
+  const aliases = new Set([botUsername]);
+  if (botUsername === "opendiff-bot") {
+    aliases.add("opendiff");
+  }
+  return [...aliases];
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function commentMentionsBot(body: string | undefined, botUsername: string): boolean {
+  if (!body) {
+    return false;
+  }
+
+  return getBotMentionAliases(botUsername).some((alias) => {
+    const mentionPattern = new RegExp(`(^|\\s)@${escapeRegex(alias)}(?=$|\\s|[^\\w-])`, "i");
+    return mentionPattern.test(body);
+  });
+}
+
+function isBareBotMention(body: string | undefined, botUsername: string): boolean {
+  if (!body) {
+    return false;
+  }
+
+  const normalized = body.trim().replace(/\s+/g, " ").toLowerCase();
+  return getBotMentionAliases(botUsername).some(
+    (alias) => normalized === `@${alias.toLowerCase()}`
+  );
+}
+
+function hasPullRequestDetails(
+  pullRequest: PullRequestReviewJobPayload["pull_request"]
+): pullRequest is NonNullable<PullRequestWebhookPayload["pull_request"]> {
+  return (
+    !!pullRequest &&
+    typeof pullRequest.title === "string" &&
+    Object.hasOwn(pullRequest, "body") &&
+    typeof pullRequest.head?.sha === "string" &&
+    typeof pullRequest.head?.ref === "string" &&
+    typeof pullRequest.base?.sha === "string" &&
+    typeof pullRequest.base?.ref === "string" &&
+    typeof pullRequest.user?.login === "string"
+  );
+}
+
+async function hydratePullRequestReviewPayload(
+  payload: PullRequestReviewJobPayload,
+  githubClient: GitHubClient
+): Promise<PullRequestWebhookPayload | null> {
+  const pullRequest = payload.pull_request;
+  if (!pullRequest) {
+    return null;
+  }
+
+  if (hasPullRequestDetails(pullRequest)) {
+    return payload as PullRequestWebhookPayload;
+  }
+
+  const hydratedPullRequest = await githubClient.getPullRequest(
+    payload.repository.owner.login,
+    payload.repository.name,
+    pullRequest.number
+  );
+
+  return {
+    ...payload,
+    pull_request: {
+      ...hydratedPullRequest,
+      draft: pullRequest.draft ?? hydratedPullRequest.draft,
+    },
+  };
+}
+
+function buildCommentTriggeredReviewPayload(payload: {
+  action: string;
+  sender?: { login: string };
+  installation?: { id: number };
+  repository: PullRequestWebhookPayload["repository"];
+  issue: { number: number };
+}): PullRequestReviewJobPayload {
+  return {
+    action: "comment_requested",
+    sender: payload.sender,
+    installation: payload.installation,
+    repository: payload.repository,
+    pull_request: {
+      number: payload.issue.number,
+    },
+  };
 }
 
 function isReviewRequestedFromBot(payload: PullRequestWebhookPayload): boolean {
@@ -409,23 +516,31 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
       return;
     }
 
-    if (payload.pull_request.draft) {
-      console.log(`Skipping draft PR ${owner}/${repo}#${payload.pull_request.number}`);
+    const reviewPayload = await hydratePullRequestReviewPayload(payload, githubClient);
+    if (!reviewPayload?.pull_request) {
+      console.log(
+        `Skipping queued pull_request webhook without pull_request details (${deliveryId})`
+      );
       return;
     }
 
-    const sender = payload.sender?.login;
+    if (reviewPayload.pull_request.draft) {
+      console.log(`Skipping draft PR ${owner}/${repo}#${reviewPayload.pull_request.number}`);
+      return;
+    }
+
+    const sender = reviewPayload.sender?.login;
     let triageEnabled = true;
-    if (payload.action === "synchronize" && sender?.includes("[bot]")) {
+    if (reviewPayload.action === "synchronize" && sender?.includes("[bot]")) {
       const pendingLocks = await hasPendingClarificationLocks(
         owner,
         repo,
-        payload.pull_request.number
+        reviewPayload.pull_request.number
       );
       if (pendingLocks) {
         triageEnabled = false;
         console.log(
-          `Skipping triage on bot synchronize for ${owner}/${repo}#${payload.pull_request.number} due to pending clarification locks`
+          `Skipping triage on bot synchronize for ${owner}/${repo}#${reviewPayload.pull_request.number} due to pending clarification locks`
         );
       }
     }
@@ -443,14 +558,19 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
       githubClient,
       owner,
       repo,
-      pullNumber: payload.pull_request.number,
-      id: await addReviewInProgressReaction(githubClient, owner, repo, payload.pull_request.number),
+      pullNumber: reviewPayload.pull_request.number,
+      id: await addReviewInProgressReaction(
+        githubClient,
+        owner,
+        repo,
+        reviewPayload.pull_request.number
+      ),
     };
 
     const result =
-      payload.action === "review_requested"
+      reviewPayload.action === "review_requested"
         ? await handler.handlePullRequestReviewRequested(
-            payload,
+            reviewPayload,
             BOT_USERNAME,
             BOT_TEAMS,
             customRules,
@@ -458,7 +578,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
             reviewIgnoredDirs
           )
         : await handler.handlePullRequestOpened(
-            payload,
+            reviewPayload,
             BOT_USERNAME,
             customRules,
             triageOptions,
@@ -467,7 +587,9 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
           );
 
     if (result.skipped) {
-      console.log(`Queued PR review skipped for ${owner}/${repo}#${payload.pull_request.number}`);
+      console.log(
+        `Queued PR review skipped for ${owner}/${repo}#${reviewPayload.pull_request.number}`
+      );
       return;
     }
 
@@ -477,7 +599,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
         githubClient,
         owner,
         repo,
-        pullNumber: payload.pull_request.number,
+        pullNumber: reviewPayload.pull_request.number,
         kind: "review",
         deliveryId,
         error,
@@ -490,7 +612,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
       githubRepoId: payload.repository.id,
       owner,
       repo,
-      pullNumber: payload.pull_request.number,
+      pullNumber: reviewPayload.pull_request.number,
       reviewType: "initial",
       reviewId: result.reviewId,
       tokensUsed: result.tokensUsed,
@@ -786,7 +908,7 @@ app.post("/webhook", async (c) => {
         console.log(
           `Comment responses disabled for ${owner}/${repo} (effectiveEnabled: ${settings.effectiveEnabled})`
         );
-        if (payload.comment?.body?.includes(`@${BOT_USERNAME}`)) {
+        if (commentMentionsBot(payload.comment?.body, BOT_USERNAME)) {
           await commentOnTokenQuotaBlocked({
             githubClient,
             owner,
@@ -860,7 +982,63 @@ app.post("/webhook", async (c) => {
       return c.json({ status: "ignored", reason: "not_pull_request" });
     }
 
-    if (!payload.comment?.body?.includes(`@${BOT_USERNAME}`)) {
+    const commentBody = payload.comment?.body;
+    if (!commentBody) {
+      return c.json({ status: "ignored", reason: "bot_not_mentioned" });
+    }
+
+    if (isBareBotMention(commentBody, BOT_USERNAME)) {
+      try {
+        await getRepositorySettings(
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.repository.id
+        );
+      } catch (error) {
+        await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId);
+        if (isSettingsApiUnavailableError(error)) {
+          return settingsApiUnavailableResponse(c, error);
+        }
+        throw error;
+      }
+
+      const reviewPayload = buildCommentTriggeredReviewPayload(payload);
+      const key = buildPullRequestReviewJobKey(reviewPayload);
+      const enqueueResult = reviewQueue.enqueue(key, {
+        payload: reviewPayload,
+        deliveryId,
+      });
+
+      if (!enqueueResult.accepted) {
+        console.warn(`Review queue full; rejecting ${key} for GitHub retry`);
+        return c.json(
+          {
+            status: "busy",
+            reason: "review_queue_full",
+            reviewQueue: enqueueResult.stats,
+          },
+          503
+        );
+      }
+
+      console.log(
+        `Queued PR review ${enqueueResult.jobId} for ${key} (issue_comment, ${enqueueResult.status})`
+      );
+
+      return c.json(
+        {
+          status: "queued",
+          trigger: "issue_comment",
+          queueStatus: enqueueResult.status,
+          jobId: enqueueResult.jobId,
+          key,
+          reviewQueue: enqueueResult.stats,
+        },
+        202
+      );
+    }
+
+    if (!commentBody.includes(`@${BOT_USERNAME}`)) {
       return c.json({ status: "ignored", reason: "bot_not_mentioned" });
     }
 
