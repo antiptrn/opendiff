@@ -431,9 +431,7 @@ async function refreshNoActionTriageSummaryComment(
     clarifications: [],
   });
   await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
-  console.log(
-    "Updated triage summary: no remediation actions were needed for this push"
-  );
+  console.log("Updated triage summary: no remediation actions were needed for this push");
 }
 
 async function replyToInlineComments(
@@ -597,9 +595,8 @@ function formatTriageSummary(
   // Fixed issues
   if (totalFixed > 0) {
     body += "### Fixed\n\n";
-    for (const { issue, commitSha, explanation } of fixedIssues) {
-      const details = explanation ? `: ${formatSummaryDetail(explanation)}` : "";
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — \`${commitSha.slice(0, 7)}\`${details}\n`;
+    for (const { explanation } of fixedIssues) {
+      body += `- ${formatSummaryDetail(explanation)}\n`;
     }
     body += "\n";
   }

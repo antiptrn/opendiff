@@ -99,15 +99,17 @@ describe("handleTriageAfterReview", () => {
     expect(body).toContain("1 issue fixed automatically.");
     expect(body).toContain("### Fixed");
     expect(body).toContain(
-      "- **bug-risk** in `apps/review-agent/src/webhook/handler.ts:454` — `abc123`: Adjusted cleanupResolvedPreviousReviews so resolved reviews are skipped. The summary remains readable."
+      "- Adjusted cleanupResolvedPreviousReviews so resolved reviews are skipped. The summary remains readable."
     );
+    expect(body).not.toContain("**bug-risk** in `apps/review-agent/src/webhook/handler.ts:454`");
+    expect(body).not.toContain("`abc123`:");
     expect(body).not.toContain("✅");
     expect(body).not.toContain("### ✅ Fixed");
     expect(body).not.toContain("  -");
     expect(body).not.toContain("  >");
   });
 
-  it("should not update existing remediation summary comments when no autofix actions occur", async () => {
+  it("should refresh existing remediation summary comments when no autofix actions occur", async () => {
     mockGitHubClient.getIssueComments = vi.fn().mockResolvedValue([
       {
         id: 100,
@@ -132,7 +134,12 @@ describe("handleTriageAfterReview", () => {
 
     expect(result.success).toBe(true);
     expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
-    expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+    expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+      "owner",
+      "repo",
+      100,
+      expect.stringContaining("## Autofix Summary\n\nNo autofix actions were needed for this push.")
+    );
   });
 
   it("should not post an autofix summary on a clean pass when autofix is off", async () => {
