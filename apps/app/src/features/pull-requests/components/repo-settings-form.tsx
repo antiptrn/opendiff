@@ -9,12 +9,14 @@ interface RepoSettingsFormProps {
   initialSettings: {
     enabled: boolean;
     autofixEnabled: boolean;
+    autofixIgnoredDirs: string;
     sensitivity: number;
     customReviewRules: string;
   };
   onSave: (settings: {
     enabled: boolean;
     autofixEnabled: boolean;
+    autofixIgnoredDirs: string;
     sensitivity: number;
     customReviewRules: string;
   }) => Promise<void>;
@@ -84,6 +86,25 @@ export function RepoSettingsForm({
           </p>
         </div>
       </div>
+
+      {settings.autofixEnabled && (
+        <div className="ml-7 space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Directories</Label>
+            <p className="text-sm text-muted-foreground">
+              One directory per line. Autofix will skip issues and generated changes under these
+              paths.
+            </p>
+          </div>
+          <Textarea
+            id="autofix-ignore-dirs"
+            value={settings.autofixIgnoredDirs}
+            onChange={(e) => updateSetting("autofixIgnoredDirs", e.target.value)}
+            placeholder={"generated\nvendor\napps/legacy"}
+            rows={4}
+          />
+        </div>
+      )}
 
       {/* Sensitivity slider */}
       <div className="space-y-3">

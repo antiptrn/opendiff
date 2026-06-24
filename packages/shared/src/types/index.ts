@@ -54,6 +54,7 @@ export interface RepositorySettings {
   enabled: boolean;
   effectiveEnabled: boolean;
   autofixEnabled: boolean;
+  autofixIgnoredDirs?: string;
   sensitivity: number;
   disabledReason?:
     | "repository_not_configured"

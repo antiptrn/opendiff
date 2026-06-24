@@ -48,6 +48,7 @@ export async function handleTriageAfterReview(
   autofixEnabled: boolean,
   options?: {
     postSummary?: boolean;
+    autofixIgnoredDirs?: string[];
   }
 ): Promise<TriageResult> {
   const result: TriageResult = {
@@ -58,15 +59,21 @@ export async function handleTriageAfterReview(
   };
 
   const postSummary = options?.postSummary ?? true;
+  const autofixIgnoredDirs = normalizeAutofixIgnoredDirs(options?.autofixIgnoredDirs ?? []);
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
     if (autofixEnabled && postSummary) {
-      const summaryBody = formatTriageSummary(result.fixedIssues, result.skippedIssues, result.clarificationIssues, {
-        fixed: [],
-        skipped: [],
-        clarifications: [],
-      });
+      const summaryBody = formatTriageSummary(
+        result.fixedIssues,
+        result.skippedIssues,
+        result.clarificationIssues,
+        {
+          fixed: [],
+          skipped: [],
+          clarifications: [],
+        }
+      );
       await upsertTriageSummaryComment(
         github,
         owner,
@@ -113,6 +120,16 @@ export async function handleTriageAfterReview(
           console.log(`Processing issue: ${issue.type} in ${issue.file}:${issue.line}`);
 
           try {
+            const ignoredDir = getAutofixIgnoredDirForPath(issue.file, autofixIgnoredDirs);
+            if (ignoredDir) {
+              const reason = `Autofix is configured to ignore \`${ignoredDir}\`.`;
+              console.log(
+                `Skipping issue in ignored autofix directory ${ignoredDir}: ${issue.file}`
+              );
+              result.skippedIssues.push({ issue, reason });
+              continue;
+            }
+
             const matchingComment = findMatchingComment(botComments, issue, new Set<number>());
             let conversationContext: string | undefined;
 
@@ -144,6 +161,7 @@ export async function handleTriageAfterReview(
             // Use OpenCode SDK to fix the issue - it has full access to read/write files
             const fix = await triageAgent.fixIssue(issue, _tempDir, {
               conversationContext,
+              autofixIgnoredDirs,
             });
 
             if (!fix.fixed) {
@@ -175,6 +193,23 @@ export async function handleTriageAfterReview(
 
             // Add all modified/created files and capture the staged diff
             await git.add(".");
+            const stagedFiles = (await git.diff(["--cached", "--name-only", "--no-renames"]))
+              .split("\n")
+              .map((file) => file.trim())
+              .filter(Boolean);
+            const ignoredChangedDir =
+              stagedFiles
+                .map((file) => getAutofixIgnoredDirForPath(file, autofixIgnoredDirs))
+                .find((dir): dir is string => Boolean(dir)) ?? null;
+            if (ignoredChangedDir) {
+              await git.raw(["reset", "--hard"]);
+              await git.raw(["clean", "-fd"]);
+
+              const reason = `Autofix produced changes under ignored directory \`${ignoredChangedDir}\`.`;
+              console.log(reason);
+              result.skippedIssues.push({ issue, reason });
+              continue;
+            }
             const stagedDiff = await git.diff(["--cached", "--no-color"]);
             const commitResult = await git.commit(commitMessage);
 
@@ -266,6 +301,30 @@ export async function handleTriageAfterReview(
   }
 
   return result;
+}
+
+function normalizeAutofixPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+function normalizeAutofixIgnoredDirs(dirs: string[]): string[] {
+  return Array.from(new Set(dirs.map(normalizeAutofixPath).filter(Boolean)));
+}
+
+export function getAutofixIgnoredDirForPath(
+  filePath: string,
+  ignoredDirs: string[]
+): string | null {
+  const normalizedPath = normalizeAutofixPath(filePath);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  return (
+    normalizeAutofixIgnoredDirs(ignoredDirs).find(
+      (dir) => normalizedPath === dir || normalizedPath.startsWith(`${dir}/`)
+    ) ?? null
+  );
 }
 
 interface BodyOnlyResult {

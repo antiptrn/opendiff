@@ -186,6 +186,13 @@ function isReviewRequestedFromBot(payload: PullRequestWebhookPayload): boolean {
   );
 }
 
+function parseAutofixIgnoredDirs(value?: string): string[] {
+  return (value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""))
+    .filter(Boolean);
+}
+
 function settingsApiUnavailableResponse(c: Context, error: unknown): Response {
   const message = error instanceof Error ? error.message : "Settings API unavailable";
   console.error("Settings API unavailable while handling webhook:", error);
@@ -425,6 +432,7 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
     const triageOptions = {
       enabled: triageEnabled,
       autofixEnabled: settings.autofixEnabled,
+      autofixIgnoredDirs: parseAutofixIgnoredDirs(settings.autofixIgnoredDirs),
       triageAgent,
       botUsername: BOT_USERNAME,
     };
@@ -786,7 +794,12 @@ app.post("/webhook", async (c) => {
         return c.json({ status: "skipped", reason: "disabled" });
       }
 
-      const result = await handler.handleReviewComment(payload, BOT_USERNAME, customRules);
+      const result = await handler.handleReviewComment(
+        payload,
+        BOT_USERNAME,
+        customRules,
+        parseAutofixIgnoredDirs(settings.autofixIgnoredDirs)
+      );
 
       if (result.skipped) {
         console.log("Review comment skipped (not for bot)");
