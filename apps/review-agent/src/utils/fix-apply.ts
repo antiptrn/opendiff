@@ -1,5 +1,5 @@
 import { unlinkSync, writeFileSync } from "node:fs";
-import { withRetry } from "./retry";
+import { pushHeadToBranch } from "./git";
 
 interface ApplyPatchAndPushOptions {
   tempDir: string;
@@ -7,7 +7,6 @@ interface ApplyPatchAndPushOptions {
     raw: (args: string[]) => Promise<unknown>;
     add: (files: string | string[]) => Promise<unknown>;
     commit: (message: string) => Promise<{ commit: string }>;
-    push: (remote: string, branch: string) => Promise<unknown>;
   };
   diff: string;
   commitMessage: string;
@@ -23,7 +22,7 @@ export async function applyPatchAndPush(options: ApplyPatchAndPushOptions): Prom
 
   await git.add(".");
   const commitResult = await git.commit(commitMessage);
-  await withRetry(() => git.push("origin", branch), "git push");
+  await pushHeadToBranch(git, branch);
 
   return commitResult.commit;
 }

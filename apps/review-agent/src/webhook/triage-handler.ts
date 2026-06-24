@@ -1,9 +1,8 @@
 import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
-import { withClonedRepo } from "../utils/git";
+import { pushHeadToBranch, withClonedRepo } from "../utils/git";
 import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
-import { withRetry } from "../utils/retry";
 
 interface TriageResult {
   success: boolean;
@@ -237,7 +236,7 @@ export async function handleTriageAfterReview(
         // Push all commits if any fixes were made and autofix is enabled
         if (result.fixedIssues.length > 0 && autofixEnabled) {
           console.log(`Pushing ${result.fixedIssues.length} commits to ${pullRequest.head.ref}`);
-          await withRetry(() => git.push("origin", pullRequest.head.ref), "git push");
+          await pushHeadToBranch(git, pullRequest.head.ref);
         }
 
         // Reply to inline comments or just match comment IDs for DB storage

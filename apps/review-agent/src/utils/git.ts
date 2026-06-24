@@ -64,6 +64,8 @@ interface RepoCachePaths {
   mirrorDir: string;
   lastUsedFile: string;
   worktreeDir: string;
+  worktreeBranchName: string;
+  worktreeBranchRef: string;
   branchRef: string;
   branchMetaFile: string;
 }
@@ -153,6 +155,13 @@ export async function withClonedRepo<T>(
   }
 }
 
+export async function pushHeadToBranch(git: Pick<SimpleGit, "raw">, branch: string): Promise<void> {
+  await withRetry(
+    () => git.raw(["push", "origin", `HEAD:refs/heads/${branch}`]),
+    `git push origin HEAD:${branch}`
+  );
+}
+
 export function getGitCacheConfig(env: NodeJS.ProcessEnv = process.env): GitCacheConfig {
   const rootDir = env.OPENDIFF_GIT_CACHE_DIR?.trim() || join(tmpdir(), "opendiff-git-cache");
 
@@ -234,8 +243,8 @@ async function prepareCachedWorktree(
                 "worktree",
                 "add",
                 "--force",
-                "-B",
-                opts.branch,
+                "-b",
+                paths.worktreeBranchName,
                 paths.worktreeDir,
                 paths.branchRef,
               ])
@@ -250,12 +259,20 @@ async function prepareCachedWorktree(
         `git worktree add ${opts.owner}/${opts.repo}`
       );
       worktreeCreated = true;
-      await writeWorktreeMeta(paths.worktreeDir, paths.repoId, paths.mirrorDir);
+      await writeWorktreeMeta(
+        paths.worktreeDir,
+        paths.repoId,
+        paths.mirrorDir,
+        opts.mode === "read-write" ? paths.worktreeBranchRef : undefined
+      );
       activeWorktrees.add(paths.worktreeDir);
       await touch(paths.lastUsedFile);
     } catch (error) {
       if (worktreeCreated) {
         await removeWorktreeFromMirror(bareGit, paths.worktreeDir);
+        if (opts.mode === "read-write") {
+          await deleteRefIfExists(bareGit, paths.worktreeBranchRef);
+        }
       }
       throw error;
     }
@@ -310,12 +327,15 @@ async function cleanupWorkspace(dir: string, config: GitCacheConfig): Promise<vo
 
   try {
     const rawMeta = await readFile(join(dir, WORKTREE_META_FILE), "utf8");
-    const meta = JSON.parse(rawMeta) as { mirrorDir?: unknown };
+    const meta = JSON.parse(rawMeta) as { mirrorDir?: unknown; worktreeBranchRef?: unknown };
     if (typeof meta.mirrorDir !== "string") {
       throw new Error("Worktree metadata is missing mirrorDir");
     }
     const git = simpleGit(meta.mirrorDir);
     await removeWorktreeFromMirror(git, dir);
+    if (typeof meta.worktreeBranchRef === "string") {
+      await deleteRefIfExists(git, meta.worktreeBranchRef);
+    }
   } catch {
     try {
       await rm(dir, { recursive: true, force: true });
@@ -393,12 +413,15 @@ function buildRepoCachePaths(opts: WithClonedRepoOptions, config: GitCacheConfig
     randomId(),
   ].join("-");
   const mirrorDir = join(config.reposDir, `${repoId}.git`);
+  const worktreeBranchName = `opendiff-write/${worktreeId}`;
 
   return {
     repoId,
     mirrorDir,
     lastUsedFile: join(mirrorDir, LAST_USED_FILE),
     worktreeDir: join(config.worktreesDir, worktreeId),
+    worktreeBranchName,
+    worktreeBranchRef: `refs/heads/${worktreeBranchName}`,
     branchRef: `refs/opendiff/heads/${branchId}`,
     branchMetaFile: join(mirrorDir, REF_META_DIR, `${branchId}.json`),
   };
@@ -493,7 +516,8 @@ async function validateCommitSha(
 async function writeWorktreeMeta(
   worktreeDir: string,
   repoId: string,
-  mirrorDir: string
+  mirrorDir: string,
+  worktreeBranchRef?: string
 ): Promise<void> {
   await writeFile(
     join(worktreeDir, WORKTREE_META_FILE),
@@ -501,6 +525,7 @@ async function writeWorktreeMeta(
       {
         repoId,
         mirrorDir,
+        worktreeBranchRef,
         createdAt: new Date().toISOString(),
       },
       null,
@@ -620,6 +645,14 @@ async function pruneCachedRefs(mirrorDir: string, refTtlMs: number): Promise<voi
     } catch {
       // GC is opportunistic.
     }
+  }
+}
+
+async function deleteRefIfExists(git: SimpleGit, ref: string): Promise<void> {
+  try {
+    await git.raw(["update-ref", "-d", ref]);
+  } catch {
+    // Ref cleanup is best-effort.
   }
 }
 
