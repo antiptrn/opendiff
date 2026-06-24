@@ -451,9 +451,7 @@ async function cleanupResolvedPreviousReviews(
     if (!botUsers.has(review.user)) {
       continue;
     }
-    if (review.body.includes(resolvedReviewBody())) {
-      continue;
-    }
+    const reviewAlreadyResolved = review.body.includes(resolvedReviewBody());
 
     const relatedComments = commentsByReviewId.get(review.id) ?? [];
     const issueComments = relatedComments.filter(
@@ -501,6 +499,10 @@ async function cleanupResolvedPreviousReviews(
           console.warn(`Failed to delete resolved review comment ${threadComment.id}:`, error);
         }
       }
+    }
+
+    if (reviewAlreadyResolved) {
+      continue;
     }
 
     try {
