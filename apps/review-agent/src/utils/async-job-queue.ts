@@ -208,7 +208,7 @@ export class AsyncJobQueue<T> {
         this.remember(entry);
         setTimeout(() => void this.retry(entry), this.retryDelayMs);
       } else {
-        await this.markTerminalFailure(entry, error);
+        this.markTerminalFailure(entry, error);
       }
     } finally {
       this.runningById.delete(entry.id);
@@ -226,7 +226,7 @@ export class AsyncJobQueue<T> {
       entry.status = "failed";
       entry.lastError = entry.lastError || "Queue full before retry";
       entry.updatedAt = Date.now();
-      await this.markTerminalFailure(entry, new Error(entry.lastError));
+      this.markTerminalFailure(entry, new Error(entry.lastError));
       return;
     }
 
@@ -238,7 +238,7 @@ export class AsyncJobQueue<T> {
     this.drain();
   }
 
-  private async markTerminalFailure(entry: QueueEntry<T>, error: unknown): Promise<void> {
+  private markTerminalFailure(entry: QueueEntry<T>, error: unknown): void {
     entry.status = "failed";
     entry.updatedAt = Date.now();
     this.failed += 1;
@@ -248,16 +248,16 @@ export class AsyncJobQueue<T> {
       return;
     }
 
-    try {
-      await this.onTerminalFailure(error, entry.data, {
+    void Promise.resolve(
+      this.onTerminalFailure(error, entry.data, {
         id: entry.id,
         key: entry.key,
         attempt: entry.attempts,
         maxAttempts: this.maxAttempts,
-      });
-    } catch (callbackError) {
+      })
+    ).catch((callbackError) => {
       console.error(`Queue ${this.options.name} terminal failure callback failed:`, callbackError);
-    }
+    });
   }
 
   private remember(entry: QueueEntry<T>): void {
