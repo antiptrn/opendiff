@@ -268,45 +268,54 @@ describe("Application endpoints", () => {
     });
 
     it("should ignore non-bare alias mentions for issue comments", async () => {
-      const { default: app } = await import("./index");
+      const { vi } = await import("vitest");
+      vi.resetModules();
+      delete process.env.BOT_USERNAME;
 
-      const payload = JSON.stringify({
-        action: "created",
-        sender: { login: "reviewer" },
-        repository: {
-          id: 1,
-          owner: { login: "owner" },
-          name: "repo",
-        },
-        issue: {
-          number: 44,
-          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/44" },
-        },
-        comment: {
-          id: 1003,
-          body: "@opendiff can you explain this?",
-          user: { login: "reviewer" },
-        },
-      });
-      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+      try {
+        const { default: app } = await import("./index");
 
-      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-hub-signature-256": signature,
-          "x-github-event": "issue_comment",
-          "x-github-delivery": "delivery-comment-alias",
-        },
-        body: payload,
-      });
+        const payload = JSON.stringify({
+          action: "created",
+          sender: { login: "reviewer" },
+          repository: {
+            id: 1,
+            owner: { login: "owner" },
+            name: "repo",
+          },
+          issue: {
+            number: 44,
+            pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/44" },
+          },
+          comment: {
+            id: 1003,
+            body: "@opendiff can you explain this?",
+            user: { login: "reviewer" },
+          },
+        });
+        const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
 
-      const response = await app.fetch(request);
-      const body = await response.json();
+        const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-hub-signature-256": signature,
+            "x-github-event": "issue_comment",
+            "x-github-delivery": "delivery-comment-alias",
+          },
+          body: payload,
+        });
 
-      expect(response.status).toBe(200);
-      expect(body.status).toBe("ignored");
-      expect(body.reason).toBe("bot_not_mentioned");
+        const response = await app.fetch(request);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.status).toBe("ignored");
+        expect(body.reason).toBe("bot_not_mentioned");
+      } finally {
+        process.env.BOT_USERNAME = "test-bot";
+        vi.resetModules();
+      }
     });
 
     it("should ignore review_requested events for other reviewers", async () => {
