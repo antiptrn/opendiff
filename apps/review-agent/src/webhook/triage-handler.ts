@@ -425,13 +425,9 @@ async function refreshNoActionTriageSummaryComment(
     return;
   }
 
-  const summaryBody = formatTriageSummary([], [], [], {
-    fixed: [],
-    skipped: [],
-    clarifications: [],
-  });
-  await github.updateIssueComment(owner, repo, existingSummary.id, summaryBody);
-  console.log("Updated triage summary: no remediation actions were needed for this push");
+  console.log(
+    `Skipped triage summary refresh for comment ${existingSummary.id}: no remediation actions were needed for this push`
+  );
 }
 
 async function replyToInlineComments(
