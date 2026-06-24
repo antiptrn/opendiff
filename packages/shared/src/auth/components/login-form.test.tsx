@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("LoginForm", () => {
-  it("keeps provider buttons hidden until Turnstile has rendered", async () => {
+  it("keeps provider buttons hidden until Turnstile has produced a token", async () => {
     const onVerificationStatusChange = vi.fn();
     renderLoginForm({ onVerificationStatusChange });
 
@@ -52,12 +52,14 @@ describe("LoginForm", () => {
 
     const script = await getTurnstileScript();
     let callback: ((token: string) => void) | undefined;
+    const execute = vi.fn(() => callback?.("turnstile-token"));
     window.turnstile = {
       render: vi.fn((_container, options) => {
         callback = options.callback;
         return "widget-id";
       }),
-      execute: vi.fn(() => callback?.("turnstile-token")),
+      execute,
+      reset: vi.fn(),
       remove: vi.fn(),
     };
 
@@ -65,6 +67,7 @@ describe("LoginForm", () => {
 
     const githubButton = await screen.findByRole("button", { name: /login with github/i });
     expect(onVerificationStatusChange).toHaveBeenCalledWith("ready");
+    const executeCallsBeforeClick = execute.mock.calls.length;
 
     fireEvent.click(githubButton);
 
@@ -72,6 +75,7 @@ describe("LoginForm", () => {
       expect(window.location.href).toContain("/auth/github");
       expect(window.location.href).toContain("turnstileToken=turnstile-token");
     });
+    expect(execute).toHaveBeenCalledTimes(executeCallsBeforeClick);
   });
 
   it("waits for an already injected Turnstile script to load after remounting", async () => {
@@ -85,8 +89,12 @@ describe("LoginForm", () => {
     expect(screen.queryByRole("button", { name: /login with github/i })).not.toBeInTheDocument();
 
     window.turnstile = {
-      render: vi.fn(() => "widget-id"),
+      render: vi.fn((_container, options) => {
+        options.callback("turnstile-token");
+        return "widget-id";
+      }),
       execute: vi.fn(),
+      reset: vi.fn(),
       remove: vi.fn(),
     };
 
