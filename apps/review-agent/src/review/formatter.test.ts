@@ -229,6 +229,7 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("Proof:");
       expect(body).not.toContain("- Evidence:");
       expect(body).toContain("Not safe to merge yet.");
+      expect(body).toContain("The reviewed changes are: Overall PR summary.");
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 critical issue."
       );
@@ -276,6 +277,7 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
       expect(body).toContain("Merge with caution.");
+      expect(body).toContain("The reviewed changes are: Initial review summary.");
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 warning."
       );
@@ -308,9 +310,14 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("## OpenDiff Summary");
       expect(body).not.toContain("### What This PR Changes");
       expect(body).toContain(
-        "Safe to merge based on this review because OpenDiff returned an `approve` verdict and found no open issues"
+        "Safe to merge based on this review. The reviewed changes are: This PR updates the login flow and keeps existing session behavior intact."
       );
-      expect(body).toContain("zero critical, warning, or suggestion findings");
+      expect(body).toContain(
+        "OpenDiff approved those changes and found no open issues against the changed code"
+      );
+      expect(body).toContain(
+        "the review evidence does not show behavior, security, performance, or maintainability risk"
+      );
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
       expect(body).not.toContain("- Verdict:");
@@ -355,6 +362,7 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
       expect(body).toContain("Merge with caution.");
+      expect(body).toContain("The reviewed changes are: Rereview summary.");
       expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 2 warnings."
       );
