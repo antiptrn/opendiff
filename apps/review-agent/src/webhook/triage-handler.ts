@@ -65,25 +65,13 @@ export async function handleTriageAfterReview(
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
     if (autofixEnabled && postSummary) {
-      const summaryBody = formatTriageSummary(
-        result.fixedIssues,
-        result.skippedIssues,
-        result.clarificationIssues,
-        {
-          fixed: [],
-          skipped: [],
-          clarifications: [],
-        }
-      );
-      await upsertTriageSummaryComment(
+      await refreshNoActionTriageSummaryComment(
         github,
         owner,
         repo,
         pullRequest.number,
-        botUsername,
-        summaryBody
+        botUsername
       );
-      console.log("Upserted triage summary: no remediation actions were needed for this push");
     }
     return result;
   }
@@ -293,25 +281,13 @@ export async function handleTriageAfterReview(
             );
           }
         } else if (ignoredIssueCount > 0 && autofixEnabled && postSummary) {
-          const summaryBody = formatTriageSummary(
-            result.fixedIssues,
-            result.skippedIssues,
-            result.clarificationIssues,
-            {
-              fixed: [],
-              skipped: [],
-              clarifications: [],
-            }
-          );
-          await upsertTriageSummaryComment(
+          await refreshNoActionTriageSummaryComment(
             github,
             owner,
             repo,
             pullRequest.number,
-            botUsername,
-            summaryBody
+            botUsername
           );
-          console.log("Upserted triage summary: no remediation actions were needed for this push");
         }
       }
     );
@@ -426,6 +402,16 @@ async function upsertTriageSummaryComment(
 
   await github.createIssueComment(owner, repo, pullNumber, summaryBody);
   console.log("Posted triage summary comment");
+}
+
+async function refreshNoActionTriageSummaryComment(
+  _github: GitHubClient,
+  _owner: string,
+  _repo: string,
+  _pullNumber: number,
+  _botUsername: string
+): Promise<void> {
+  console.log("Skipped triage summary: no remediation actions were needed for this push");
 }
 
 async function replyToInlineComments(
@@ -589,9 +575,8 @@ function formatTriageSummary(
   // Fixed issues
   if (totalFixed > 0) {
     body += "### Fixed\n\n";
-    for (const { issue, commitSha, explanation } of fixedIssues) {
-      const details = explanation ? `: ${formatSummaryDetail(explanation)}` : "";
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — \`${commitSha.slice(0, 7)}\`${details}\n`;
+    for (const { explanation } of fixedIssues) {
+      body += `- ${formatSummaryDetail(explanation)}\n`;
     }
     body += "\n";
   }

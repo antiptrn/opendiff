@@ -374,18 +374,19 @@ export class ReviewFormatter {
     counts: Record<CodeIssue["severity"], number>
   ): string {
     const issueTotal = counts.critical + counts.warning + counts.suggestion;
+    const changeContext = this.formatMergeSafetyChangeContext(result.summary);
 
     if (issueTotal === 0) {
       if (result.verdict === "approve") {
-        return "Safe to merge based on this review because OpenDiff returned an `approve` verdict and found no open issues in the current review or unresolved historical issue set. The durable summary has zero critical, warning, or suggestion findings, so there is no OpenDiff evidence blocking the merge.\n\n";
+        return `Safe to merge based on this review. ${changeContext} OpenDiff approved those changes and found no open issues against the changed code or the unresolved historical issue set, so the review evidence does not show behavior, security, performance, or maintainability risk that should block this merge.\n\n`;
       }
 
-      return `No blocking issues were found, but OpenDiff did not explicitly approve this pass because the review verdict was \`${result.verdict}\`. The durable summary has no open findings, so there is no issue evidence blocking the merge; confirm the non-approval verdict is expected before merging.\n\n`;
+      return `No blocking issues were found for the reviewed changes. ${changeContext} OpenDiff found no open issues in the changed code or unresolved historical issue set, but the review verdict was \`${result.verdict}\` instead of \`approve\`; confirm that non-approval verdict is expected before merging.\n\n`;
     }
 
     const issueSummary = this.formatIssueCountSummary(counts);
     const evidenceSummary = this.formatMergeSafetyEvidence(openIssues);
-    const reviewContext = `OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
+    const reviewContext = `${changeContext} OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
 
     if (counts.critical > 0 || result.verdict === "request_changes") {
       return `Not safe to merge yet. ${reviewContext} ${evidenceSummary} These unresolved findings should be addressed before merging.\n\n`;
@@ -396,6 +397,20 @@ export class ReviewFormatter {
     }
 
     return `Safe to merge if the remaining suggestions are acceptable. ${reviewContext} OpenDiff found no critical or warning issues, but suggestion-level findings remain. ${evidenceSummary} Treat these as non-blocking review notes unless they point to behavior you want to clean up before merge.\n\n`;
+  }
+
+  private formatMergeSafetyChangeContext(summary: string): string {
+    const normalized = summary
+      .replace(/\r?\n\s*(?:[-*]|\d+\.)\s+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalized) {
+      return "No detailed code-change summary was available for this pass.";
+    }
+
+    const changeSummary = this.splitSummarySentences(normalized).slice(0, 3).join(" ");
+    return `The reviewed changes are: ${this.formatIssueSentence(changeSummary)}`;
   }
 
   private formatMergeSafetyEvidence(openIssues: SummaryIssue[]): string {
@@ -516,6 +531,7 @@ export class ReviewFormatter {
 
   private formatIssuesTable(issues: SummaryIssue[]): string {
     const hasSuggestions = issues.some((issue) => this.formatIssueSuggestion(issue) !== "");
+    const displayLocations = this.formatIssueDisplayLocations(issues);
     let body = hasSuggestions
       ? "| Finding | Issue | Code | Suggestion |\n"
       : "| Finding | Issue | Code |\n";
@@ -525,7 +541,7 @@ export class ReviewFormatter {
       const row = [
         this.escapeTableCell(this.formatTableFindingLabel(issue.type)),
         this.escapeTableCell(this.formatIssueSummary(issue)),
-        `\`${this.formatIssueLocation(issue)}\``,
+        `\`${displayLocations.get(issue) ?? this.formatIssueLocation(issue)}\``,
       ];
       if (hasSuggestions) {
         row.push(this.escapeTableCell(this.formatIssueSuggestion(issue)));
@@ -587,6 +603,38 @@ export class ReviewFormatter {
     return issue.endLine && issue.endLine > issue.line
       ? `${issue.file}:${issue.line}-${issue.endLine}`
       : `${issue.file}:${issue.line}`;
+  }
+
+  private formatIssueDisplayLocations(
+    issues: SummaryIssue[]
+  ): Map<SummaryIssue, string> {
+    const counts = new Map<string, number>();
+    const shortLocations = new Map<SummaryIssue, string>();
+
+    for (const issue of issues) {
+      const shortLocation = this.formatIssueDisplayLocation(issue);
+      shortLocations.set(issue, shortLocation);
+      counts.set(shortLocation, (counts.get(shortLocation) ?? 0) + 1);
+    }
+
+    return new Map(
+      issues.map((issue) => {
+        const shortLocation = shortLocations.get(issue) ?? this.formatIssueDisplayLocation(issue);
+        return [
+          issue,
+          (counts.get(shortLocation) ?? 0) > 1
+            ? this.formatIssueLocation(issue)
+            : shortLocation,
+        ];
+      })
+    );
+  }
+
+  private formatIssueDisplayLocation(issue: Pick<CodeIssue, "file" | "line" | "endLine">): string {
+    const fileName = issue.file.split("/").filter(Boolean).at(-1) ?? issue.file;
+    return issue.endLine && issue.endLine > issue.line
+      ? `${fileName}:${issue.line}-${issue.endLine}`
+      : `${fileName}:${issue.line}`;
   }
 
   private formatSummary(result: ReviewResult, bodyOnlyIssues: CodeIssue[] = []): string {
