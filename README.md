@@ -2,6 +2,8 @@
 
 # OpenDiff
 
+JIBBERISH
+
 AI-powered code review platform that automatically reviews pull requests, detects anti-patterns, security issues, and code quality problems using OpenCode.
 
 ## Overview
