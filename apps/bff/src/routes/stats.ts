@@ -22,13 +22,12 @@ statsRoutes.get("/", requireAuth(), async (c) => {
   }
 
   try {
-    // If user has org context and no GitHub access, use org repos from database
-    if (orgId && !hasGithubAccess) {
-      // Get org repos from database
+    // In an organization context, match the repositories tab by using configured org repos.
+    // This works for all members regardless of their personal GitHub visibility.
+    if (orgId) {
       const orgRepos = await prisma.repositorySettings.findMany({
         where: {
           organizationId: orgId,
-          enabled: true,
         },
       });
 
@@ -86,14 +85,24 @@ statsRoutes.get("/", requireAuth(), async (c) => {
       return c.json({
         reviewCount,
         connectedRepos: orgRepos.length,
-        totalRepos: orgRepos.length, // For users without GitHub access, total = connected
+        totalRepos: orgRepos.length,
         issuesFound,
         issuesFixed,
       });
     }
 
+    if (!hasGithubAccess || !githubToken) {
+      return c.json({
+        reviewCount: 0,
+        connectedRepos: 0,
+        totalRepos: 0,
+        issuesFound: 0,
+        issuesFixed: 0,
+      });
+    }
+
     // User has GitHub access - use GitHub API
-    const repos = await fetchGitHubRepos(githubToken as string, {
+    const repos = await fetchGitHubRepos(githubToken, {
       sort: "updated",
       maxPages: 10,
       targetCount: 1000,
