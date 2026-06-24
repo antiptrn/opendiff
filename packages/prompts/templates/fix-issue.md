@@ -8,6 +8,7 @@ You are fixing a code review issue. Here are the details:
 - Message: {message}
 {suggestionLine}
 {conversationSection}
+{ignoredDirsSection}
 
 ## Instructions
 1. First, read the file {file} to understand the context

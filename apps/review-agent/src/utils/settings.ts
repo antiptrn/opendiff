@@ -79,6 +79,7 @@ export async function getRepositorySettings(
     enabled: false,
     effectiveEnabled: false,
     autofixEnabled: false,
+    autofixIgnoredDirs: "",
     sensitivity: 50,
   };
 

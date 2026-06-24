@@ -88,6 +88,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       repo,
       enabled,
       autofixEnabled,
+      autofixIgnoredDirs,
       sensitivity,
       customReviewRules,
       githubRepoId,
@@ -96,6 +97,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       repo: string;
       enabled: boolean;
       autofixEnabled?: boolean;
+      autofixIgnoredDirs?: string;
       sensitivity?: number;
       customReviewRules?: string;
       githubRepoId?: number;
@@ -110,6 +112,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
         body: JSON.stringify({
           enabled,
           autofixEnabled,
+          autofixIgnoredDirs,
           sensitivity,
           customReviewRules,
           githubRepoId,

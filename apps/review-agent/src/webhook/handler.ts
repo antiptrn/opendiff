@@ -7,10 +7,10 @@ import type { DiffPatches } from "../review/types";
 import { withClonedRepo } from "../utils/git";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import {
+  type StoredIssueRecord,
   extractFingerprints,
   extractStoredIssueRecords,
   toStoredIssueRecord,
-  type StoredIssueRecord,
 } from "../utils/issue-markers";
 import {
   acquireExecutionLock,
@@ -119,6 +119,7 @@ interface HandlerResult {
 interface TriageOptions {
   enabled: boolean;
   autofixEnabled: boolean;
+  autofixIgnoredDirs?: string[];
   triageAgent: TriageAgent;
   botUsername: string;
 }
@@ -154,7 +155,10 @@ async function upsertReviewSummaryComment(
   console.log("Posted review summary comment");
 }
 
-function shouldSubmitReview(review: { event: "APPROVE" | "COMMENT"; comments?: unknown[] }): boolean {
+function shouldSubmitReview(review: {
+  event: "APPROVE" | "COMMENT";
+  comments?: unknown[];
+}): boolean {
   if (review.comments && review.comments.length > 0) {
     return true;
   }
@@ -381,9 +385,13 @@ async function cleanupResolvedPreviousReviews(
     }
 
     const relatedComments = commentsByReviewId.get(review.id) ?? [];
-    const issueComments = relatedComments.filter((comment) => extractFingerprints(comment.body).length > 0);
+    const issueComments = relatedComments.filter(
+      (comment) => extractFingerprints(comment.body).length > 0
+    );
     const reviewFingerprints = new Set<string>(extractFingerprints(review.body));
-    const commentFingerprints = issueComments.flatMap((comment) => extractFingerprints(comment.body));
+    const commentFingerprints = issueComments.flatMap((comment) =>
+      extractFingerprints(comment.body)
+    );
     const allFingerprints = new Set<string>([...reviewFingerprints, ...commentFingerprints]);
 
     if (allFingerprints.size === 0) {
@@ -486,7 +494,8 @@ export class WebhookHandler {
         payload.repository.owner.login,
         payload.repository.name,
         triageOptions.botUsername,
-        triageOptions.autofixEnabled
+        triageOptions.autofixEnabled,
+        { autofixIgnoredDirs: triageOptions.autofixIgnoredDirs }
       );
 
       if (triageResult.error) {
@@ -612,12 +621,10 @@ export class WebhookHandler {
             botUsername
           );
 
-          const filteredIssues = reviewResult.issues.filter(
-            (issue) => {
-              const fingerprint = buildIssueFingerprint(issue);
-              return !suppressed.has(fingerprint) && !existingMentioned.has(fingerprint);
-            }
-          );
+          const filteredIssues = reviewResult.issues.filter((issue) => {
+            const fingerprint = buildIssueFingerprint(issue);
+            return !suppressed.has(fingerprint) && !existingMentioned.has(fingerprint);
+          });
 
           if (suppressed.size > 0) {
             console.log(
@@ -762,7 +769,10 @@ export class WebhookHandler {
             history
           );
 
-          if (shouldPostStatusUpdate && shouldSubmitReview({ ...review, comments: resolvedComments })) {
+          if (
+            shouldPostStatusUpdate &&
+            shouldSubmitReview({ ...review, comments: resolvedComments })
+          ) {
             const { id } = await this.github.submitReview(
               owner,
               repo,
@@ -798,7 +808,8 @@ export class WebhookHandler {
   async handleReviewComment(
     payload: WebhookPayload,
     botUsername: string,
-    customRules?: string | null
+    customRules?: string | null,
+    autofixIgnoredDirs: string[] = []
   ): Promise<HandlerResult> {
     const { comment, repository, pull_request } = payload;
 
@@ -918,7 +929,7 @@ export class WebhookHandler {
               repo,
               botUsername,
               true,
-              { postSummary: false }
+              { postSummary: false, autofixIgnoredDirs }
             );
 
             if (triageResult.fixedIssues.length > 0) {
