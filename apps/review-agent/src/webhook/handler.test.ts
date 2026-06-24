@@ -15,6 +15,7 @@ mock.module("simple-git", () => ({
     const git = {
       env: () => git,
       clone: async () => undefined,
+      raw: async (args: string[]) => (args[0] === "rev-parse" ? "abc123\n" : ""),
     };
     return git;
   },
