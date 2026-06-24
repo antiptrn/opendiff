@@ -131,11 +131,10 @@ export class ReviewFormatter {
     const counts = this.countBySeverity(result.issues);
 
     if (result.issues.length === 0) {
-      return `## Status Update\n\n${result.summary}\n\nNo open issues in the current review.`;
+      return "## Status Update\n\nNo open issues in the current review.";
     }
 
     let body = "## Status Update\n\n";
-    body += `${result.summary}\n\n`;
     body += "### Overview\n\n";
 
     if (counts.critical > 0) {
@@ -269,9 +268,7 @@ export class ReviewFormatter {
     const newIssues: SummaryIssue[] = (history?.newIssues ?? result.issues)
       .map(enrichIssue)
       .filter(shouldRenderInOpenSections);
-    const unresolvedHistoricalIssues: SummaryIssue[] = (
-      history?.unresolvedHistoricalIssues ?? []
-    )
+    const unresolvedHistoricalIssues: SummaryIssue[] = (history?.unresolvedHistoricalIssues ?? [])
       .map(enrichIssue)
       .filter(shouldRenderInOpenSections);
     const openIssues = [
@@ -290,9 +287,7 @@ export class ReviewFormatter {
 
     if (unresolvedHistoricalIssues.length > 0) {
       summary += "\n### Still Open From Earlier Reviews\n\n";
-      for (const issue of unresolvedHistoricalIssues.slice(0, 10)) {
-        summary += this.formatDetailedIssue(issue);
-      }
+      summary += this.formatIssuesTable(unresolvedHistoricalIssues.slice(0, 10));
       if (unresolvedHistoricalIssues.length > 10) {
         summary += `- ...and ${unresolvedHistoricalIssues.length - 10} more\n`;
       }
@@ -300,9 +295,7 @@ export class ReviewFormatter {
 
     if (newIssues.length > 0) {
       summary += `\n### ${hasHistoricalContext ? "New Issues" : "Open Issues"}\n\n`;
-      for (const issue of newIssues.slice(0, 10)) {
-        summary += this.formatDetailedIssue(issue);
-      }
+      summary += this.formatIssuesTable(newIssues.slice(0, 10));
       if (newIssues.length > 10) {
         summary += `- ...and ${newIssues.length - 10} more\n`;
       }
@@ -446,27 +439,36 @@ export class ReviewFormatter {
     );
   }
 
-  private formatDetailedIssue(issue: SummaryIssue): string {
-    let body = `#### ${TYPE_LABELS[issue.type]} in \`${this.formatIssueLocation(issue)}\`\n\n`;
-    body += `**Code reference:** \`${this.formatIssueLocation(issue)}\`\n\n`;
-    body += `**Issue:** ${issue.message}\n\n`;
+  private formatIssuesTable(issues: SummaryIssue[]): string {
+    let body = "| Finding | Code | Issue | Suggestion |\n";
+    body += "| --- | --- | --- | --- |\n";
 
-    if (issue.description && issue.description !== issue.message) {
-      body += `${issue.description}\n\n`;
+    for (const issue of issues) {
+      body += `| ${this.escapeTableCell(TYPE_LABELS[issue.type])} | \`${this.formatIssueLocation(
+        issue
+      )}\` | ${this.escapeTableCell(this.formatIssueSummary(issue))} | ${this.escapeTableCell(
+        issue.suggestion ?? ""
+      )} |\n`;
     }
 
-    if (issue.suggestion) {
-      body += `**Suggestion:** ${issue.suggestion}\n\n`;
+    body += "\n";
+    for (const issue of issues) {
+      body += `${buildIssueMarker(issue)}\n`;
     }
 
-    if (issue.suggestedCode !== undefined) {
-      body += "```suggestion\n";
-      body += issue.suggestedCode.endsWith("\n") ? issue.suggestedCode : `${issue.suggestedCode}\n`;
-      body += "```\n\n";
+    return `${body}\n`;
+  }
+
+  private formatIssueSummary(issue: SummaryIssue): string {
+    if (!issue.description || issue.description === issue.message) {
+      return issue.message;
     }
 
-    body += `${buildIssueMarker(issue)}\n\n`;
-    return body;
+    return `${issue.message} ${issue.description}`;
+  }
+
+  private escapeTableCell(value: string): string {
+    return value.replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
   }
 
   private formatIssueLocation(issue: Pick<CodeIssue, "file" | "line" | "endLine">): string {

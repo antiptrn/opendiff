@@ -748,7 +748,7 @@ describe("WebhookHandler", () => {
       );
     });
 
-    it("should strike through resolved status update bodies before adding the resolved notice", async () => {
+    it("should quote resolved status update bodies before adding the resolved notice", async () => {
       const addressedIssue = {
         type: "bug-risk" as const,
         severity: "warning" as const,
@@ -800,12 +800,15 @@ describe("WebhookHandler", () => {
 
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
-      const struckOldBody = oldBody
+      const quotedOldBody = oldBody
+        .trim()
         .split("\n")
-        .map((line) => (line.trim() ? `~~${line}~~` : line))
+        .map((line) => (line.trim() ? `> ${line}` : ">"))
         .join("\n");
-      const expectedBody = `${struckOldBody}\n\nResolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.`;
+      const expectedBody = `${quotedOldBody}\n\nResolved in a later revision. See the living OpenDiff Summary comment for the current state of this PR.`;
       expect(result.success).toBe(true);
+      expect(expectedBody).not.toContain("~~");
+      expect(expectedBody).not.toContain("\n\n\nResolved in a later revision");
       expect(mockGitHubClient.updatePullRequestReview).toHaveBeenCalledWith(
         "owner",
         "repo",

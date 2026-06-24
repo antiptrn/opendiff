@@ -423,15 +423,16 @@ function isResolvedReviewBody(body: string): boolean {
   return resolvedReviewBodyVariants().some((resolvedBody) => body.includes(resolvedBody));
 }
 
-function strikeThroughReviewBody(body: string): string {
+function quoteReviewBody(body: string): string {
   return body
+    .trim()
     .split("\n")
-    .map((line) => (line.trim() ? `~~${line}~~` : line))
+    .map((line) => (line.trim() ? `> ${line}` : ">"))
     .join("\n");
 }
 
 function resolvedReviewBodyWithPreviousMessage(previousBody: string): string {
-  return `${strikeThroughReviewBody(previousBody)}\n\n${resolvedReviewBody()}`;
+  return `${quoteReviewBody(previousBody)}\n\n${resolvedReviewBody()}`;
 }
 
 async function cleanupResolvedPreviousReviews(
