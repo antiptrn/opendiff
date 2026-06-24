@@ -236,9 +236,9 @@ function hasPullRequestDetails(
     typeof pullRequest.title === "string" &&
     Object.hasOwn(pullRequest, "body") &&
     typeof pullRequest.head?.sha === "string" &&
-    typeof pullRequest.head.ref === "string" &&
+    typeof pullRequest.head?.ref === "string" &&
     typeof pullRequest.base?.sha === "string" &&
-    typeof pullRequest.base.ref === "string" &&
+    typeof pullRequest.base?.ref === "string" &&
     typeof pullRequest.user?.login === "string"
   );
 }
