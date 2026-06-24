@@ -531,6 +531,7 @@ export class ReviewFormatter {
 
   private formatIssuesTable(issues: SummaryIssue[]): string {
     const hasSuggestions = issues.some((issue) => this.formatIssueSuggestion(issue) !== "");
+    const displayLocations = this.formatIssueDisplayLocations(issues);
     let body = hasSuggestions
       ? "| Finding | Issue | Code | Suggestion |\n"
       : "| Finding | Issue | Code |\n";
@@ -540,7 +541,7 @@ export class ReviewFormatter {
       const row = [
         this.escapeTableCell(this.formatTableFindingLabel(issue.type)),
         this.escapeTableCell(this.formatIssueSummary(issue)),
-        `\`${this.formatIssueDisplayLocation(issue)}\``,
+        `\`${displayLocations.get(issue) ?? this.formatIssueLocation(issue)}\``,
       ];
       if (hasSuggestions) {
         row.push(this.escapeTableCell(this.formatIssueSuggestion(issue)));
@@ -602,6 +603,31 @@ export class ReviewFormatter {
     return issue.endLine && issue.endLine > issue.line
       ? `${issue.file}:${issue.line}-${issue.endLine}`
       : `${issue.file}:${issue.line}`;
+  }
+
+  private formatIssueDisplayLocations(
+    issues: SummaryIssue[]
+  ): Map<SummaryIssue, string> {
+    const counts = new Map<string, number>();
+    const shortLocations = new Map<SummaryIssue, string>();
+
+    for (const issue of issues) {
+      const shortLocation = this.formatIssueDisplayLocation(issue);
+      shortLocations.set(issue, shortLocation);
+      counts.set(shortLocation, (counts.get(shortLocation) ?? 0) + 1);
+    }
+
+    return new Map(
+      issues.map((issue) => {
+        const shortLocation = shortLocations.get(issue) ?? this.formatIssueDisplayLocation(issue);
+        return [
+          issue,
+          (counts.get(shortLocation) ?? 0) > 1
+            ? this.formatIssueLocation(issue)
+            : shortLocation,
+        ];
+      })
+    );
   }
 
   private formatIssueDisplayLocation(issue: Pick<CodeIssue, "file" | "line" | "endLine">): string {
