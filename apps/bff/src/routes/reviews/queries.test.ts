@@ -3,8 +3,12 @@ import { Hono } from "hono";
 
 const review = {
   findMany: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
+  groupBy: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
   count: mock((_args: unknown): Promise<number> => Promise.resolve(0)),
 };
+const queryRaw = mock((_query: unknown): Promise<Array<{ count: bigint | number }>> =>
+  Promise.resolve([{ count: 0 }])
+);
 const requireOrgAccess = mock(() => Promise.resolve("org-1"));
 const getAuthUser = mock(() => ({ id: "user-1", githubAccessToken: "ghp_linked" }));
 const getAuthToken = mock(() => "token");
@@ -15,6 +19,7 @@ const generateReviewSummary = mock(() => Promise.resolve({ summary: "", fileTitl
 mock.module("../../db", () => ({
   prisma: {
     review,
+    $queryRaw: queryRaw,
   },
 }));
 
@@ -47,7 +52,9 @@ function createApp() {
 describe("review query routes", () => {
   beforeEach(() => {
     review.findMany.mockReset();
+    review.groupBy.mockReset();
     review.count.mockReset();
+    queryRaw.mockReset();
     requireOrgAccess.mockReset();
     getAuthUser.mockReset();
     getAuthToken.mockReset();
@@ -59,6 +66,25 @@ describe("review query routes", () => {
     getAuthUser.mockReturnValue({ id: "user-1", githubAccessToken: "ghp_linked" });
     getAuthToken.mockReturnValue("token");
     review.count.mockResolvedValue(1);
+    queryRaw.mockResolvedValue([{ count: 1 }]);
+    review.groupBy.mockImplementation((args: unknown) =>
+      Promise.resolve(
+        typeof args === "object" && args && "_max" in args
+          ? [
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 124,
+                _max: { createdAt: new Date("2026-06-24T12:00:00.000Z") },
+              },
+            ]
+          : [
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 124,
+              },
+            ]
+      )
+    );
     fetchPRMetadataBatch.mockResolvedValue(new Map([["owner/repo#124", null]]));
   });
 
@@ -66,6 +92,7 @@ describe("review query routes", () => {
     review.findMany.mockResolvedValue([
       {
         id: "review-1",
+        repositorySettingsId: "repo-settings-1",
         repositorySettings: { owner: "owner", repo: "repo" },
         pullNumber: 124,
         pullTitle: "Improve PR title display",
@@ -98,6 +125,117 @@ describe("review query routes", () => {
     expect(fetchPRMetadataBatch).toHaveBeenCalledWith(
       [{ owner: "owner", repo: "repo", pullNumber: 124 }],
       "ghp_linked"
+    );
+  });
+
+  it("returns only the newest review for each pull request in the review list", async () => {
+    queryRaw.mockResolvedValue([{ count: 2 }]);
+    review.groupBy.mockImplementation((args: unknown) =>
+      Promise.resolve(
+        typeof args === "object" && args && "_max" in args
+          ? [
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 137,
+                _max: { createdAt: new Date("2026-06-24T14:00:00.000Z") },
+              },
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 135,
+                _max: { createdAt: new Date("2026-06-24T13:00:00.000Z") },
+              },
+            ]
+          : [
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 137,
+              },
+              {
+                repositorySettingsId: "repo-settings-1",
+                pullNumber: 135,
+              },
+            ]
+      )
+    );
+    review.findMany.mockResolvedValue([
+      {
+        id: "review-137-latest",
+        repositorySettingsId: "repo-settings-1",
+        repositorySettings: { owner: "owner", repo: "repo" },
+        pullNumber: 137,
+        pullTitle: "Autofix CI failures and merge conflicts",
+        pullAuthor: "octocat",
+        reviewType: "rereview",
+        comments: [],
+        createdAt: new Date("2026-06-24T14:00:00.000Z"),
+      },
+      {
+        id: "review-137-same-timestamp",
+        repositorySettingsId: "repo-settings-1",
+        repositorySettings: { owner: "owner", repo: "repo" },
+        pullNumber: 137,
+        pullTitle: "Autofix CI failures and merge conflicts",
+        pullAuthor: "octocat",
+        reviewType: "initial",
+        comments: [],
+        createdAt: new Date("2026-06-24T14:00:00.000Z"),
+      },
+      {
+        id: "review-135-latest",
+        repositorySettingsId: "repo-settings-1",
+        repositorySettings: { owner: "owner", repo: "repo" },
+        pullNumber: 135,
+        pullTitle: "Silence ignored autofix skips",
+        pullAuthor: "octocat",
+        reviewType: "rereview",
+        comments: [],
+        createdAt: new Date("2026-06-24T13:00:00.000Z"),
+      },
+    ]);
+
+    const app = createApp();
+    const response = await app.fetch(
+      new Request("http://localhost/api/reviews", {
+        headers: {
+          Authorization: "Bearer token",
+          "X-Organization-Id": "org-1",
+        },
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.reviews.map((r: { id: string }) => r.id)).toEqual([
+      "review-137-latest",
+      "review-135-latest",
+    ]);
+    expect(body.pagination.total).toBe(2);
+    expect(body.pagination.totalPages).toBe(1);
+    expect(review.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            expect.objectContaining({
+              organizationId: "org-1",
+              repositorySettingsId: { not: null },
+            }),
+            {
+              OR: [
+                {
+                  repositorySettingsId: "repo-settings-1",
+                  pullNumber: 137,
+                  createdAt: new Date("2026-06-24T14:00:00.000Z"),
+                },
+                {
+                  repositorySettingsId: "repo-settings-1",
+                  pullNumber: 135,
+                  createdAt: new Date("2026-06-24T13:00:00.000Z"),
+                },
+              ],
+            },
+          ],
+        },
+      })
     );
   });
 });
