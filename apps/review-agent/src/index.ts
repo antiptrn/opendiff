@@ -771,12 +771,10 @@ async function processPullRequestReviewJob(
           return;
         }
 
-        if (!settings.autofixEnabled) {
-          console.log(
-            `Merge conflicts detected for ${owner}/${repo}#${reviewPayload.pull_request.number}; skipping review until the conflicts are resolved`
-          );
-          return;
-        }
+        console.log(
+          `Merge conflicts detected for ${owner}/${repo}#${reviewPayload.pull_request.number}; skipping review until the conflicts are resolved`
+        );
+        return;
       }
     }
 
