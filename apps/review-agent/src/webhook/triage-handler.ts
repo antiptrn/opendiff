@@ -2,6 +2,7 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import { withClonedRepo } from "../utils/git";
+import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
 import { withRetry } from "../utils/retry";
 
 interface TriageResult {
@@ -59,7 +60,7 @@ export async function handleTriageAfterReview(
   };
 
   const postSummary = options?.postSummary ?? true;
-  const autofixIgnoredDirs = normalizeAutofixIgnoredDirs(options?.autofixIgnoredDirs ?? []);
+  const autofixIgnoredDirs = normalizeIgnoredDirs(options?.autofixIgnoredDirs ?? []);
 
   if (reviewIssues.length === 0) {
     console.log("No issues to fix");
@@ -303,28 +304,11 @@ export async function handleTriageAfterReview(
   return result;
 }
 
-function normalizeAutofixPath(path: string): string {
-  return path.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
-}
-
-function normalizeAutofixIgnoredDirs(dirs: string[]): string[] {
-  return Array.from(new Set(dirs.map(normalizeAutofixPath).filter(Boolean)));
-}
-
 export function getAutofixIgnoredDirForPath(
   filePath: string,
   ignoredDirs: string[]
 ): string | null {
-  const normalizedPath = normalizeAutofixPath(filePath);
-  if (!normalizedPath) {
-    return null;
-  }
-
-  return (
-    normalizeAutofixIgnoredDirs(ignoredDirs).find(
-      (dir) => normalizedPath === dir || normalizedPath.startsWith(`${dir}/`)
-    ) ?? null
-  );
+  return getIgnoredDirForPath(filePath, ignoredDirs);
 }
 
 interface BodyOnlyResult {

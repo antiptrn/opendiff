@@ -8,6 +8,7 @@ import { useState } from "react";
 interface RepoSettingsFormProps {
   initialSettings: {
     enabled: boolean;
+    reviewIgnoredDirs: string;
     autofixEnabled: boolean;
     autofixIgnoredDirs: string;
     sensitivity: number;
@@ -15,6 +16,7 @@ interface RepoSettingsFormProps {
   };
   onSave: (settings: {
     enabled: boolean;
+    reviewIgnoredDirs: string;
     autofixEnabled: boolean;
     autofixIgnoredDirs: string;
     sensitivity: number;
@@ -67,6 +69,25 @@ export function RepoSettingsForm({
           </p>
         </div>
       </div>
+
+      {settings.enabled && (
+        <div className="ml-7 space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="review-ignore-dirs">Review Ignored Directories</Label>
+            <p className="text-sm text-muted-foreground">
+              One directory per line. Reviews will skip files and findings under these paths.
+            </p>
+          </div>
+          <Textarea
+            id="review-ignore-dirs"
+            value={settings.reviewIgnoredDirs}
+            onChange={(e) => updateSetting("reviewIgnoredDirs", e.target.value)}
+            placeholder={"generated\nvendor\napps/legacy"}
+            rows={4}
+          />
+        </div>
+      )}
+
       <div className="flex items-start gap-3">
         <Checkbox
           id="autofix"

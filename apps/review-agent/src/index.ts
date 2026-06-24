@@ -12,6 +12,7 @@ import { ReviewFormatter } from "./review/formatter";
 import { AsyncJobQueue } from "./utils/async-job-queue";
 import { applyPatchAndPush } from "./utils/fix-apply";
 import { withClonedRepo } from "./utils/git";
+import { parseIgnoredDirs } from "./utils/ignored-dirs";
 import { isOpenCodeAuthError } from "./utils/opencode";
 import {
   type ReviewFailureCommentKind,
@@ -186,13 +187,6 @@ function isReviewRequestedFromBot(payload: PullRequestWebhookPayload): boolean {
     payload.requested_reviewer?.login === BOT_USERNAME ||
     Boolean(payload.requested_team && BOT_TEAMS.includes(payload.requested_team.slug))
   );
-}
-
-function parseAutofixIgnoredDirs(value?: string): string[] {
-  return (value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""))
-    .filter(Boolean);
 }
 
 function settingsApiUnavailableResponse(c: Context, error: unknown): Response {
@@ -439,10 +433,11 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
     const triageOptions = {
       enabled: triageEnabled,
       autofixEnabled: settings.autofixEnabled,
-      autofixIgnoredDirs: parseAutofixIgnoredDirs(settings.autofixIgnoredDirs),
+      autofixIgnoredDirs: parseIgnoredDirs(settings.autofixIgnoredDirs),
       triageAgent,
       botUsername: BOT_USERNAME,
     };
+    const reviewIgnoredDirs = parseIgnoredDirs(settings.reviewIgnoredDirs);
 
     reviewReaction = {
       githubClient,
@@ -459,14 +454,16 @@ async function processPullRequestReviewJob(job: PullRequestReviewJob): Promise<v
             BOT_USERNAME,
             BOT_TEAMS,
             customRules,
-            settings.sensitivity
+            settings.sensitivity,
+            reviewIgnoredDirs
           )
         : await handler.handlePullRequestOpened(
             payload,
             BOT_USERNAME,
             customRules,
             triageOptions,
-            settings.sensitivity
+            settings.sensitivity,
+            reviewIgnoredDirs
           );
 
     if (result.skipped) {
@@ -805,7 +802,7 @@ app.post("/webhook", async (c) => {
         payload,
         BOT_USERNAME,
         customRules,
-        parseAutofixIgnoredDirs(settings.autofixIgnoredDirs)
+        parseIgnoredDirs(settings.autofixIgnoredDirs)
       );
 
       if (result.skipped) {

@@ -185,10 +185,12 @@ describe("WebhookHandler", () => {
       getPullRequestFiles: vi.fn(),
       getFileContent: vi.fn(),
       submitReview: vi.fn(),
-      validateReviewComments: vi.fn().mockImplementation(async (_owner, _repo, _pull, _commit, comments) => ({
-        validComments: comments,
-        invalidComments: [],
-      })),
+      validateReviewComments: vi
+        .fn()
+        .mockImplementation(async (_owner, _repo, _pull, _commit, comments) => ({
+          validComments: comments,
+          invalidComments: [],
+        })),
       getPullRequestReviews: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
       getIssueComments: vi.fn().mockResolvedValue([]),
@@ -342,11 +344,17 @@ describe("WebhookHandler", () => {
         );
       mockFormatter.formatSummaryBody = vi
         .fn()
-        .mockReturnValue("## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary.");
+        .mockReturnValue(
+          "## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary."
+        );
       mockFormatter.formatHistoricalSummaryBody = vi
         .fn()
-        .mockReturnValue("## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary.");
-      mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Current Review\n\nFound issues.\n\n### Open Issues");
+        .mockReturnValue(
+          "## Review Summary\n\nFound issues.\n\n### Not in diff\n\nIssue moved to summary."
+        );
+      mockFormatter.formatReviewBody = vi
+        .fn()
+        .mockReturnValue("## Current Review\n\nFound issues.\n\n### Open Issues");
       mockGitHubClient.validateReviewComments.mockResolvedValue({
         validComments: [{ path: "src/index.ts", line: 2, body: "comment-1" }],
         invalidComments: [{ path: "src/index.ts", line: 3, body: "comment-2" }],
@@ -454,8 +462,12 @@ describe("WebhookHandler", () => {
         body: "## Review Summary\n\nNo new issues.",
         event: "COMMENT",
       });
-      mockFormatter.partitionIssues = vi.fn().mockReturnValue({ inlineIssues: [], bodyOnlyIssues: [] });
-      mockFormatter.formatSummaryBody = vi.fn().mockReturnValue("## Review Summary\n\nNo new issues.");
+      mockFormatter.partitionIssues = vi
+        .fn()
+        .mockReturnValue({ inlineIssues: [], bodyOnlyIssues: [] });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## Review Summary\n\nNo new issues.");
       mockFormatter.formatHistoricalSummaryBody = vi
         .fn()
         .mockReturnValue("## Review Summary\n\nNo new issues.");
@@ -558,9 +570,11 @@ describe("WebhookHandler", () => {
       mockFormatter.formatSummaryBody = vi
         .fn()
         .mockReturnValue("## Summary\n\nAll previously reported issues are fixed.");
-      mockFormatter.formatHistoricalSummaryBody = vi.fn().mockReturnValue(
-        "## Summary\n\nAll previously reported issues are fixed.\n\n### Addressed Since Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
-      );
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue(
+          "## Summary\n\nAll previously reported issues are fixed.\n\n### Addressed Since Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
+        );
       mockFormatter.formatReviewBody = vi
         .fn()
         .mockReturnValue("## Status Update\n\nAll previously reported issues are fixed.");
@@ -655,6 +669,82 @@ describe("WebhookHandler", () => {
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
       expect(reviewedFiles).toHaveLength(1);
       expect(reviewedFiles[0].filename).toBe("src/code.ts");
+    });
+
+    it("should filter out files in review ignored directories", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "+code" },
+        { filename: "generated/client.ts", status: "modified", patch: "+generated" },
+        { filename: "apps/legacy/old.ts", status: "modified", patch: "+legacy" },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "OK",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "OK",
+        event: "APPROVE",
+      });
+
+      await handler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot",
+        [],
+        null,
+        undefined,
+        ["generated", "apps/legacy"]
+      );
+
+      const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
+      expect(reviewedFiles.map((file: { filename: string }) => file.filename)).toEqual([
+        "src/code.ts",
+      ]);
+    });
+
+    it("should drop review findings in ignored directories", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "+code" },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Found issues",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/code.ts",
+            line: 1,
+            message: "Real issue",
+          },
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "generated/client.ts",
+            line: 1,
+            message: "Ignored issue",
+          },
+        ],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "Review body",
+        event: "COMMENT",
+      });
+
+      const result = await handler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot",
+        [],
+        null,
+        undefined,
+        ["generated"]
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues?.[0]?.file).toBe("src/code.ts");
     });
 
     it("should handle API errors gracefully", async () => {

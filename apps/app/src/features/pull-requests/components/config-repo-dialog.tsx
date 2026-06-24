@@ -18,6 +18,7 @@ interface ConfigRepoDialogProps {
   isRepoAlreadyActive: boolean;
   onSave: (settings: {
     enabled: boolean;
+    reviewIgnoredDirs: string;
     autofixEnabled: boolean;
     autofixIgnoredDirs: string;
     sensitivity: number;
@@ -63,9 +64,10 @@ export function ConfigRepoDialog({
 
         {selectedRepo && settings && !isLoadingSettings && !isRepoAlreadyActive && (
           <RepoSettingsForm
-            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.autofixEnabled}-${settings.autofixIgnoredDirs || ""}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
+            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.reviewIgnoredDirs || ""}-${settings.autofixEnabled}-${settings.autofixIgnoredDirs || ""}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
             initialSettings={{
               enabled: settings.enabled,
+              reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
               autofixEnabled: settings.autofixEnabled ?? true,
               autofixIgnoredDirs: settings.autofixIgnoredDirs || "",
               sensitivity: settings.sensitivity ?? 50,

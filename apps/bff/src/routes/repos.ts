@@ -31,7 +31,7 @@ async function fetchGitHubFile(
 
 const reposRoutes = new Hono();
 
-function normalizeAutofixIgnoredDirs(value: unknown): string | null | undefined {
+function normalizeIgnoredDirs(value: unknown): string | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -145,6 +145,7 @@ reposRoutes.get("/settings", async (c) => {
         repo: s.repo,
         enabled: s.enabled,
         autofixEnabled: s.autofixEnabled,
+        reviewIgnoredDirs: s.reviewIgnoredDirs || "",
         autofixIgnoredDirs: s.autofixIgnoredDirs || "",
         sensitivity: s.sensitivity,
         customReviewRules: s.customReviewRules || "",
@@ -171,6 +172,7 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
       repo,
       enabled: false,
       customReviewRules: "",
+      reviewIgnoredDirs: "",
       autofixIgnoredDirs: "",
       effectiveEnabled: false,
       autofixEnabled: false,
@@ -185,6 +187,7 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
+    reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
     autofixIgnoredDirs: settings.autofixIgnoredDirs || "",
     effectiveEnabled: settings.enabled,
   });
@@ -201,6 +204,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled,
     sensitivity,
     customReviewRules,
+    reviewIgnoredDirs,
     autofixIgnoredDirs,
     githubRepoId,
   } = body as {
@@ -208,10 +212,12 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled?: boolean;
     sensitivity?: number;
     customReviewRules?: string;
+    reviewIgnoredDirs?: string;
     autofixIgnoredDirs?: string;
     githubRepoId?: number;
   };
-  const normalizedAutofixIgnoredDirs = normalizeAutofixIgnoredDirs(autofixIgnoredDirs);
+  const normalizedReviewIgnoredDirs = normalizeIgnoredDirs(reviewIgnoredDirs);
+  const normalizedAutofixIgnoredDirs = normalizeIgnoredDirs(autofixIgnoredDirs);
 
   const user = getAuthUser(c);
   const userId = user.id;
@@ -223,6 +229,8 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: autofixEnabled !== undefined ? autofixEnabled : undefined,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : undefined,
       customReviewRules: customReviewRules !== undefined ? customReviewRules || null : undefined,
+      reviewIgnoredDirs:
+        normalizedReviewIgnoredDirs !== undefined ? normalizedReviewIgnoredDirs : undefined,
       autofixIgnoredDirs:
         normalizedAutofixIgnoredDirs !== undefined ? normalizedAutofixIgnoredDirs : undefined,
       organizationId: orgId || undefined,
@@ -237,6 +245,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: autofixEnabled ?? true,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : 50,
       customReviewRules: customReviewRules || null,
+      reviewIgnoredDirs: normalizedReviewIgnoredDirs ?? null,
       autofixIgnoredDirs: normalizedAutofixIgnoredDirs ?? null,
       organizationId: orgId || undefined,
       enabledById: userId,
@@ -270,6 +279,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
+    reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
     autofixIgnoredDirs: settings.autofixIgnoredDirs || "",
     effectiveEnabled: settings.enabled,
   });
@@ -345,6 +355,7 @@ reposRoutes.get("/org/repos", requireAuth(), async (c) => {
           autofixEnabled: r.autofixEnabled,
           sensitivity: r.sensitivity,
           customReviewRules: r.customReviewRules || "",
+          reviewIgnoredDirs: r.reviewIgnoredDirs || "",
           autofixIgnoredDirs: r.autofixIgnoredDirs || "",
           effectiveEnabled: r.enabled,
         };
@@ -415,6 +426,7 @@ reposRoutes.get("/org/repos/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: r.autofixEnabled,
       sensitivity: r.sensitivity,
       customReviewRules: r.customReviewRules || "",
+      reviewIgnoredDirs: r.reviewIgnoredDirs || "",
       autofixIgnoredDirs: r.autofixIgnoredDirs || "",
       effectiveEnabled: r.enabled,
     });

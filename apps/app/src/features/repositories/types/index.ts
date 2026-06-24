@@ -15,6 +15,7 @@ export interface RepositorySettings {
   githubRepoId?: number | null;
   enabled: boolean;
   autofixEnabled: boolean;
+  reviewIgnoredDirs?: string;
   autofixIgnoredDirs?: string;
   sensitivity: number;
   customReviewRules?: string;
@@ -36,6 +37,7 @@ export interface OrgRepository {
   pushedAt: string | null;
   enabled: boolean;
   autofixEnabled: boolean;
+  reviewIgnoredDirs?: string;
   autofixIgnoredDirs?: string;
   sensitivity: number;
   customReviewRules?: string;
