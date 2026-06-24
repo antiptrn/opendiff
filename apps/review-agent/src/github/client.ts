@@ -394,7 +394,14 @@ export class GitHubClient {
     repo: string,
     pullNumber: number
   ): Promise<
-    Array<{ id: number; user: string; body: string; state: string; submittedAt: string | null }>
+    Array<{
+      id: number;
+      user: string;
+      body: string;
+      state: string;
+      submittedAt: string | null;
+      commitId: string | null;
+    }>
   > {
     const { data } = await this.octokit.rest.pulls.listReviews({
       owner,
@@ -409,6 +416,7 @@ export class GitHubClient {
       body: review.body || "",
       state: review.state || "",
       submittedAt: review.submitted_at || null,
+      commitId: review.commit_id || null,
     }));
   }
 
