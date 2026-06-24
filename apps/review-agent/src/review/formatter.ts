@@ -433,7 +433,7 @@ export class ReviewFormatter {
       body += `**Suggestion:** ${issue.suggestion}\n\n`;
     }
 
-    if (issue.suggestedCode) {
+    if (issue.suggestedCode !== undefined) {
       body += "```suggestion\n";
       body += issue.suggestedCode.endsWith("\n") ? issue.suggestedCode : `${issue.suggestedCode}\n`;
       body += "```\n\n";
