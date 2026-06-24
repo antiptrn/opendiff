@@ -75,14 +75,14 @@ export function RepoSettingsForm({
           <div className="space-y-1">
             <Label htmlFor="review-ignore-dirs">Review Ignored Paths</Label>
             <p className="text-sm text-muted-foreground">
-              One path pattern per line, such as README.md or src/apps/bff/*.
+              One path pattern per line, such as README.md or apps/bff/src/*.
             </p>
           </div>
           <Textarea
             id="review-ignore-dirs"
             value={settings.reviewIgnoredDirs}
             onChange={(e) => updateSetting("reviewIgnoredDirs", e.target.value)}
-            placeholder={"src/apps/bff/*\nREADME.md"}
+            placeholder={"apps/bff/src/*\nREADME.md"}
             variant="background"
             rows={4}
           />
@@ -114,14 +114,14 @@ export function RepoSettingsForm({
           <div className="space-y-1">
             <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Paths</Label>
             <p className="text-sm text-muted-foreground">
-              One path pattern per line, such as README.md or src/apps/bff/*.
+              One path pattern per line, such as README.md or apps/bff/src/*.
             </p>
           </div>
           <Textarea
             id="autofix-ignore-dirs"
             value={settings.autofixIgnoredDirs}
             onChange={(e) => updateSetting("autofixIgnoredDirs", e.target.value)}
-            placeholder={"src/apps/bff/*\nREADME.md"}
+            placeholder={"apps/bff/src/*\nREADME.md"}
             variant="background"
             rows={4}
           />
