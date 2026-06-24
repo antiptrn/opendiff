@@ -282,6 +282,11 @@ export class ReviewFormatter {
     const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
     let summary = "## OpenDiff Summary\n\n";
     summary += this.formatChangeSummary(result.summary);
+    summary += this.formatMergeSafety(
+      result,
+      openIssues.length > 0 ? openIssues : result.issues,
+      counts
+    );
     summary += "### Findings\n\n";
     summary += `${this.formatFindings(result, counts)}\n\n`;
 
@@ -362,6 +367,85 @@ export class ReviewFormatter {
     }
 
     return `OpenDiff completed the review and found ${issueSummary} to consider before merging.`;
+  }
+
+  private formatMergeSafety(
+    result: ReviewResult,
+    openIssues: SummaryIssue[],
+    counts: Record<CodeIssue["severity"], number>
+  ): string {
+    const issueTotal = counts.critical + counts.warning + counts.suggestion;
+    const lines = ["### Merge Safety", ""];
+
+    if (issueTotal === 0) {
+      const safety =
+        result.verdict === "approve"
+          ? "Safe to merge based on this review."
+          : "No blocking issues were found, but OpenDiff did not explicitly approve this pass.";
+
+      lines.push(safety);
+      lines.push("");
+      lines.push("Proof:");
+      lines.push(`- Verdict: \`${result.verdict}\`.`);
+      lines.push("- Open issues: none in the current review or unresolved historical issue set.");
+      lines.push(
+        "- Blocking evidence: no critical, warning, or suggestion findings remain in the durable summary."
+      );
+      return `${lines.join("\n")}\n\n`;
+    }
+
+    if (counts.critical > 0 || result.verdict === "request_changes") {
+      lines.push(
+        "Not safe to merge yet. OpenDiff found unresolved findings that should be addressed before merging."
+      );
+    } else if (counts.warning > 0) {
+      lines.push(
+        "Merge with caution. There are no critical blockers, but warnings remain and should be reviewed before merging."
+      );
+    } else {
+      lines.push(
+        "Safe to merge if the remaining suggestions are acceptable. OpenDiff found no critical or warning issues."
+      );
+    }
+
+    lines.push("");
+    lines.push("Proof:");
+    lines.push(`- Verdict: \`${result.verdict}\`.`);
+    lines.push(`- Open issues: ${this.formatIssueCountSummary(counts)}.`);
+
+    const evidenceIssues = this.prioritizeMergeSafetyIssues(openIssues).slice(0, 3);
+    for (const issue of evidenceIssues) {
+      lines.push(
+        `- Evidence: \`${this.formatIssueLocation(issue)}\` ${TYPE_LABELS[issue.type]} - ${issue.message}`
+      );
+    }
+
+    if (openIssues.length > evidenceIssues.length) {
+      lines.push(
+        `- Additional evidence: ${openIssues.length - evidenceIssues.length} more open finding${
+          openIssues.length - evidenceIssues.length === 1 ? "" : "s"
+        } listed below.`
+      );
+    }
+
+    return `${lines.join("\n")}\n\n`;
+  }
+
+  private prioritizeMergeSafetyIssues(issues: SummaryIssue[]): SummaryIssue[] {
+    const severityRank: Record<CodeIssue["severity"], number> = {
+      critical: 0,
+      warning: 1,
+      suggestion: 2,
+    };
+
+    return [...issues].sort((a, b) => {
+      const severityDelta = severityRank[a.severity] - severityRank[b.severity];
+      if (severityDelta !== 0) {
+        return severityDelta;
+      }
+
+      return this.formatIssueLocation(a).localeCompare(this.formatIssueLocation(b));
+    });
   }
 
   private formatIssueCountSummary(counts: Record<CodeIssue["severity"], number>): string {
