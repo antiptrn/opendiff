@@ -10,6 +10,7 @@ type VerificationStatus = "loading" | "ready" | "error";
 const TURNSTILE_SCRIPT_SRC =
   "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const TURNSTILE_LOAD_ERROR = "Human verification failed to load. Please refresh and try again.";
+const TURNSTILE_EXECUTE_ERROR = "Unable to start verification. Please refresh and try again.";
 
 declare global {
   interface Window {
@@ -169,8 +170,13 @@ export function LoginForm({
             setVerificationStatus("loading");
 
             if (turnstileWidgetIdRef.current && window.turnstile) {
-              window.turnstile.reset(turnstileWidgetIdRef.current);
-              window.turnstile.execute(turnstileWidgetIdRef.current);
+              try {
+                window.turnstile.reset(turnstileWidgetIdRef.current);
+                window.turnstile.execute(turnstileWidgetIdRef.current);
+              } catch {
+                setVerificationStatus("error");
+                setTurnstileError(TURNSTILE_EXECUTE_ERROR);
+              }
             }
           },
         });
@@ -289,7 +295,7 @@ export function LoginForm({
     } catch {
       pendingProviderRef.current = null;
       setLoadingProvider(null);
-      setTurnstileError("Unable to start verification. Please refresh and try again.");
+      setTurnstileError(TURNSTILE_EXECUTE_ERROR);
     }
   };
 
