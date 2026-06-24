@@ -181,11 +181,18 @@ export function LoginForm({
           },
         });
         setTurnstileError(null);
-        window.turnstile.execute(turnstileWidgetIdRef.current);
       } catch {
         markScriptStatus("error");
         setVerificationStatus("error");
         setTurnstileError(TURNSTILE_LOAD_ERROR);
+        return;
+      }
+
+      try {
+        window.turnstile.execute(turnstileWidgetIdRef.current);
+      } catch {
+        setVerificationStatus("error");
+        setTurnstileError(TURNSTILE_EXECUTE_ERROR);
       }
     };
 
