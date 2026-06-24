@@ -573,6 +573,8 @@ async function processPullRequestReviewJob(
       pullNumber: reviewPayload.pull_request.number,
       reviewType: "initial",
       reviewId: result.reviewId,
+      pullTitle: reviewPayload.pull_request.title ?? null,
+      pullAuthor: reviewPayload.pull_request.user?.login ?? null,
       tokensUsed: result.tokensUsed,
     });
 
@@ -910,6 +912,8 @@ app.post("/webhook", async (c) => {
         pullNumber: payload.pull_request.number,
         reviewType: "comment_reply",
         commentId: result.reviewId,
+        pullTitle: payload.pull_request.title ?? null,
+        pullAuthor: payload.pull_request.user?.login ?? null,
         tokensUsed: result.tokensUsed,
       });
 
@@ -1045,6 +1049,8 @@ app.post("/webhook", async (c) => {
         pullNumber: payload.issue.number,
         reviewType: "comment_reply",
         commentId: result.reviewId,
+        pullTitle: payload.issue.title ?? null,
+        pullAuthor: payload.issue.user?.login ?? null,
         tokensUsed: result.tokensUsed,
       });
 

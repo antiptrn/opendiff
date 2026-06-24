@@ -74,25 +74,36 @@ export async function fetchRepoMetadata(owner: string, repo: string): Promise<Re
 export async function fetchPRMetadata(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  githubToken?: string | null
 ): Promise<PRMeta | null> {
+  const shouldUseCache = !githubToken;
   const cacheKey = `${owner}/${repo}#${pullNumber}`;
-  const cached = prCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) {
-    return cached.data;
+  if (shouldUseCache) {
+    const cached = prCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
   }
 
-  const token = await getInstallationTokenForRepo(owner, repo);
-  if (!token) return null;
-
   try {
-    // Fetch PR data
-    const prRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-      },
-    });
+    const fetchPR = async (token: string) =>
+      fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+
+    let installationToken: string | null = null;
+    let prRes = githubToken ? await fetchPR(githubToken) : null;
+
+    if (!prRes?.ok) {
+      installationToken = await getInstallationTokenForRepo(owner, repo);
+      if (!installationToken) return null;
+      prRes = await fetchPR(installationToken);
+    }
+
     if (!prRes.ok) return null;
 
     const pr = (await prRes.json()) as {
@@ -130,7 +141,9 @@ export async function fetchPRMetadata(
       updatedAt: pr.updated_at,
     };
 
-    prCache.set(cacheKey, { data: meta, expires: Date.now() + PR_TTL });
+    if (shouldUseCache) {
+      prCache.set(cacheKey, { data: meta, expires: Date.now() + PR_TTL });
+    }
     return meta;
   } catch {
     return null;
@@ -139,7 +152,8 @@ export async function fetchPRMetadata(
 
 // Batch fetch PR metadata for multiple reviews
 export async function fetchPRMetadataBatch(
-  reviews: Array<{ owner: string; repo: string; pullNumber: number }>
+  reviews: Array<{ owner: string; repo: string; pullNumber: number }>,
+  githubToken?: string | null
 ): Promise<Map<string, PRMeta | null>> {
   const results = new Map<string, PRMeta | null>();
 
@@ -149,7 +163,7 @@ export async function fetchPRMetadataBatch(
     const batch = reviews.slice(i, i + BATCH_SIZE);
     const promises = batch.map(async (r) => {
       const key = `${r.owner}/${r.repo}#${r.pullNumber}`;
-      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber);
+      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber, githubToken);
       results.set(key, meta);
     });
     await Promise.all(promises);
