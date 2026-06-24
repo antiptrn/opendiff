@@ -83,17 +83,24 @@ export async function fetchPRMetadata(
     return cached.data;
   }
 
-  const token = githubToken || (await getInstallationTokenForRepo(owner, repo));
-  if (!token) return null;
-
   try {
+    const fetchPR = async (token: string) =>
+      fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+
+    const installationToken = githubToken ? await getInstallationTokenForRepo(owner, repo) : null;
+    const token = githubToken || installationToken;
+    if (!token) return null;
+
     // Fetch PR data
-    const prRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-      },
-    });
+    let prRes = await fetchPR(token);
+    if (!prRes.ok && githubToken && installationToken && installationToken !== githubToken) {
+      prRes = await fetchPR(installationToken);
+    }
     if (!prRes.ok) return null;
 
     const pr = (await prRes.json()) as {
