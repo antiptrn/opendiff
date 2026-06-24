@@ -405,29 +405,13 @@ async function upsertTriageSummaryComment(
 }
 
 async function refreshNoActionTriageSummaryComment(
-  github: GitHubClient,
-  owner: string,
-  repo: string,
-  pullNumber: number,
-  botUsername: string
+  _github: GitHubClient,
+  _owner: string,
+  _repo: string,
+  _pullNumber: number,
+  _botUsername: string
 ): Promise<void> {
-  const issueComments = await github.getIssueComments(owner, repo, pullNumber);
-  const existingSummary = [...issueComments]
-    .reverse()
-    .find(
-      (comment) =>
-        (comment.user === botUsername || comment.user === `${botUsername}[bot]`) &&
-        isRemediationSummaryComment(comment.body)
-    );
-
-  if (!existingSummary) {
-    console.log("Skipped triage summary: no existing summary comment to refresh");
-    return;
-  }
-
-  console.log(
-    `Skipped triage summary refresh for comment ${existingSummary.id}: no remediation actions were needed for this push`
-  );
+  console.log("Skipped triage summary: no remediation actions were needed for this push");
 }
 
 async function replyToInlineComments(
