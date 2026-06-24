@@ -6,6 +6,9 @@ const review = {
   groupBy: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
   count: mock((_args: unknown): Promise<number> => Promise.resolve(0)),
 };
+const queryRaw = mock((_query: unknown): Promise<Array<{ count: bigint | number }>> =>
+  Promise.resolve([{ count: 0 }])
+);
 const requireOrgAccess = mock(() => Promise.resolve("org-1"));
 const getAuthUser = mock(() => ({ id: "user-1", githubAccessToken: "ghp_linked" }));
 const getAuthToken = mock(() => "token");
@@ -16,6 +19,7 @@ const generateReviewSummary = mock(() => Promise.resolve({ summary: "", fileTitl
 mock.module("../../db", () => ({
   prisma: {
     review,
+    $queryRaw: queryRaw,
   },
 }));
 
@@ -50,6 +54,7 @@ describe("review query routes", () => {
     review.findMany.mockReset();
     review.groupBy.mockReset();
     review.count.mockReset();
+    queryRaw.mockReset();
     requireOrgAccess.mockReset();
     getAuthUser.mockReset();
     getAuthToken.mockReset();
@@ -61,6 +66,7 @@ describe("review query routes", () => {
     getAuthUser.mockReturnValue({ id: "user-1", githubAccessToken: "ghp_linked" });
     getAuthToken.mockReturnValue("token");
     review.count.mockResolvedValue(1);
+    queryRaw.mockResolvedValue([{ count: 1 }]);
     review.groupBy.mockImplementation((args: unknown) =>
       Promise.resolve(
         typeof args === "object" && args && "_max" in args
@@ -123,6 +129,7 @@ describe("review query routes", () => {
   });
 
   it("returns only the newest review for each pull request in the review list", async () => {
+    queryRaw.mockResolvedValue([{ count: 2 }]);
     review.groupBy.mockImplementation((args: unknown) =>
       Promise.resolve(
         typeof args === "object" && args && "_max" in args
