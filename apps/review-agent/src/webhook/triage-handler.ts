@@ -311,9 +311,7 @@ export async function handleTriageAfterReview(
             botUsername,
             summaryBody
           );
-          console.log(
-            "Upserted triage summary: no remediation actions were needed for this push"
-          );
+          console.log("Upserted triage summary: no remediation actions were needed for this push");
         }
       }
     );
@@ -400,7 +398,7 @@ function findMatchingComment(
 }
 
 function isRemediationSummaryComment(body: string): boolean {
-  return body.startsWith("## Remediation Summary");
+  return body.startsWith("## Autofix Summary") || body.startsWith("## Remediation Summary");
 }
 
 async function upsertTriageSummaryComment(
@@ -568,54 +566,50 @@ function formatTriageSummary(
   clarificationIssues: TriageResult["clarificationIssues"],
   bodyOnly: BodyOnlyResult
 ): string {
-  let body = "## Remediation Summary\n\n";
+  let body = "## Autofix Summary\n\n";
 
   // Summary counts
   const totalFixed = fixedIssues.length;
   const totalSkipped = skippedIssues.length;
   const totalClarification = clarificationIssues.length;
+  const clarificationVerb = totalClarification === 1 ? "needs" : "need";
 
   if (totalFixed > 0 && totalSkipped === 0 && totalClarification === 0) {
-    body += `✅ **${totalFixed} issue${totalFixed > 1 ? "s" : ""} fixed automatically**\n\n`;
+    body += `${totalFixed} issue${totalFixed > 1 ? "s" : ""} fixed automatically.\n\n`;
   } else if (totalFixed === 0 && totalSkipped > 0 && totalClarification === 0) {
-    body += `⏭️ **${totalSkipped} issue${totalSkipped > 1 ? "s" : ""} could not be auto-fixed**\n\n`;
+    body += `${totalSkipped} issue${totalSkipped > 1 ? "s" : ""} could not be auto-fixed.\n\n`;
   } else if (totalFixed === 0 && totalSkipped === 0 && totalClarification > 0) {
-    body += `❓ **${totalClarification} issue${totalClarification > 1 ? "s" : ""} need clarification**\n\n`;
+    body += `${totalClarification} issue${totalClarification > 1 ? "s" : ""} ${clarificationVerb} clarification.\n\n`;
   } else if (totalFixed === 0 && totalSkipped === 0 && totalClarification === 0) {
-    body += "ℹ️ **No remediation actions were needed for this push**\n\n";
+    body += "No autofix actions were needed for this push.\n\n";
   } else {
-    body += `✅ **${totalFixed} fixed** · ⏭️ **${totalSkipped} skipped** · ❓ **${totalClarification} needs clarification**\n\n`;
+    body += `${totalFixed} fixed, ${totalSkipped} skipped, ${totalClarification} ${clarificationVerb} clarification.\n\n`;
   }
 
   // Fixed issues
   if (totalFixed > 0) {
-    body += "### ✅ Fixed\n\n";
+    body += "### Fixed\n\n";
     for (const { issue, commitSha, explanation } of fixedIssues) {
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — \`${commitSha.slice(0, 7)}\`\n`;
-      if (explanation) {
-        body += `  > ${explanation}\n`;
-      }
+      const details = explanation ? `: ${formatSummaryDetail(explanation)}` : "";
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\` — \`${commitSha.slice(0, 7)}\`${details}\n`;
     }
     body += "\n";
   }
 
   // Skipped issues
   if (totalSkipped > 0) {
-    body += "### ⏭️ Skipped\n\n";
+    body += "### Skipped\n\n";
     for (const { issue, reason } of skippedIssues) {
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
-      body += `  > ${reason}\n`;
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`: ${formatSummaryDetail(reason)}\n`;
     }
     body += "\n";
   }
 
   // Clarification-needed issues
   if (totalClarification > 0) {
-    body += "### ❓ Clarification Needed\n\n";
+    body += "### Clarification Needed\n\n";
     for (const { issue, reason, question } of clarificationIssues) {
-      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`\n`;
-      body += `  > ${reason}\n`;
-      body += `  > ${question}\n`;
+      body += `- **${issue.type}** in \`${issue.file}:${issue.line}\`: ${formatSummaryDetail(reason)} ${formatSummaryDetail(question)}\n`;
     }
     body += "\n";
   }
@@ -632,4 +626,8 @@ function formatTriageSummary(
   }
 
   return body;
+}
+
+function formatSummaryDetail(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
