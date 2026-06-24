@@ -423,9 +423,24 @@ function isResolvedReviewBody(body: string): boolean {
   return resolvedReviewBodyVariants().some((resolvedBody) => body.includes(resolvedBody));
 }
 
+function stripStatusUpdateHeading(body: string): string {
+  const lines = body.trim().split("\n");
+  if (/^##\s+Status Update\s*$/i.test(lines[0]?.trim() ?? "")) {
+    return lines.slice(1).join("\n").trim();
+  }
+
+  if (
+    /^Status Update\s*$/i.test(lines[0]?.trim() ?? "") &&
+    /^[-=]{3,}\s*$/.test(lines[1]?.trim() ?? "")
+  ) {
+    return lines.slice(2).join("\n").trim();
+  }
+
+  return body.trim();
+}
+
 function quoteReviewBody(body: string): string {
-  return body
-    .trim()
+  return stripStatusUpdateHeading(body)
     .split("\n")
     .map((line) => (line.trim() ? `> ${line}` : ">"))
     .join("\n");

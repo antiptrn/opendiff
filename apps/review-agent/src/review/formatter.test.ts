@@ -51,7 +51,10 @@ describe("ReviewFormatter", () => {
 
       expect(review.body).toContain("## Status Update");
       expect(review.body).toContain("### Overview");
+      expect(review.body).toContain("### Open Issues");
+      expect(review.body).not.toContain("### Highlighted In This Review");
       expect(review.body).toContain("src/auth.ts:10");
+      expect(review.body).toContain("SQL injection vulnerability.");
       expect(review.body).not.toContain("Found some issues that need attention.");
       expect(review.body).not.toContain("*Reviewed by [opendiff]");
     });
@@ -90,7 +93,7 @@ describe("ReviewFormatter", () => {
       expect(review.event).toBe("COMMENT");
     });
 
-    it("should include severity emoji in comments", () => {
+    it("should omit emojis from inline comment titles", () => {
       const reviewResult: ReviewResult = {
         summary: "Issues found.",
         issues: [
@@ -122,9 +125,12 @@ describe("ReviewFormatter", () => {
       const review = formatter.formatReview(reviewResult);
       const comments = review.comments ?? [];
 
-      expect(comments[0].body).toMatch(/🚨|⛔|❌/); // Critical emoji
-      expect(comments[1].body).toMatch(/⚠️|🔶/); // Warning emoji
-      expect(comments[2].body).toMatch(/💡|ℹ️/); // Suggestion emoji
+      expect(comments[0].body.split("\n")[0]).toBe("**Security:** Critical issue.");
+      expect(comments[1].body.split("\n")[0]).toBe("**Style:** Warning issue.");
+      expect(comments[2].body.split("\n")[0]).toBe("**Style:** Suggestion.");
+      expect(comments[0].body.split("\n")[0]).not.toMatch(
+        /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u
+      );
     });
 
     it("should include suggestion in code block when provided", () => {
@@ -229,9 +235,9 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("OpenDiff completed the review");
       expect(body).not.toContain("### Open Issue Summary");
       expect(body).toContain("### Open Issues");
-      expect(body).toContain("| Finding | Code | Issue | Suggestion |");
+      expect(body).toContain("| Finding | Issue | Code | Suggestion |");
       expect(body).toContain(
-        "| 🔒 Security | `a.ts:1` | x The `login()` path accepts unsafe input. | Validate the input before querying. |"
+        "| Security | X. The `login()` path accepts unsafe input. | `a.ts:1` | Validate the input before querying. |"
       );
       expect(body).not.toContain("#### 🔒 Security in `a.ts:1`");
       expect(body).not.toContain("**Code reference:**");
@@ -272,7 +278,9 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### Open Issue Summary");
       expect(body).not.toContain("### Open Issues Across Reviews");
       expect(body).toContain("### Open Issues");
-      expect(body).toContain("| ✨ Style | `src/a.ts:4` | x |  |");
+      expect(body).toContain("| Finding | Issue | Code |");
+      expect(body).not.toContain("| Finding | Issue | Code | Suggestion |");
+      expect(body).toContain("| Style | X. | `src/a.ts:4` |");
       expect(body).not.toContain("#### ✨ Style in `src/a.ts:4`");
       expect(body).not.toContain("**Code reference:**");
       expect(body).not.toContain("### New Issues");
@@ -342,8 +350,10 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("- Evidence: `src/old.ts:2` 🐛 Bug Risk - old issue");
       expect(body).toContain("### Still Open From Earlier Reviews");
       expect(body).toContain("### New Issues");
-      expect(body).toContain("| 🐛 Bug Risk | `src/old.ts:2` | old issue |  |");
-      expect(body).toContain("| ✨ Style | `src/b.ts:8` | y |  |");
+      expect(body).toContain("| Finding | Issue | Code |");
+      expect(body).not.toContain("| Finding | Issue | Code | Suggestion |");
+      expect(body).toContain("| Bug&nbsp;Risk | Old issue. | `src/old.ts:2` |");
+      expect(body).toContain("| Style | Y. | `src/b.ts:8` |");
       expect(body).not.toContain("#### 🐛 Bug Risk in `src/old.ts:2`");
       expect(body).not.toContain("**Code reference:**");
       expect(body).toContain("**Rating:**");
