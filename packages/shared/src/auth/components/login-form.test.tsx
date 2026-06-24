@@ -103,4 +103,31 @@ describe("LoginForm", () => {
     await screen.findByRole("button", { name: /login with github/i });
     expect(onVerificationStatusChange).toHaveBeenCalledWith("ready");
   });
+
+  it("does not call turnstile.ready after the async script loads", async () => {
+    const onVerificationStatusChange = vi.fn();
+    renderLoginForm({ onVerificationStatusChange });
+
+    const script = await getTurnstileScript();
+    const ready = vi.fn(() => {
+      throw new Error("ready is incompatible with async script loading");
+    });
+
+    window.turnstile = {
+      render: vi.fn((_container, options) => {
+        options.callback("turnstile-token");
+        return "widget-id";
+      }),
+      ready,
+      execute: vi.fn(),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    fireEvent.load(script);
+
+    await screen.findByRole("button", { name: /login with github/i });
+    expect(ready).not.toHaveBeenCalled();
+    expect(onVerificationStatusChange).toHaveBeenCalledWith("ready");
+  });
 });

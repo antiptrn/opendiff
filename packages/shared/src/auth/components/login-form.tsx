@@ -201,11 +201,6 @@ export function LoginForm({
         return;
       }
 
-      if (window.turnstile.ready) {
-        window.turnstile.ready(renderWidget);
-        return;
-      }
-
       renderWidget();
     };
 
