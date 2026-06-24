@@ -51,7 +51,8 @@ function RulesForm({ initialRules, onSave, isSaving }: RulesFormProps) {
         placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
         value={localRules}
         onChange={(e) => setLocalRules(e.target.value)}
-        className="min-h-[150px] bg-background"
+        variant="background"
+        minHeight="lg"
         maxLength={5000}
       />
 

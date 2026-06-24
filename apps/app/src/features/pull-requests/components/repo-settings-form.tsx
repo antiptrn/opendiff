@@ -73,9 +73,9 @@ export function RepoSettingsForm({
       {settings.enabled && (
         <div className="ml-7 space-y-2">
           <div className="space-y-1">
-            <Label htmlFor="review-ignore-dirs">Review Ignored Directories</Label>
+            <Label htmlFor="review-ignore-dirs">Review Ignored Paths</Label>
             <p className="text-sm text-muted-foreground">
-              One directory per line. Reviews will skip files and findings under these paths.
+              One path per line. Reviews will skip files and findings under these paths.
             </p>
           </div>
           <Textarea
@@ -83,6 +83,7 @@ export function RepoSettingsForm({
             value={settings.reviewIgnoredDirs}
             onChange={(e) => updateSetting("reviewIgnoredDirs", e.target.value)}
             placeholder={"generated\nvendor\napps/legacy"}
+            variant="background"
             rows={4}
           />
         </div>
@@ -111,10 +112,9 @@ export function RepoSettingsForm({
       {settings.autofixEnabled && (
         <div className="ml-7 space-y-2">
           <div className="space-y-1">
-            <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Directories</Label>
+            <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Paths</Label>
             <p className="text-sm text-muted-foreground">
-              One directory per line. Autofix will skip issues and generated changes under these
-              paths.
+              One path per line. Autofix will skip issues and generated changes under these paths.
             </p>
           </div>
           <Textarea
@@ -122,6 +122,7 @@ export function RepoSettingsForm({
             value={settings.autofixIgnoredDirs}
             onChange={(e) => updateSetting("autofixIgnoredDirs", e.target.value)}
             placeholder={"generated\nvendor\napps/legacy"}
+            variant="background"
             rows={4}
           />
         </div>
@@ -165,13 +166,16 @@ export function RepoSettingsForm({
           Define custom rules and guidelines for the AI to follow when reviewing code in this
           repository.
         </p>
-        <Textarea
-          id="custom-rules"
-          value={settings.customReviewRules}
-          onChange={(e) => updateSetting("customReviewRules", e.target.value)}
-          placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
-          className="min-h-[120px] mt-6 bg-background"
-        />
+        <div className="mt-6">
+          <Textarea
+            id="custom-rules"
+            value={settings.customReviewRules}
+            onChange={(e) => updateSetting("customReviewRules", e.target.value)}
+            placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
+            variant="background"
+            minHeight="md"
+          />
+        </div>
       </div>
 
       <LoadingButton
