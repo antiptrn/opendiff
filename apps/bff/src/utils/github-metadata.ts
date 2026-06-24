@@ -77,10 +77,13 @@ export async function fetchPRMetadata(
   pullNumber: number,
   githubToken?: string | null
 ): Promise<PRMeta | null> {
+  const shouldUseCache = !githubToken;
   const cacheKey = `${owner}/${repo}#${pullNumber}`;
-  const cached = prCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) {
-    return cached.data;
+  if (shouldUseCache) {
+    const cached = prCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
   }
 
   try {
@@ -138,7 +141,9 @@ export async function fetchPRMetadata(
       updatedAt: pr.updated_at,
     };
 
-    prCache.set(cacheKey, { data: meta, expires: Date.now() + PR_TTL });
+    if (shouldUseCache) {
+      prCache.set(cacheKey, { data: meta, expires: Date.now() + PR_TTL });
+    }
     return meta;
   } catch {
     return null;
