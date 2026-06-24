@@ -76,5 +76,10 @@ describe("handleTriageAfterReview", () => {
     expect(getAutofixIgnoredDirForPath("src/apps/bff/routes/index.ts", ["src/apps/bff/*"])).toBe(
       "src/apps/bff/*"
     );
+    expect(
+      getAutofixIgnoredDirForPath("apps/site/src/components/marketing/hero-section.tsx", [
+        "src/apps/site/*",
+      ])
+    ).toBe("src/apps/site/*");
   });
 });
