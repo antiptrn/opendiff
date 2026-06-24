@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, chmod, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
@@ -567,7 +567,7 @@ async function pruneStaleLocks(config: GitCacheConfig): Promise<void> {
       continue;
     }
     const lockDir = join(config.locksDir, entry.name);
-    const ageMs = now - (await getPathMtimeMs(lockDir));
+    const ageMs = now - (await getPathMtimeMs(getRepoLockHeartbeatPath(lockDir), lockDir));
     if (ageMs > config.lockStaleMs) {
       await rm(lockDir, { recursive: true, force: true });
     }
@@ -757,12 +757,13 @@ async function withRepoLock<T>(
   return await withInProcessRepoLock(repoId, async () => {
     await mkdir(config.locksDir, { recursive: true });
     const lockDir = join(config.locksDir, `${repoId}.lock`);
+    const ownerFile = getRepoLockHeartbeatPath(lockDir);
 
     while (true) {
       try {
         await mkdir(lockDir);
         await writeFile(
-          join(lockDir, "owner.json"),
+          ownerFile,
           `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`
         );
         break;
@@ -771,7 +772,7 @@ async function withRepoLock<T>(
           throw error;
         }
 
-        const ageMs = Date.now() - (await getPathMtimeMs(lockDir));
+        const ageMs = Date.now() - (await getPathMtimeMs(ownerFile, lockDir));
         if (ageMs > config.lockStaleMs) {
           await rm(lockDir, { recursive: true, force: true });
           continue;
@@ -781,12 +782,45 @@ async function withRepoLock<T>(
       }
     }
 
+    const stopHeartbeat = startRepoLockHeartbeat(ownerFile, config.lockStaleMs);
+
     try {
       return await fn();
     } finally {
+      await stopHeartbeat();
       await rm(lockDir, { recursive: true, force: true });
     }
   });
+}
+
+function getRepoLockHeartbeatPath(lockDir: string): string {
+  return join(lockDir, "owner.json");
+}
+
+async function refreshRepoLockHeartbeat(path: string): Promise<void> {
+  const now = new Date();
+  await utimes(path, now, now);
+}
+
+function startRepoLockHeartbeat(lockHeartbeatPath: string, staleMs: number): () => Promise<void> {
+  const intervalMs = Math.max(1_000, Math.floor(staleMs / 2));
+  let stopped = false;
+  const timer = setInterval(() => {
+    void (async () => {
+      try {
+        await refreshRepoLockHeartbeat(lockHeartbeatPath);
+      } catch {
+        if (!stopped) {
+          console.warn(`Failed to refresh repo lock heartbeat: ${lockHeartbeatPath}`);
+        }
+      }
+    })();
+  }, intervalMs);
+
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
 async function withInProcessRepoLock<T>(repoId: string, fn: () => Promise<T>): Promise<T> {
