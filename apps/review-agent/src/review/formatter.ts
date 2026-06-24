@@ -375,60 +375,52 @@ export class ReviewFormatter {
     counts: Record<CodeIssue["severity"], number>
   ): string {
     const issueTotal = counts.critical + counts.warning + counts.suggestion;
-    const lines = ["### Merge Safety", ""];
 
     if (issueTotal === 0) {
-      const safety =
-        result.verdict === "approve"
-          ? "Safe to merge based on this review."
-          : "No blocking issues were found, but OpenDiff did not explicitly approve this pass.";
+      if (result.verdict === "approve") {
+        return "Safe to merge based on this review because OpenDiff returned an `approve` verdict and found no open issues in the current review or unresolved historical issue set. The durable summary has zero critical, warning, or suggestion findings, so there is no OpenDiff evidence blocking the merge.\n\n";
+      }
 
-      lines.push(safety);
-      lines.push("");
-      lines.push("Proof:");
-      lines.push(`- Verdict: \`${result.verdict}\`.`);
-      lines.push("- Open issues: none in the current review or unresolved historical issue set.");
-      lines.push(
-        "- Blocking evidence: no critical, warning, or suggestion findings remain in the durable summary."
-      );
-      return `${lines.join("\n")}\n\n`;
+      return `No blocking issues were found, but OpenDiff did not explicitly approve this pass because the review verdict was \`${result.verdict}\`. The durable summary has no open findings, so there is no issue evidence blocking the merge; confirm the non-approval verdict is expected before merging.\n\n`;
     }
+
+    const issueSummary = this.formatIssueCountSummary(counts);
+    const evidenceSummary = this.formatMergeSafetyEvidence(openIssues);
+    const reviewContext = `OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
 
     if (counts.critical > 0 || result.verdict === "request_changes") {
-      lines.push(
-        "Not safe to merge yet. OpenDiff found unresolved findings that should be addressed before merging."
-      );
-    } else if (counts.warning > 0) {
-      lines.push(
-        "Merge with caution. There are no critical blockers, but warnings remain and should be reviewed before merging."
-      );
-    } else {
-      lines.push(
-        "Safe to merge if the remaining suggestions are acceptable. OpenDiff found no critical or warning issues."
-      );
+      return `Not safe to merge yet. ${reviewContext} ${evidenceSummary} These unresolved findings should be addressed before merging.\n\n`;
     }
 
-    lines.push("");
-    lines.push("Proof:");
-    lines.push(`- Verdict: \`${result.verdict}\`.`);
-    lines.push(`- Open issues: ${this.formatIssueCountSummary(counts)}.`);
+    if (counts.warning > 0) {
+      return `Merge with caution. ${reviewContext} There are no critical blockers, but warning-level findings remain. ${evidenceSummary} Review these warnings before merging.\n\n`;
+    }
 
+    return `Safe to merge if the remaining suggestions are acceptable. ${reviewContext} OpenDiff found no critical or warning issues, but suggestion-level findings remain. ${evidenceSummary} Treat these as non-blocking review notes unless they point to behavior you want to clean up before merge.\n\n`;
+  }
+
+  private formatMergeSafetyEvidence(openIssues: SummaryIssue[]): string {
     const evidenceIssues = this.prioritizeMergeSafetyIssues(openIssues).slice(0, 3);
-    for (const issue of evidenceIssues) {
-      lines.push(
-        `- Evidence: \`${this.formatIssueLocation(issue)}\` ${TYPE_LABELS[issue.type]} - ${issue.message}`
-      );
+
+    if (evidenceIssues.length === 0) {
+      return "No concrete code finding is available in the summary.";
     }
 
-    if (openIssues.length > evidenceIssues.length) {
-      lines.push(
-        `- Additional evidence: ${openIssues.length - evidenceIssues.length} more open finding${
-          openIssues.length - evidenceIssues.length === 1 ? "" : "s"
-        } listed below.`
-      );
+    const evidenceText = evidenceIssues
+      .map(
+        (issue) =>
+          `\`${this.formatIssueLocation(issue)}\` is flagged as ${TYPE_LABELS[issue.type]} for '${issue.message}'`
+      )
+      .join("; ");
+    const additionalCount = openIssues.length - evidenceIssues.length;
+
+    if (additionalCount <= 0) {
+      return `The concrete evidence is that ${evidenceText}.`;
     }
 
-    return `${lines.join("\n")}\n\n`;
+    return `The strongest evidence is that ${evidenceText}, with ${additionalCount} more open finding${
+      additionalCount === 1 ? "" : "s"
+    } listed below.`;
   }
 
   private prioritizeMergeSafetyIssues(issues: SummaryIssue[]): SummaryIssue[] {

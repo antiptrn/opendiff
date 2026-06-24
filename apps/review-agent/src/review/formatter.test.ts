@@ -219,11 +219,14 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("## OpenDiff Summary");
       expect(body).toContain("Overall PR summary.");
       expect(body).not.toContain("### What This PR Changes");
-      expect(body).toContain("### Merge Safety");
+      expect(body).not.toContain("### Merge Safety");
+      expect(body).not.toContain("Proof:");
+      expect(body).not.toContain("- Evidence:");
       expect(body).toContain("Not safe to merge yet.");
-      expect(body).toContain("- Verdict: `comment`.");
-      expect(body).toContain("- Open issues: 1 critical issue.");
-      expect(body).toContain("- Evidence: `a.ts:1` 🔒 Security - x");
+      expect(body).toContain(
+        "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 critical issue."
+      );
+      expect(body).toContain("`a.ts:1` is flagged as 🔒 Security for 'x'");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).toContain("OpenDiff completed the review");
@@ -264,9 +267,13 @@ describe("ReviewFormatter", () => {
 
       expect(body).toContain("## OpenDiff Summary");
       expect(body).not.toContain("### What This PR Changes");
-      expect(body).toContain("### Merge Safety");
+      expect(body).not.toContain("### Merge Safety");
+      expect(body).not.toContain("Proof:");
       expect(body).toContain("Merge with caution.");
-      expect(body).toContain("- Evidence: `src/a.ts:4` ✨ Style - x");
+      expect(body).toContain(
+        "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 warning."
+      );
+      expect(body).toContain("`src/a.ts:4` is flagged as ✨ Style for 'x'");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).not.toContain("### Open Issue Summary");
@@ -291,12 +298,13 @@ describe("ReviewFormatter", () => {
 
       expect(body).toContain("## OpenDiff Summary");
       expect(body).not.toContain("### What This PR Changes");
-      expect(body).toContain("### Merge Safety");
-      expect(body).toContain("Safe to merge based on this review.");
-      expect(body).toContain("- Verdict: `approve`.");
       expect(body).toContain(
-        "- Open issues: none in the current review or unresolved historical issue set."
+        "Safe to merge based on this review because OpenDiff returned an `approve` verdict and found no open issues"
       );
+      expect(body).toContain("zero critical, warning, or suggestion findings");
+      expect(body).not.toContain("### Merge Safety");
+      expect(body).not.toContain("Proof:");
+      expect(body).not.toContain("- Verdict:");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).toContain("OpenDiff found no issues that require changes");
@@ -335,11 +343,14 @@ describe("ReviewFormatter", () => {
       });
 
       expect(body).not.toContain("### Open Issues Across Reviews");
-      expect(body).toContain("### Merge Safety");
+      expect(body).not.toContain("### Merge Safety");
+      expect(body).not.toContain("Proof:");
       expect(body).toContain("Merge with caution.");
-      expect(body).toContain("- Open issues: 2 warnings.");
-      expect(body).toContain("- Evidence: `src/b.ts:8` ✨ Style - y");
-      expect(body).toContain("- Evidence: `src/old.ts:2` 🐛 Bug Risk - old issue");
+      expect(body).toContain(
+        "OpenDiff returned a `comment` verdict and the durable summary still tracks 2 warnings."
+      );
+      expect(body).toContain("`src/b.ts:8` is flagged as ✨ Style for 'y'");
+      expect(body).toContain("`src/old.ts:2` is flagged as 🐛 Bug Risk for 'old issue'");
       expect(body).toContain("### Still Open From Earlier Reviews");
       expect(body).toContain("### New Issues");
       expect(body).toContain("| 🐛 Bug Risk | `src/old.ts:2` | old issue |  |");
