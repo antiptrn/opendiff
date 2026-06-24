@@ -212,7 +212,7 @@ export async function recordReview(data: {
   owner: string;
   repo: string;
   pullNumber: number;
-  reviewType: "initial" | "comment_reply";
+  reviewType: "initial" | "comment_reply" | "ci_failure_autofix" | "merge_conflict_autofix";
   reviewId?: number;
   commentId?: number;
   pullTitle?: string | null;

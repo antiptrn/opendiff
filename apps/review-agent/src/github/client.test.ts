@@ -15,6 +15,10 @@ const mockOctokit = {
     },
     repos: {
       getContent: vi.fn(),
+      listPullRequestsAssociatedWithCommit: vi.fn(),
+    },
+    checks: {
+      listAnnotations: vi.fn(),
     },
     reactions: {
       createForIssue: vi.fn(),
@@ -118,6 +122,84 @@ describe("GitHubClient", () => {
 
       expect(mockOctokit.rest.pulls.listFiles).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(101);
+    });
+  });
+
+  describe("getPullRequestsForCommit", () => {
+    it("should map associated pull requests for a commit", async () => {
+      mockOctokit.rest.repos.listPullRequestsAssociatedWithCommit.mockResolvedValue({
+        data: [
+          {
+            number: 42,
+            title: "Fix build",
+            body: "Body",
+            draft: false,
+            state: "open",
+            head: { sha: "abc123", ref: "fix-build" },
+            base: { sha: "def456", ref: "main" },
+            user: { login: "alice" },
+          },
+        ],
+      });
+
+      const result = await client.getPullRequestsForCommit("owner", "repo", "abc123");
+
+      expect(mockOctokit.rest.repos.listPullRequestsAssociatedWithCommit).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        commit_sha: "abc123",
+      });
+      expect(result).toEqual([
+        {
+          number: 42,
+          title: "Fix build",
+          body: "Body",
+          draft: false,
+          state: "open",
+          head: { sha: "abc123", ref: "fix-build" },
+          base: { sha: "def456", ref: "main" },
+          user: { login: "alice" },
+        },
+      ]);
+    });
+  });
+
+  describe("getCheckRunAnnotations", () => {
+    it("should fetch and normalize check run annotations", async () => {
+      mockOctokit.rest.checks.listAnnotations.mockResolvedValue({
+        data: [
+          {
+            path: "src/index.ts",
+            start_line: 12,
+            end_line: 12,
+            annotation_level: "failure",
+            message: "Type error",
+            title: "tsc",
+            raw_details: "TS2322",
+          },
+        ],
+      });
+
+      const result = await client.getCheckRunAnnotations("owner", "repo", 123);
+
+      expect(mockOctokit.rest.checks.listAnnotations).toHaveBeenCalledWith({
+        owner: "owner",
+        repo: "repo",
+        check_run_id: 123,
+        per_page: 100,
+        page: 1,
+      });
+      expect(result).toEqual([
+        {
+          path: "src/index.ts",
+          startLine: 12,
+          endLine: 12,
+          annotationLevel: "failure",
+          message: "Type error",
+          title: "tsc",
+          rawDetails: "TS2322",
+        },
+      ]);
     });
   });
 

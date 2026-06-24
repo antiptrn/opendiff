@@ -49,4 +49,14 @@ describe("loadPrompt", () => {
     const result = loadPrompt("fix-issue");
     expect(result).toContain("fixing a code review issue");
   });
+
+  it("should load fix-ci-failure prompt", () => {
+    const result = loadPrompt("fix-ci-failure");
+    expect(result).toContain("fixing a failing CI check");
+  });
+
+  it("should load fix-merge-conflict prompt", () => {
+    const result = loadPrompt("fix-merge-conflict");
+    expect(result).toContain("resolving merge conflicts");
+  });
 });

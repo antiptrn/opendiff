@@ -73,11 +73,18 @@ Configure a GitHub webhook pointing to this service:
   - `Pull requests`
   - `Pull request review comments`
   - `Issue comments`
+  - `Check runs`
+  - `Statuses`
+
+The GitHub App needs read access to Checks for `check_run` events. `status` events cover legacy commit statuses from external CI systems.
 
 ## Triage and auto-fix flow
 
 - Review issues are generated first.
+- Before reviewing, autofix-enabled PRs are checked for merge conflicts with their base branch.
 - Triage attempts to fix up to 10 issues per cycle.
+- Failed CI check runs and commit statuses can trigger autofix directly for the PR head commit.
+- Merge conflicts can trigger autofix directly; successful resolutions are pushed as merge commits.
 - If triage cannot safely proceed, it asks a clarification question in the relevant review thread.
 - With autofix enabled, fixes are committed and pushed to the PR branch, then matching review threads are replied to and resolved.
 - With autofix disabled, fix metadata is collected without pushing commits.

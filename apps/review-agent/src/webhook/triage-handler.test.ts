@@ -4,30 +4,40 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 
+const mockGit = {
+  add: vi.fn(async () => undefined),
+  commit: vi.fn(async () => ({ commit: "abc123" })),
+  diff: vi.fn(async () => ""),
+  push: vi.fn(async () => undefined),
+  raw: vi.fn(async () => undefined),
+  status: vi.fn(async () => ({ conflicted: [] })),
+};
+
 mock.module("../utils/git", () => ({
   withClonedRepo: async (
     _options: unknown,
     callback: (tempDir: string, git: unknown) => Promise<unknown>
   ) => {
-    const git = {
-      add: async () => undefined,
-      commit: async () => ({ commit: "abc123" }),
-      diff: async () => "",
-      push: async () => undefined,
-      raw: async () => undefined,
-    };
-
-    return await callback("/tmp/repo", git);
+    return await callback("/tmp/repo", mockGit);
   },
 }));
 
-import { getAutofixIgnoredDirForPath, handleTriageAfterReview } from "./triage-handler";
+import {
+  getAutofixIgnoredDirForPath,
+  handleMergeConflictAutofix,
+  handleTriageAfterReview,
+} from "./triage-handler";
 
 describe("handleTriageAfterReview", () => {
   let mockGitHubClient: Partial<GitHubClient>;
   let mockTriageAgent: Partial<TriageAgent>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockGit.raw.mockImplementation(async () => undefined);
+    mockGit.status.mockResolvedValue({ conflicted: [] });
+    mockGit.diff.mockResolvedValue("");
+
     mockGitHubClient = {
       getIssueComments: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
@@ -38,6 +48,7 @@ describe("handleTriageAfterReview", () => {
 
     mockTriageAgent = {
       fixIssue: vi.fn(),
+      fixMergeConflict: vi.fn(),
     };
   });
 
@@ -143,5 +154,38 @@ describe("handleTriageAfterReview", () => {
         "src/apps/site/*",
       ])
     ).toBe("src/apps/site/*");
+  });
+
+  it("should detect merge conflicts without attempting autofix when autofix is off", async () => {
+    mockGit.raw.mockImplementation(async (args?: string[]) => {
+      if (args?.[0] === "merge" && args[1] === "--no-commit") {
+        throw new Error("merge conflict");
+      }
+      if (args?.[0] === "status") {
+        return "UU src/conflicted.ts\n";
+      }
+      return undefined;
+    });
+    mockGit.status.mockResolvedValue({ conflicted: ["src/conflicted.ts"] });
+
+    const result = await handleMergeConflictAutofix(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      {
+        number: 42,
+        head: { sha: "headsha", ref: "feature-branch" },
+        base: { sha: "basesha", ref: "main" },
+      },
+      "owner",
+      "repo",
+      "opendiff-bot",
+      false
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.conflictFound).toBe(true);
+    expect(result.fixedIssues).toHaveLength(0);
+    expect(mockTriageAgent.fixMergeConflict).not.toHaveBeenCalled();
+    expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
   });
 });

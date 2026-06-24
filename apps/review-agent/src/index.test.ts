@@ -181,6 +181,127 @@ describe("Application endpoints", () => {
       expect(body.reviewQueue).toBeDefined();
     });
 
+    it("should enqueue CI autofix for failed check runs", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "completed",
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        check_run: {
+          id: 987,
+          name: "test",
+          head_sha: "abc123",
+          conclusion: "failure",
+          html_url: "https://github.com/owner/repo/actions/runs/1/job/987",
+          pull_requests: [{ number: 42 }],
+          output: {
+            title: "Tests failed",
+            summary: "1 failing test",
+            text: "expected true to be false",
+          },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "check_run",
+          "x-github-delivery": "delivery-check-run",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.status).toBe("queued");
+      expect(body.trigger).toBe("ci_failure");
+      expect(body.key).toBe("owner/repo:abc123:check_run:987");
+      expect(body.ciFailureQueue).toBeDefined();
+    });
+
+    it("should ignore successful check runs", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "completed",
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        check_run: {
+          id: 988,
+          name: "test",
+          head_sha: "abc123",
+          conclusion: "success",
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "check_run",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("ignored");
+    });
+
+    it("should enqueue CI autofix for failed commit statuses", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        repository: {
+          id: 1,
+          owner: { login: "owner" },
+          name: "repo",
+        },
+        sha: "def456",
+        state: "error",
+        context: "ci/build",
+        description: "Build failed",
+        target_url: "https://ci.example.com/build/1",
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "status",
+          "x-github-delivery": "delivery-status",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.status).toBe("queued");
+      expect(body.trigger).toBe("ci_failure");
+      expect(body.key).toBe("owner/repo:def456:status:ci/build");
+      expect(body.ciFailureQueue).toBeDefined();
+    });
+
     it("should enqueue deterministic review when an issue comment only mentions the bot", async () => {
       const { default: app } = await import("./index");
 
