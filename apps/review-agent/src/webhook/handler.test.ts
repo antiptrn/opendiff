@@ -239,7 +239,7 @@ describe("WebhookHandler", () => {
       },
     };
 
-    it("should process review request for the bot", async () => {
+    it("should post only the summary comment for a first clean review", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
         {
@@ -267,23 +267,14 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
-      expect(result.reviewId).toBe(123);
+      expect(result.reviewId).toBeUndefined();
       expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         42,
         "Review body"
       );
-      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
-        "owner",
-        "repo",
-        42,
-        "abc123",
-        expect.objectContaining({
-          body: "Current review body",
-          event: "APPROVE",
-        })
-      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
     });
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
