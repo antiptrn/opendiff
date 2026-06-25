@@ -181,6 +181,35 @@ describe("Application endpoints", () => {
       expect(body.reviewQueue).toBeDefined();
     });
 
+    it("should ignore pull_request review triggers without repository identity", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "opened",
+        pull_request: {
+          number: 42,
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "pull_request",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("ignored");
+      expect(body.reason).toBe("missing_repository");
+    });
+
     it("should enqueue deterministic review when an issue comment only mentions the bot", async () => {
       const { default: app } = await import("./index");
 
@@ -224,6 +253,42 @@ describe("Application endpoints", () => {
       expect(body.key).toBe("owner/repo#42");
       expect(body.jobId).toBeDefined();
       expect(body.reviewQueue).toBeDefined();
+    });
+
+    it("should ignore deterministic issue-comment reviews without repository identity", async () => {
+      const { default: app } = await import("./index");
+
+      const payload = JSON.stringify({
+        action: "created",
+        sender: { login: "reviewer" },
+        issue: {
+          number: 42,
+          pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/42" },
+        },
+        comment: {
+          id: 1001,
+          body: "  @test-bot  ",
+          user: { login: "reviewer" },
+        },
+      });
+      const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
+
+      const request = new Request(`http://localhost:${TEST_PORT}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": signature,
+          "x-github-event": "issue_comment",
+        },
+        body: payload,
+      });
+
+      const response = await app.fetch(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("ignored");
+      expect(body.reason).toBe("missing_repository");
     });
 
     it("should enqueue deterministic review for bare @opendiff even with a different bot username", async () => {

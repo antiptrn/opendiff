@@ -96,6 +96,30 @@ interface PullRequestReviewJob {
   deliveryId: string | null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function hasRepositoryIdentity<T>(payload: T): payload is T & {
+  repository: PullRequestWebhookPayload["repository"];
+} {
+  if (!isRecord(payload) || !isRecord(payload.repository)) {
+    return false;
+  }
+
+  const { repository } = payload;
+  return (
+    typeof repository.id === "number" &&
+    isRecord(repository.owner) &&
+    typeof repository.owner.login === "string" &&
+    typeof repository.name === "string"
+  );
+}
+
+function hasNumberField<T>(value: T): value is T & { number: number } {
+  return isRecord(value) && typeof value.number === "number";
+}
+
 // Load private key from file or environment
 function getPrivateKey(): string | undefined {
   if (GITHUB_PRIVATE_KEY) {
@@ -793,26 +817,16 @@ app.post("/webhook", async (c) => {
     const triggerActions = ["opened", "synchronize", "ready_for_review", "review_requested"];
 
     if (triggerActions.includes(payload.action)) {
-      if (!payload.pull_request) {
+      if (!hasNumberField(payload.pull_request)) {
         return c.json({ status: "ignored", reason: "missing_pull_request" });
+      }
+
+      if (!hasRepositoryIdentity(payload)) {
+        return c.json({ status: "ignored", reason: "missing_repository" });
       }
 
       if (payload.action === "review_requested" && !isReviewRequestedFromBot(payload)) {
         return c.json({ status: "ignored", reason: "review_not_requested_from_bot" });
-      }
-
-      try {
-        await getRepositorySettings(
-          payload.repository.owner.login,
-          payload.repository.name,
-          payload.repository.id
-        );
-      } catch (error) {
-        await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId);
-        if (isSettingsApiUnavailableError(error)) {
-          return settingsApiUnavailableResponse(c, error);
-        }
-        throw error;
       }
 
       const key = buildPullRequestReviewJobKey(payload);
@@ -949,18 +963,12 @@ app.post("/webhook", async (c) => {
     }
 
     if (isBareBotMention(commentBody, BOT_USERNAME)) {
-      try {
-        await getRepositorySettings(
-          payload.repository.owner.login,
-          payload.repository.name,
-          payload.repository.id
-        );
-      } catch (error) {
-        await commentOnWebhookPullRequestFailure(payload, "review", error, deliveryId);
-        if (isSettingsApiUnavailableError(error)) {
-          return settingsApiUnavailableResponse(c, error);
-        }
-        throw error;
+      if (!hasRepositoryIdentity(payload)) {
+        return c.json({ status: "ignored", reason: "missing_repository" });
+      }
+
+      if (!hasNumberField(payload.issue)) {
+        return c.json({ status: "ignored", reason: "missing_issue" });
       }
 
       const reviewPayload = buildCommentTriggeredReviewPayload(payload);
