@@ -231,11 +231,14 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("Not safe to merge yet.");
       expect(body).not.toContain("The reviewed changes are:");
       expect(body).toContain(
+        'Risk basis: the reviewed code changes are summarized as "Overall PR summary."; OpenDiff still tracks 1 critical issue; also, no historical findings are closed as addressed in this summary.'
+      );
+      expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 critical issue."
       );
       expect(body).toContain("`a.ts:1` is flagged as Security for 'x'");
       expect(body).toContain(
-        "These findings are tied to changed code or unresolved review history"
+        "These open findings indicate behavior, security, performance, or maintainability risk tied to changed code or unresolved review history"
       );
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
@@ -282,10 +285,15 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("Merge with caution.");
       expect(body).not.toContain("The reviewed changes are:");
       expect(body).toContain(
+        'Risk basis: the reviewed code changes are summarized as "Initial review summary."; OpenDiff still tracks 1 warning; also, no historical findings are closed as addressed in this summary.'
+      );
+      expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 warning."
       );
       expect(body).toContain("`src/a.ts:4` is flagged as Style for 'x'");
-      expect(body).toContain("Because these are warnings rather than critical findings");
+      expect(body).toContain(
+        "Because these are warnings rather than critical findings, they are not hard blockers, but their risk should be verified before merging."
+      );
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).not.toContain("### Open Issue Summary");
@@ -314,11 +322,11 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("## OpenDiff Summary");
       expect(body).not.toContain("### What This PR Changes");
       expect(body).toContain(
-        "Safe to merge based on this review. OpenDiff approved the current diff and found no open issues"
+        'Safe to merge. Risk basis: the reviewed code changes are summarized as "This PR updates the login flow and keeps existing session behavior intact."; OpenDiff found no open findings in the current diff or unresolved historical issue set'
       );
-      expect(body).toContain("against the changed code or the unresolved historical issue set");
+      expect(body).toContain("no historical findings are closed as addressed in this summary");
       expect(body).toContain(
-        "the review evidence does not show behavior, security, performance, or maintainability risk"
+        "there is no open review evidence of behavior, security, performance, or maintainability risk"
       );
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
@@ -366,6 +374,9 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("Merge with caution.");
       expect(body).not.toContain("The reviewed changes are:");
       expect(body).toContain(
+        'Risk basis: the reviewed code changes are summarized as "Rereview summary."; OpenDiff still tracks 2 warnings; also, no historical findings are closed as addressed in this summary.'
+      );
+      expect(body).toContain(
         "OpenDiff returned a `comment` verdict and the durable summary still tracks 2 warnings."
       );
       expect(body).toContain("`src/b.ts:8` is flagged as Style for 'y'");
@@ -408,6 +419,7 @@ describe("ReviewFormatter", () => {
       });
 
       expect(body).toContain("### Addressed Since Earlier Reviews");
+      expect(body).toContain("1 historical finding is closed as addressed in this summary");
       expect(body).toContain("- ~~`src/c.ts:12` already fixed~~");
       expect(body).toContain("<!-- opendiff-issue:");
     });
