@@ -498,6 +498,87 @@ describe("WebhookHandler", () => {
       );
     });
 
+    it("should keep repeated historical issues unresolved while suppressing duplicate comments", async () => {
+      const repeatedIssue = {
+        type: "bug-risk" as const,
+        severity: "warning" as const,
+        file: "src/index.ts",
+        line: 5,
+        message: "Previously reported issue",
+      };
+
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+        },
+      ]);
+      mockGitHubClient.getIssueComments.mockResolvedValue([
+        {
+          id: 101,
+          user: "opendiff-bot",
+          body: `## OpenDiff Summary\n\nOld summary\n\n${buildIssueMarker(repeatedIssue)}`,
+        },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "The previously reported issue is still present.",
+        issues: [repeatedIssue],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "## Review Summary\n\nNo new inline comments.",
+        event: "COMMENT",
+      });
+      mockFormatter.partitionIssues = vi
+        .fn()
+        .mockReturnValue({ inlineIssues: [], bodyOnlyIssues: [] });
+      mockFormatter.formatSummaryBody = vi
+        .fn()
+        .mockReturnValue("## OpenDiff Summary\n\nNo new inline comments.");
+      mockFormatter.formatHistoricalSummaryBody = vi
+        .fn()
+        .mockReturnValue(
+          "## OpenDiff Summary\n\nStill open.\n\n### Still Open From Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
+        );
+      mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Status Update\n\nStill open.");
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(result.success).toBe(true);
+      expect(result.issues).toEqual([]);
+      expect(mockAgent.reviewFiles).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          priorReviewContext: expect.stringContaining(
+            'src/index.ts:5 type=bug-risk severity=warning message="Previously reported issue"'
+          ),
+        }),
+        expect.anything(),
+        undefined
+      );
+      expect(mockFormatter.formatHistoricalSummaryBody).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issues: [expect.objectContaining(repeatedIssue)],
+        }),
+        [],
+        expect.objectContaining({
+          unresolvedHistoricalIssues: [expect.objectContaining(repeatedIssue)],
+          addressedIssues: [],
+        })
+      );
+      expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        101,
+        "## OpenDiff Summary\n\nStill open.\n\n### Still Open From Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
+      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+    });
+
     it("should not coerce a filtered comment review into an approval", async () => {
       const repeatedIssue = {
         type: "style" as const,

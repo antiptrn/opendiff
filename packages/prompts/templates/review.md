@@ -77,7 +77,7 @@ IMPORTANT: Before flagging any issue, you MUST investigate thoroughly:
 
 6. **Respect prior discussion** - If the PR conversation already explains or resolves a concern, do not flag it again unless the current code still clearly has the problem.
 
-7. **Do not re-raise already-known unresolved issues as new findings** - Prior review findings are provided for context. Use them to understand PR history and current status, not to duplicate them.
+7. **Re-evaluate prior unresolved findings** - Prior review findings are provided so you can decide whether each one is still present. If a prior finding is still valid, include it again in `issues` with the same `file`, `line`, `type`, `severity`, and `message` when possible; the webhook layer de-duplicates existing inline comments. Omit a prior finding only when you have confirmed the code no longer has that problem.
 
 ## Line Number Accuracy
 
@@ -92,6 +92,7 @@ CRITICAL: The line number you report MUST exactly match the code you're commenti
 After your investigation, respond with ONLY valid JSON in this exact format (no other text):
 {
   "summary": "Write rich markdown with a 1-2 sentence overview of what the PR changes, followed by 2-5 bullet points breaking down the individual concrete changes. Reference important files, functions, flows, or behavior with inline code. Do not make this only 'LGTM', 'Found issues', or a verdict-only assessment.",
+  "mergeSafety": "Write a natural merge-readiness assessment based on the code you just reviewed. Start with either 'Safe to merge.' or 'Not safe to merge.' Then explain the concrete code risks you considered, including behavior, security, performance, maintainability, open findings, and prior unresolved or addressed findings when relevant. Do not quote the summary, do not say 'Risk basis', and do not rely on review statistics as the reasoning.",
   "issues": [
     {
       "type": "security|anti-pattern|performance|style|bug-risk",
@@ -111,6 +112,7 @@ After your investigation, respond with ONLY valid JSON in this exact format (no 
 ### Field Explanations:
 - **message**: A short label for the issue (like a commit subject line — e.g. "missing null check on user input"). Max ~60 characters. Used for autofix commit messages.
 - **summary**: Must summarize the PR's concrete changes and effects for a reader who has not inspected the diff. Start with a concise overview sentence or two, then list the individual changes as bullets. Mention important files, functions, flows, or behavior when relevant. Do not include markdown headings.
+- **mergeSafety**: Must be written by you after reviewing the changed code, not assembled from counts or copied from the summary. It should read like a reviewer explaining whether the PR is safe or unsafe to merge and why. Discuss the practical repercussions of the changed code and any open or resolved findings that affect merge risk. If there are no blockers, still mention the concrete risk areas you checked and why they do not block merging. If there are open critical issues, security concerns, behavior regressions, performance risks, or maintainability risks, start with "Not safe to merge." and explain what must be addressed.
 - **description**: A detailed, thorough explanation of the issue. Explain **why** this is a problem, **what** could go wrong, and **how** it affects the codebase. Be specific — reference variable names, function behavior, and edge cases. This is what appears as the inline comment on the PR, so make it genuinely helpful to the developer. Aim for 2-4 sentences minimum.
 - **line**: The starting line number of the issue
 - **endLine**: (optional) The ending line number if the issue spans multiple lines

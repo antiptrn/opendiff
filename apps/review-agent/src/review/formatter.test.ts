@@ -9,6 +9,8 @@ describe("ReviewFormatter", () => {
     it("should convert request-changes verdicts into conversational comment reviews", () => {
       const reviewResult: ReviewResult = {
         summary: "Found some issues that need attention.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change includes a blocking security issue that should be fixed before merge.",
         issues: [
           {
             type: "security",
@@ -35,6 +37,8 @@ describe("ReviewFormatter", () => {
     it("should format the review body as a current issues breakdown", () => {
       const reviewResult: ReviewResult = {
         summary: "Found some issues that need attention.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has an open security issue that should be addressed before merge.",
         issues: [
           {
             type: "security",
@@ -62,6 +66,8 @@ describe("ReviewFormatter", () => {
     it("should format approval correctly", () => {
       const reviewResult: ReviewResult = {
         summary: "Code looks great!",
+        mergeSafety:
+          "Safe to merge. The reviewed changes do not introduce blocking behavior, security, or maintainability risk.",
         issues: [],
         verdict: "approve",
       };
@@ -76,6 +82,8 @@ describe("ReviewFormatter", () => {
     it("should format comment-only review", () => {
       const reviewResult: ReviewResult = {
         summary: "A few suggestions for improvement.",
+        mergeSafety:
+          "Safe to merge. The reviewed change only has minor suggestions and no blocking risk.",
         issues: [
           {
             type: "style",
@@ -96,6 +104,8 @@ describe("ReviewFormatter", () => {
     it("should omit emojis from inline comment titles", () => {
       const reviewResult: ReviewResult = {
         summary: "Issues found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change includes open issues across multiple severities that should be handled before merge.",
         issues: [
           {
             type: "security",
@@ -136,6 +146,8 @@ describe("ReviewFormatter", () => {
     it("should include suggestion in code block when provided", () => {
       const reviewResult: ReviewResult = {
         summary: "Issue found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has a bug-risk warning that should be resolved before merge.",
         issues: [
           {
             type: "bug-risk",
@@ -158,6 +170,8 @@ describe("ReviewFormatter", () => {
     it("should add issue type badge", () => {
       const reviewResult: ReviewResult = {
         summary: "Multiple issue types.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change contains multiple open issue types, including a security concern.",
         issues: [
           {
             type: "security",
@@ -186,6 +200,8 @@ describe("ReviewFormatter", () => {
     it("should format summary with issue counts", () => {
       const reviewResult: ReviewResult = {
         summary: "Multiple issues found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has critical and warning-level issues that should be fixed before merge.",
         issues: [
           { type: "security", severity: "critical", file: "a.ts", line: 1, message: "x" },
           { type: "security", severity: "critical", file: "b.ts", line: 2, message: "y" },
@@ -206,6 +222,8 @@ describe("ReviewFormatter", () => {
     it("should keep the full PR summary format for the durable summary comment", () => {
       const reviewResult: ReviewResult = {
         summary: "Overall PR summary.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change leaves the `login()` path accepting unsafe input, so malformed or hostile authentication payloads can still reach the query layer. That creates concrete security and runtime behavior risk in changed code and should be fixed before merge.",
         issues: [
           {
             type: "security",
@@ -228,17 +246,14 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
       expect(body).not.toContain("- Evidence:");
-      expect(body).toContain("Not safe to merge yet.");
+      expect(body).toContain("Not safe to merge.");
       expect(body).not.toContain("The reviewed changes are:");
+      expect(body).not.toContain("Risk basis:");
+      expect(body).not.toContain("OpenDiff returned a `comment` verdict");
+      expect(body).not.toContain("the reviewed code changes are summarized as");
+      expect(body).toContain("malformed or hostile authentication payloads");
       expect(body).toContain(
-        'Risk basis: the reviewed code changes are summarized as "Overall PR summary."; OpenDiff still tracks 1 critical issue; also, no historical findings are closed as addressed in this summary.'
-      );
-      expect(body).toContain(
-        "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 critical issue."
-      );
-      expect(body).toContain("`a.ts:1` is flagged as Security for 'x'");
-      expect(body).toContain(
-        "These open findings indicate behavior, security, performance, or maintainability risk tied to changed code or unresolved review history"
+        "concrete security and runtime behavior risk in changed code and should be fixed before merge"
       );
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
@@ -259,6 +274,8 @@ describe("ReviewFormatter", () => {
     it("should use non-historical headings on the first review", () => {
       const reviewResult: ReviewResult = {
         summary: "Initial review summary.",
+        mergeSafety:
+          "Not safe to merge. The first review still has a warning in `src/a.ts`, and that changed path needs a human decision before this should land. It is not a security blocker, but the maintainability risk is still open in the reviewed code.",
         issues: [{ type: "style", severity: "warning", file: "src/a.ts", line: 4, message: "x" }],
         verdict: "comment",
       };
@@ -282,18 +299,11 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### What This PR Changes");
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
-      expect(body).toContain("Merge with caution.");
+      expect(body).toContain("Not safe to merge.");
       expect(body).not.toContain("The reviewed changes are:");
-      expect(body).toContain(
-        'Risk basis: the reviewed code changes are summarized as "Initial review summary."; OpenDiff still tracks 1 warning; also, no historical findings are closed as addressed in this summary.'
-      );
-      expect(body).toContain(
-        "OpenDiff returned a `comment` verdict and the durable summary still tracks 1 warning."
-      );
-      expect(body).toContain("`src/a.ts:4` is flagged as Style for 'x'");
-      expect(body).toContain(
-        "Because these are warnings rather than critical findings, they are not hard blockers, but their risk should be verified before merging."
-      );
+      expect(body).not.toContain("Risk basis:");
+      expect(body).not.toContain("OpenDiff returned a `comment` verdict");
+      expect(body).toContain("maintainability risk is still open in the reviewed code");
       expect(body).toContain("### Findings");
       expect(body).not.toContain("### Review Judgement");
       expect(body).not.toContain("### Open Issue Summary");
@@ -313,6 +323,8 @@ describe("ReviewFormatter", () => {
     it("should include findings for clean PR summaries", () => {
       const reviewResult: ReviewResult = {
         summary: "This PR updates the login flow and keeps existing session behavior intact.",
+        mergeSafety:
+          "Safe to merge. The login-flow changes preserve the existing session behavior and do not add new authentication, authorization, persistence, or performance-sensitive paths. With no open findings from the reviewed code, the main risk is regression in the login path, and the diff does not show a blocking issue there.",
         issues: [],
         verdict: "approve",
       };
@@ -322,12 +334,11 @@ describe("ReviewFormatter", () => {
       expect(body).toContain("## OpenDiff Summary");
       expect(body).not.toContain("### What This PR Changes");
       expect(body).toContain(
-        'Safe to merge. Risk basis: the reviewed code changes are summarized as "This PR updates the login flow and keeps existing session behavior intact."; OpenDiff found no open findings in the current diff or unresolved historical issue set'
+        "Safe to merge. The login-flow changes preserve the existing session behavior"
       );
-      expect(body).toContain("no historical findings are closed as addressed in this summary");
-      expect(body).toContain(
-        "there is no open review evidence of behavior, security, performance, or maintainability risk"
-      );
+      expect(body).not.toContain("Risk basis:");
+      expect(body).not.toContain("the reviewed code changes are summarized as");
+      expect(body).not.toContain("OpenDiff approved the current diff");
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
       expect(body).not.toContain("- Verdict:");
@@ -340,6 +351,8 @@ describe("ReviewFormatter", () => {
     it("should use historical headings on re-review", () => {
       const reviewResult: ReviewResult = {
         summary: "Rereview summary.",
+        mergeSafety:
+          "Not safe to merge. The rereview still has warning-level issues in both the newly changed `src/b.ts` path and the earlier `src/old.ts` history, so the maintainability risk has not been cleared. These are not critical security blockers, but they are still open review risks that should be resolved or explicitly accepted before merge.",
         issues: [{ type: "style", severity: "warning", file: "src/b.ts", line: 8, message: "y" }],
         verdict: "comment",
       };
@@ -371,16 +384,13 @@ describe("ReviewFormatter", () => {
       expect(body).not.toContain("### Open Issues Across Reviews");
       expect(body).not.toContain("### Merge Safety");
       expect(body).not.toContain("Proof:");
-      expect(body).toContain("Merge with caution.");
+      expect(body).toContain(
+        "Merge safety was not generated by the reviewer for this run. Review the 2 warnings listed below before merging."
+      );
       expect(body).not.toContain("The reviewed changes are:");
-      expect(body).toContain(
-        'Risk basis: the reviewed code changes are summarized as "Rereview summary."; OpenDiff still tracks 2 warnings; also, no historical findings are closed as addressed in this summary.'
-      );
-      expect(body).toContain(
-        "OpenDiff returned a `comment` verdict and the durable summary still tracks 2 warnings."
-      );
-      expect(body).toContain("`src/b.ts:8` is flagged as Style for 'y'");
-      expect(body).toContain("`src/old.ts:2` is flagged as Bug Risk for 'old issue'");
+      expect(body).not.toContain("Risk basis:");
+      expect(body).not.toContain("OpenDiff returned a `comment` verdict");
+      expect(body).not.toContain("the maintainability risk has not been cleared");
       expect(body).toContain("### Still Open From Earlier Reviews");
       expect(body).toContain("### New Issues");
       expect(body).toContain("| Finding | Issue | Code |");
@@ -399,6 +409,8 @@ describe("ReviewFormatter", () => {
     it("should preserve hidden issue markers for addressed findings in the living summary", () => {
       const reviewResult: ReviewResult = {
         summary: "Everything from earlier passes is now fixed.",
+        mergeSafety:
+          "Safe to merge. The earlier bug-risk finding in `src/c.ts` is now addressed, and the current review has no open behavior, security, performance, or maintainability concerns. The remaining risk is limited to normal regression coverage for the touched path, not an unresolved review blocker.",
         issues: [],
         verdict: "approve",
       };
@@ -419,15 +431,37 @@ describe("ReviewFormatter", () => {
       });
 
       expect(body).toContain("### Addressed Since Earlier Reviews");
-      expect(body).toContain("1 historical finding is closed as addressed in this summary");
+      expect(body).toContain("The earlier bug-risk finding in `src/c.ts` is now addressed");
       expect(body).toContain("- ~~`src/c.ts:12` already fixed~~");
       expect(body).toContain("<!-- opendiff-issue:");
+    });
+
+    it("should fall back to summary-derived merge safety when filtered findings no longer match the reviewed set", () => {
+      const reviewResult: ReviewResult = {
+        summary: "The current pass only retains issues that are still actionable.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has a warning in `src/a.ts`, so the maintainability risk remains unresolved and should block merge until fixed.",
+        issues: [{ type: "style", severity: "warning", file: "src/a.ts", line: 4, message: "x" }],
+        verdict: "comment",
+      };
+
+      const body = formatter.formatHistoricalSummaryBody(reviewResult, [], {
+        newIssues: [],
+        unresolvedHistoricalIssues: [],
+        addressedIssues: [],
+      });
+
+      expect(body).toContain("Merge safety was not generated by the reviewer for this run.");
+      expect(body).not.toContain("Not safe to merge. The reviewed change still has a warning in `src/a.ts`");
+      expect(body).toContain("OpenDiff found no issues that require changes in this review.");
     });
 
     it("should render summary changes as an overview plus bullets when possible", () => {
       const reviewResult: ReviewResult = {
         summary:
           "This PR wires the billing dialog into the settings flow. It adds the `BillingDialog` component. It updates `settings-page.tsx` to open the dialog from the plan card.",
+        mergeSafety:
+          "Safe to merge. The reviewed UI wiring change is straightforward and does not introduce blocking risk in the touched paths.",
         issues: [],
         verdict: "approve",
       };

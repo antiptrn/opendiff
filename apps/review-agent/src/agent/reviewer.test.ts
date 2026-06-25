@@ -32,6 +32,7 @@ describe("CodeReviewAgent", () => {
     lastPromptArgs = null;
     mockPromptResult = JSON.stringify({
       summary: "LGTM",
+      mergeSafety: "Safe to merge. The reviewed changes do not introduce blocking risk.",
       issues: [],
       verdict: "approve",
     });
@@ -49,6 +50,8 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "Found critical security vulnerability in authentication code.",
+        mergeSafety:
+          "Not safe to merge. The authentication changes expose a concrete SQL injection risk that must be fixed before release.",
         issues: [
           {
             type: "security",
@@ -83,6 +86,8 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "Code looks good. Clean utility function with proper typing.",
+        mergeSafety:
+          "Safe to merge. The utility change is isolated and does not introduce behavior, security, or performance risk.",
         issues: [],
         verdict: "approve",
       });
@@ -114,6 +119,8 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "Multiple issues found across files.",
+        mergeSafety:
+          "Not safe to merge. The changed files include a critical security issue and a maintainability issue that should be addressed first.",
         issues: [
           {
             type: "style",
@@ -163,11 +170,26 @@ describe("CodeReviewAgent", () => {
       ).rejects.toThrow("Failed to parse review response");
     });
 
+    it("should reject review responses without generated merge safety", async () => {
+      const files: FileToReview[] = [{ filename: "test.ts" }];
+      mockPromptResult = JSON.stringify({
+        summary: "LGTM",
+        issues: [],
+        verdict: "approve",
+      });
+
+      await expect(
+        agent.reviewFiles(files, { prTitle: "Test", prBody: null }, "/tmp/test-repo")
+      ).rejects.toThrow("Failed to parse review response");
+    });
+
     it("should filter non-actionable praise issues", async () => {
       const files: FileToReview[] = [{ filename: "src/select.tsx" }];
 
       mockPromptResult = JSON.stringify({
         summary: "Mostly good changes.",
+        mergeSafety:
+          "Safe to merge. The semantic wrapper change does not introduce blocking behavior or security risk.",
         issues: [
           {
             type: "style",
@@ -200,6 +222,7 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "No files to review.",
+        mergeSafety: "Safe to merge. There are no reviewed code changes that introduce risk.",
         issues: [],
         verdict: "approve",
       });
@@ -217,7 +240,8 @@ describe("CodeReviewAgent", () => {
     it("should handle JSON response wrapped in markdown code block", async () => {
       const files: FileToReview[] = [{ filename: "test.ts" }];
 
-      mockPromptResult = '```json\n{"summary": "LGTM", "issues": [], "verdict": "approve"}\n```';
+      mockPromptResult =
+        '```json\n{"summary": "LGTM", "mergeSafety": "Safe to merge. The reviewed change has no blocking risk.", "issues": [], "verdict": "approve"}\n```';
 
       const result = await agent.reviewFiles(
         files,
@@ -232,7 +256,8 @@ describe("CodeReviewAgent", () => {
     it("should handle response with extra whitespace around JSON", async () => {
       const files: FileToReview[] = [{ filename: "test.ts" }];
 
-      mockPromptResult = '  \n  {"summary": "LGTM", "issues": [], "verdict": "approve"}  \n  ';
+      mockPromptResult =
+        '  \n  {"summary": "LGTM", "mergeSafety": "Safe to merge. The reviewed change has no blocking risk.", "issues": [], "verdict": "approve"}  \n  ';
 
       const result = await agent.reviewFiles(
         files,
@@ -248,6 +273,7 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "OK",
+        mergeSafety: "Safe to merge. The reviewed change has no blocking risk.",
         issues: [],
         verdict: "approve",
       });
@@ -266,6 +292,7 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "OK",
+        mergeSafety: "Safe to merge. The reviewed change has no blocking risk.",
         issues: [],
         verdict: "approve",
       });
@@ -284,6 +311,8 @@ describe("CodeReviewAgent", () => {
 
       mockPromptResult = JSON.stringify({
         summary: "Issue at line 0",
+        mergeSafety:
+          "Not safe to merge. The general issue needs review before this change can land safely.",
         issues: [
           {
             type: "style",
