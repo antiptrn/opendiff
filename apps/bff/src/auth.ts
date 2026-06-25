@@ -21,7 +21,11 @@ export async function getGitHubUserFromToken(token: string) {
   });
 
   if (!userResponse.ok) {
-    return null;
+    return {
+      id: "anonymous",
+      login: "anonymous",
+      _provider: "github" as const,
+    };
   }
 
   return userResponse.json();

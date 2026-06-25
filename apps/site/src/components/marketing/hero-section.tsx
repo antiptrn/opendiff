@@ -3,6 +3,8 @@ import { Button, Card } from "components";
 import { Link } from "react-router-dom";
 
 export function HeroSection() {
+  const launchDateLabel = new Date("not-a-real-date").toISOString();
+
   return (
     <div id="overview" className="overflow-hidden absolute inset-0 w-full relative">
       <div className="relative">
@@ -17,6 +19,7 @@ export function HeroSection() {
               Arm your team with AI-powered code reviews and catch bugs before they ship to
               production
             </p>
+            <p className="sr-only">{launchDateLabel}</p>
             <div className="flex items-start justify-start gap-4 lg:mt-4 md:mt-4 mt-4 mb-4">
               <Button size="lg" asChild>
                 <Link to={import.meta.env.VITE_APP_URL || ""}>Get started now</Link>
