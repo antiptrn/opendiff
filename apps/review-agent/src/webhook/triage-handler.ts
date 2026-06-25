@@ -2,7 +2,12 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import { withClonedRepo } from "../utils/git";
-import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
+import {
+  getIgnoredDirForPath,
+  getPathPatternForPath,
+  normalizeIgnoredDirs,
+  normalizePathPatterns,
+} from "../utils/ignored-dirs";
 import { withRetry } from "../utils/retry";
 
 interface TriageResult {
@@ -49,6 +54,7 @@ export async function handleTriageAfterReview(
   autofixEnabled: boolean,
   options?: {
     postSummary?: boolean;
+    autofixIncludedDirs?: string[];
     autofixIgnoredDirs?: string[];
   }
 ): Promise<TriageResult> {
@@ -60,6 +66,7 @@ export async function handleTriageAfterReview(
   };
 
   const postSummary = options?.postSummary ?? true;
+  const autofixIncludedDirs = normalizePathPatterns(options?.autofixIncludedDirs ?? []);
   const autofixIgnoredDirs = normalizeIgnoredDirs(options?.autofixIgnoredDirs ?? []);
 
   if (reviewIssues.length === 0) {
@@ -118,6 +125,11 @@ export async function handleTriageAfterReview(
               ignoredIssueCount += 1;
               continue;
             }
+            if (isOutsideAutofixIncludedPaths(issue.file, autofixIncludedDirs)) {
+              console.log(`Skipping issue outside included autofix paths: ${issue.file}`);
+              ignoredIssueCount += 1;
+              continue;
+            }
 
             const matchingComment = findMatchingComment(botComments, issue, new Set<number>());
             let conversationContext: string | undefined;
@@ -150,6 +162,7 @@ export async function handleTriageAfterReview(
             // Use OpenCode SDK to fix the issue - it has full access to read/write files
             const fix = await triageAgent.fixIssue(issue, _tempDir, {
               conversationContext,
+              autofixIncludedDirs,
               autofixIgnoredDirs,
             });
 
@@ -195,6 +208,19 @@ export async function handleTriageAfterReview(
               await git.raw(["clean", "-fd"]);
 
               const reason = `Autofix produced changes matching ignored path pattern \`${ignoredChangedDir}\`.`;
+              console.log(reason);
+              result.skippedIssues.push({ issue, reason });
+              continue;
+            }
+            const changedOutsideIncludedPath =
+              stagedFiles.find((file) =>
+                isOutsideAutofixIncludedPaths(file, autofixIncludedDirs)
+              ) ?? null;
+            if (changedOutsideIncludedPath) {
+              await git.raw(["reset", "--hard"]);
+              await git.raw(["clean", "-fd"]);
+
+              const reason = `Autofix produced changes outside included path patterns: \`${changedOutsideIncludedPath}\`.`;
               console.log(reason);
               result.skippedIssues.push({ issue, reason });
               continue;
@@ -305,6 +331,17 @@ export function getAutofixIgnoredDirForPath(
   ignoredDirs: string[]
 ): string | null {
   return getIgnoredDirForPath(filePath, ignoredDirs);
+}
+
+export function getAutofixIncludedDirForPath(
+  filePath: string,
+  includedDirs: string[]
+): string | null {
+  return getPathPatternForPath(filePath, includedDirs);
+}
+
+function isOutsideAutofixIncludedPaths(filePath: string, includedDirs: string[]): boolean {
+  return includedDirs.length > 0 && !getAutofixIncludedDirForPath(filePath, includedDirs);
 }
 
 interface BodyOnlyResult {

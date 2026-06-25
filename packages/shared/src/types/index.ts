@@ -54,6 +54,8 @@ export interface RepositorySettings {
   enabled: boolean;
   effectiveEnabled: boolean;
   autofixEnabled: boolean;
+  reviewIncludedDirs?: string;
+  autofixIncludedDirs?: string;
   reviewIgnoredDirs?: string;
   autofixIgnoredDirs?: string;
   sensitivity: number;

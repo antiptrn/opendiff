@@ -542,10 +542,12 @@ async function processPullRequestReviewJob(
     const triageOptions = {
       enabled: triageEnabled,
       autofixEnabled: settings.autofixEnabled,
+      autofixIncludedDirs: parseIgnoredDirs(settings.autofixIncludedDirs),
       autofixIgnoredDirs: parseIgnoredDirs(settings.autofixIgnoredDirs),
       triageAgent,
       botUsername: BOT_USERNAME,
     };
+    const reviewIncludedDirs = parseIgnoredDirs(settings.reviewIncludedDirs);
     const reviewIgnoredDirs = parseIgnoredDirs(settings.reviewIgnoredDirs);
 
     reviewReaction = {
@@ -569,7 +571,8 @@ async function processPullRequestReviewJob(
             BOT_TEAMS,
             customRules,
             settings.sensitivity,
-            reviewIgnoredDirs
+            reviewIgnoredDirs,
+            reviewIncludedDirs
           )
         : await handler.handlePullRequestOpened(
             reviewPayload,
@@ -577,7 +580,8 @@ async function processPullRequestReviewJob(
             customRules,
             triageOptions,
             settings.sensitivity,
-            reviewIgnoredDirs
+            reviewIgnoredDirs,
+            reviewIncludedDirs
           );
 
     if (result.skipped) {
@@ -897,7 +901,8 @@ app.post("/webhook", async (c) => {
         payload,
         BOT_USERNAME,
         customRules,
-        parseIgnoredDirs(settings.autofixIgnoredDirs)
+        parseIgnoredDirs(settings.autofixIgnoredDirs),
+        parseIgnoredDirs(settings.autofixIncludedDirs)
       );
 
       if (result.skipped) {

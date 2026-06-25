@@ -31,7 +31,7 @@ async function fetchGitHubFile(
 
 const reposRoutes = new Hono();
 
-function normalizeIgnoredPathPattern(path: string): string {
+function normalizePathPattern(path: string): string {
   const normalized = path.trim().replace(/\\/g, "/").replace(/^\/+/, "");
   if (!normalized) {
     return "";
@@ -47,7 +47,7 @@ function normalizeIgnoredPathPattern(path: string): string {
     : withoutTrailingSlashes;
 }
 
-function normalizeIgnoredDirs(value: unknown): string | null | undefined {
+function normalizePathPatterns(value: unknown): string | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -55,7 +55,7 @@ function normalizeIgnoredDirs(value: unknown): string | null | undefined {
     return null;
   }
 
-  const dirs = value.split(/\r?\n/).map(normalizeIgnoredPathPattern).filter(Boolean);
+  const dirs = value.split(/\r?\n/).map(normalizePathPattern).filter(Boolean);
 
   return dirs.length > 0 ? Array.from(new Set(dirs)).join("\n") : null;
 }
@@ -158,6 +158,8 @@ reposRoutes.get("/settings", async (c) => {
         repo: s.repo,
         enabled: s.enabled,
         autofixEnabled: s.autofixEnabled,
+        reviewIncludedDirs: s.reviewIncludedDirs || "",
+        autofixIncludedDirs: s.autofixIncludedDirs || "",
         reviewIgnoredDirs: s.reviewIgnoredDirs || "",
         autofixIgnoredDirs: s.autofixIgnoredDirs || "",
         sensitivity: s.sensitivity,
@@ -185,6 +187,8 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
       repo,
       enabled: false,
       customReviewRules: "",
+      reviewIncludedDirs: "",
+      autofixIncludedDirs: "",
       reviewIgnoredDirs: "",
       autofixIgnoredDirs: "",
       effectiveEnabled: false,
@@ -200,6 +204,8 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
+    reviewIncludedDirs: settings.reviewIncludedDirs || "",
+    autofixIncludedDirs: settings.autofixIncludedDirs || "",
     reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
     autofixIgnoredDirs: settings.autofixIgnoredDirs || "",
     effectiveEnabled: settings.enabled,
@@ -217,6 +223,8 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled,
     sensitivity,
     customReviewRules,
+    reviewIncludedDirs,
+    autofixIncludedDirs,
     reviewIgnoredDirs,
     autofixIgnoredDirs,
     githubRepoId,
@@ -225,12 +233,16 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled?: boolean;
     sensitivity?: number;
     customReviewRules?: string;
+    reviewIncludedDirs?: string;
+    autofixIncludedDirs?: string;
     reviewIgnoredDirs?: string;
     autofixIgnoredDirs?: string;
     githubRepoId?: number;
   };
-  const normalizedReviewIgnoredDirs = normalizeIgnoredDirs(reviewIgnoredDirs);
-  const normalizedAutofixIgnoredDirs = normalizeIgnoredDirs(autofixIgnoredDirs);
+  const normalizedReviewIncludedDirs = normalizePathPatterns(reviewIncludedDirs);
+  const normalizedAutofixIncludedDirs = normalizePathPatterns(autofixIncludedDirs);
+  const normalizedReviewIgnoredDirs = normalizePathPatterns(reviewIgnoredDirs);
+  const normalizedAutofixIgnoredDirs = normalizePathPatterns(autofixIgnoredDirs);
 
   const user = getAuthUser(c);
   const userId = user.id;
@@ -242,6 +254,10 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: autofixEnabled !== undefined ? autofixEnabled : undefined,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : undefined,
       customReviewRules: customReviewRules !== undefined ? customReviewRules || null : undefined,
+      reviewIncludedDirs:
+        normalizedReviewIncludedDirs !== undefined ? normalizedReviewIncludedDirs : undefined,
+      autofixIncludedDirs:
+        normalizedAutofixIncludedDirs !== undefined ? normalizedAutofixIncludedDirs : undefined,
       reviewIgnoredDirs:
         normalizedReviewIgnoredDirs !== undefined ? normalizedReviewIgnoredDirs : undefined,
       autofixIgnoredDirs:
@@ -258,6 +274,8 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: autofixEnabled ?? true,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : 50,
       customReviewRules: customReviewRules || null,
+      reviewIncludedDirs: normalizedReviewIncludedDirs ?? null,
+      autofixIncludedDirs: normalizedAutofixIncludedDirs ?? null,
       reviewIgnoredDirs: normalizedReviewIgnoredDirs ?? null,
       autofixIgnoredDirs: normalizedAutofixIgnoredDirs ?? null,
       organizationId: orgId || undefined,
@@ -292,6 +310,8 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
+    reviewIncludedDirs: settings.reviewIncludedDirs || "",
+    autofixIncludedDirs: settings.autofixIncludedDirs || "",
     reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
     autofixIgnoredDirs: settings.autofixIgnoredDirs || "",
     effectiveEnabled: settings.enabled,
@@ -368,6 +388,8 @@ reposRoutes.get("/org/repos", requireAuth(), async (c) => {
           autofixEnabled: r.autofixEnabled,
           sensitivity: r.sensitivity,
           customReviewRules: r.customReviewRules || "",
+          reviewIncludedDirs: r.reviewIncludedDirs || "",
+          autofixIncludedDirs: r.autofixIncludedDirs || "",
           reviewIgnoredDirs: r.reviewIgnoredDirs || "",
           autofixIgnoredDirs: r.autofixIgnoredDirs || "",
           effectiveEnabled: r.enabled,
@@ -439,6 +461,8 @@ reposRoutes.get("/org/repos/:owner/:repo", requireAuth(), async (c) => {
       autofixEnabled: r.autofixEnabled,
       sensitivity: r.sensitivity,
       customReviewRules: r.customReviewRules || "",
+      reviewIncludedDirs: r.reviewIncludedDirs || "",
+      autofixIncludedDirs: r.autofixIncludedDirs || "",
       reviewIgnoredDirs: r.reviewIgnoredDirs || "",
       autofixIgnoredDirs: r.autofixIgnoredDirs || "",
       effectiveEnabled: r.enabled,

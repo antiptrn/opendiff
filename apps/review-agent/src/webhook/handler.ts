@@ -6,7 +6,12 @@ import type { ReviewFormatter } from "../review/formatter";
 import type { DiffPatches } from "../review/types";
 import { commentMentionsBot } from "../utils/bot-mentions";
 import { withClonedRepo } from "../utils/git";
-import { getIgnoredDirForPath, normalizeIgnoredDirs } from "../utils/ignored-dirs";
+import {
+  getIgnoredDirForPath,
+  getPathPatternForPath,
+  normalizeIgnoredDirs,
+  normalizePathPatterns,
+} from "../utils/ignored-dirs";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import {
   type StoredIssueRecord,
@@ -121,6 +126,7 @@ interface HandlerResult {
 interface TriageOptions {
   enabled: boolean;
   autofixEnabled: boolean;
+  autofixIncludedDirs?: string[];
   autofixIgnoredDirs?: string[];
   triageAgent: TriageAgent;
   botUsername: string;
@@ -297,15 +303,35 @@ async function getHistoricalIssues(
   return issues;
 }
 
-function filterIssuesOutsideIgnoredDirs(
+function isOutsideIncludedPaths(filePath: string, includedPaths: string[]): boolean {
+  return includedPaths.length > 0 && !getPathPatternForPath(filePath, includedPaths);
+}
+
+function isOutsideReviewPathScope(
+  filePath: string,
+  includedPaths: string[],
+  ignoredPaths: string[]
+): boolean {
+  return (
+    Boolean(getIgnoredDirForPath(filePath, ignoredPaths)) ||
+    isOutsideIncludedPaths(filePath, includedPaths)
+  );
+}
+
+function filterIssuesInReviewPathScope(
   issues: Map<string, StoredIssueRecord>,
-  ignoredDirs: string[]
+  includedPaths: string[],
+  ignoredPaths: string[]
 ): Map<string, StoredIssueRecord> {
-  if (ignoredDirs.length === 0) {
+  if (includedPaths.length === 0 && ignoredPaths.length === 0) {
     return issues;
   }
 
-  return new Map([...issues].filter(([, issue]) => !getIgnoredDirForPath(issue.file, ignoredDirs)));
+  return new Map(
+    [...issues].filter(
+      ([, issue]) => !isOutsideReviewPathScope(issue.file, includedPaths, ignoredPaths)
+    )
+  );
 }
 
 async function buildPullRequestConversationContext(
@@ -562,7 +588,8 @@ export class WebhookHandler {
     customRules?: string | null,
     triageOptions?: TriageOptions,
     sensitivity?: number,
-    reviewIgnoredDirs: string[] = []
+    reviewIgnoredDirs: string[] = [],
+    reviewIncludedDirs: string[] = []
   ): Promise<HandlerResult> {
     if (!payload.pull_request) {
       return { success: true, skipped: true };
@@ -578,7 +605,8 @@ export class WebhookHandler {
       botUsername,
       customRules,
       sensitivity,
-      reviewIgnoredDirs
+      reviewIgnoredDirs,
+      reviewIncludedDirs
     );
 
     // If review succeeded and triage is enabled, run auto-fix
@@ -603,7 +631,10 @@ export class WebhookHandler {
         payload.repository.name,
         triageOptions.botUsername,
         triageOptions.autofixEnabled,
-        { autofixIgnoredDirs: triageOptions.autofixIgnoredDirs }
+        {
+          autofixIncludedDirs: triageOptions.autofixIncludedDirs,
+          autofixIgnoredDirs: triageOptions.autofixIgnoredDirs,
+        }
       );
 
       if (triageResult.error) {
@@ -626,7 +657,8 @@ export class WebhookHandler {
     botTeams: string[] = [],
     customRules?: string | null,
     sensitivity?: number,
-    reviewIgnoredDirs: string[] = []
+    reviewIgnoredDirs: string[] = [],
+    reviewIncludedDirs: string[] = []
   ): Promise<HandlerResult> {
     // Check if the review was requested from our bot
     const isRequestedFromBot =
@@ -637,7 +669,14 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    return this.performReview(payload, botUsername, customRules, sensitivity, reviewIgnoredDirs);
+    return this.performReview(
+      payload,
+      botUsername,
+      customRules,
+      sensitivity,
+      reviewIgnoredDirs,
+      reviewIncludedDirs
+    );
   }
 
   private async performReview(
@@ -645,7 +684,8 @@ export class WebhookHandler {
     botUsername: string,
     customRules?: string | null,
     sensitivity?: number,
-    reviewIgnoredDirs: string[] = []
+    reviewIgnoredDirs: string[] = [],
+    reviewIncludedDirs: string[] = []
   ): Promise<HandlerResult> {
     const { repository, pull_request } = payload;
 
@@ -657,6 +697,7 @@ export class WebhookHandler {
     const repo = repository.name;
     const prNumber = pull_request.number;
     const normalizedReviewIgnoredDirs = normalizeIgnoredDirs(reviewIgnoredDirs);
+    const normalizedReviewIncludedDirs = normalizePathPatterns(reviewIncludedDirs);
 
     try {
       console.log(`Cloning ${owner}/${repo} branch ${pull_request.head.ref} for review`);
@@ -684,6 +725,11 @@ export class WebhookHandler {
               console.log(`Skipping review for ${file.filename}; ignored by ${ignoredDir}`);
               return false;
             }
+            const includedPath = getPathPatternForPath(file.filename, normalizedReviewIncludedDirs);
+            if (normalizedReviewIncludedDirs.length > 0 && !includedPath) {
+              console.log(`Skipping review for ${file.filename}; outside included review paths`);
+              return false;
+            }
             return true;
           });
 
@@ -707,8 +753,9 @@ export class WebhookHandler {
             prNumber,
             botUsername
           );
-          const reviewableHistoricalIssues = filterIssuesOutsideIgnoredDirs(
+          const reviewableHistoricalIssues = filterIssuesInReviewPathScope(
             historicalIssues,
+            normalizedReviewIncludedDirs,
             normalizedReviewIgnoredDirs
           );
           const reviewResult = await this.agent.reviewFiles(
@@ -728,6 +775,12 @@ export class WebhookHandler {
             const ignoredDir = getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs);
             if (ignoredDir) {
               console.log(`Dropping review finding for ${issue.file}; ignored by ${ignoredDir}`);
+              return false;
+            }
+            if (isOutsideIncludedPaths(issue.file, normalizedReviewIncludedDirs)) {
+              console.log(
+                `Dropping review finding for ${issue.file}; outside included review paths`
+              );
               return false;
             }
             return true;
@@ -783,6 +836,9 @@ export class WebhookHandler {
             [...historicalIssues].flatMap(([fingerprint, issue]) => {
               // Ignored historical findings should stay unresolved until they are reviewed again.
               if (getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs)) {
+                return fingerprint;
+              }
+              if (isOutsideIncludedPaths(issue.file, normalizedReviewIncludedDirs)) {
                 return fingerprint;
               }
 
@@ -973,7 +1029,8 @@ export class WebhookHandler {
     payload: WebhookPayload,
     botUsername: string,
     customRules?: string | null,
-    autofixIgnoredDirs: string[] = []
+    autofixIgnoredDirs: string[] = [],
+    autofixIncludedDirs: string[] = []
   ): Promise<HandlerResult> {
     const { comment, repository, pull_request } = payload;
 
@@ -1093,7 +1150,7 @@ export class WebhookHandler {
               repo,
               botUsername,
               true,
-              { postSummary: false, autofixIgnoredDirs }
+              { postSummary: false, autofixIncludedDirs, autofixIgnoredDirs }
             );
 
             if (triageResult.fixedIssues.length > 0) {

@@ -14,6 +14,7 @@ interface FixResult {
 
 interface FixIssueContext {
   conversationContext?: string;
+  autofixIncludedDirs?: string[];
   autofixIgnoredDirs?: string[];
 }
 
@@ -41,6 +42,10 @@ export class TriageAgent {
       conversationSection: context?.conversationContext?.trim()
         ? `\n## Review Thread Context\n${context.conversationContext}\n`
         : "",
+      includedDirsSection:
+        context?.autofixIncludedDirs && context.autofixIncludedDirs.length > 0
+          ? `\n## Autofix Included Paths\nOnly edit files matching these path patterns:\n${context.autofixIncludedDirs.map((dir) => `- ${dir}`).join("\n")}\n`
+          : "",
       ignoredDirsSection:
         context?.autofixIgnoredDirs && context.autofixIgnoredDirs.length > 0
           ? `\n## Autofix Ignored Paths\nDo not edit files matching these path patterns:\n${context.autofixIgnoredDirs.map((dir) => `- ${dir}`).join("\n")}\n`

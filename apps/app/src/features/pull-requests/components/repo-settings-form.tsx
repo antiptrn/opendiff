@@ -8,16 +8,20 @@ import { useState } from "react";
 interface RepoSettingsFormProps {
   initialSettings: {
     enabled: boolean;
+    reviewIncludedDirs: string;
     reviewIgnoredDirs: string;
     autofixEnabled: boolean;
+    autofixIncludedDirs: string;
     autofixIgnoredDirs: string;
     sensitivity: number;
     customReviewRules: string;
   };
   onSave: (settings: {
     enabled: boolean;
+    reviewIncludedDirs: string;
     reviewIgnoredDirs: string;
     autofixEnabled: boolean;
+    autofixIncludedDirs: string;
     autofixIgnoredDirs: string;
     sensitivity: number;
     customReviewRules: string;
@@ -54,14 +58,15 @@ export function RepoSettingsForm({
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
-        <Checkbox
-          id="enabled"
-          checked={settings.enabled}
-          onCheckedChange={(checked) => updateSetting("enabled", checked === true)}
-          className="mt-[3px]"
-        />
+        <div className="mt-[3px]">
+          <Checkbox
+            id="enabled"
+            checked={settings.enabled}
+            onCheckedChange={(checked) => updateSetting("enabled", checked === true)}
+          />
+        </div>
         <div className="space-y-1">
-          <Label htmlFor="enabled" className="text-base cursor-pointer">
+          <Label htmlFor="enabled" size="base" interactive>
             Enable Reviews
           </Label>
           <p className="text-sm text-muted-foreground">
@@ -71,35 +76,54 @@ export function RepoSettingsForm({
       </div>
 
       {settings.enabled && (
-        <div className="ml-7 space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="review-ignore-dirs">Review Ignored Paths</Label>
-            <p className="text-sm text-muted-foreground">
-              One path pattern per line, such as README.md or apps/bff/src/*.
-            </p>
+        <div className="ml-7 space-y-4">
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label htmlFor="review-include-dirs">Review Included Paths</Label>
+              <p className="text-sm text-muted-foreground">
+                Optional. When set, reviews only run on matching paths. Ignored paths still win.
+              </p>
+            </div>
+            <Textarea
+              id="review-include-dirs"
+              value={settings.reviewIncludedDirs}
+              onChange={(e) => updateSetting("reviewIncludedDirs", e.target.value)}
+              placeholder={"apps/app/src/*\npackages/shared/src/types/index.ts"}
+              variant="background"
+              rows={4}
+            />
           </div>
-          <Textarea
-            id="review-ignore-dirs"
-            value={settings.reviewIgnoredDirs}
-            onChange={(e) => updateSetting("reviewIgnoredDirs", e.target.value)}
-            placeholder={"apps/bff/src/*\nREADME.md"}
-            variant="background"
-            rows={4}
-          />
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label htmlFor="review-ignore-dirs">Review Ignored Paths</Label>
+              <p className="text-sm text-muted-foreground">
+                One path pattern per line, such as README.md or apps/bff/src/*.
+              </p>
+            </div>
+            <Textarea
+              id="review-ignore-dirs"
+              value={settings.reviewIgnoredDirs}
+              onChange={(e) => updateSetting("reviewIgnoredDirs", e.target.value)}
+              placeholder={"apps/bff/src/*\nREADME.md"}
+              variant="background"
+              rows={4}
+            />
+          </div>
         </div>
       )}
 
       <div className="flex items-start gap-3">
-        <Checkbox
-          id="autofix"
-          checked={settings.autofixEnabled}
-          onCheckedChange={(checked) => {
-            updateSetting("autofixEnabled", checked === true);
-          }}
-          className="mt-[3px]"
-        />
+        <div className="mt-[3px]">
+          <Checkbox
+            id="autofix"
+            checked={settings.autofixEnabled}
+            onCheckedChange={(checked) => {
+              updateSetting("autofixEnabled", checked === true);
+            }}
+          />
+        </div>
         <div className="space-y-1">
-          <Label htmlFor="autofix" className="text-base cursor-pointer">
+          <Label htmlFor="autofix" size="base" interactive>
             Enable Autofix
           </Label>
           <p className="text-sm text-muted-foreground">
@@ -110,28 +134,46 @@ export function RepoSettingsForm({
       </div>
 
       {settings.autofixEnabled && (
-        <div className="ml-7 space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Paths</Label>
-            <p className="text-sm text-muted-foreground">
-              One path pattern per line, such as README.md or apps/bff/src/*.
-            </p>
+        <div className="ml-7 space-y-4">
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label htmlFor="autofix-include-dirs">Autofix Included Paths</Label>
+              <p className="text-sm text-muted-foreground">
+                Optional. When set, autofix only edits matching paths. Ignored paths still win.
+              </p>
+            </div>
+            <Textarea
+              id="autofix-include-dirs"
+              value={settings.autofixIncludedDirs}
+              onChange={(e) => updateSetting("autofixIncludedDirs", e.target.value)}
+              placeholder={"apps/app/src/*\npackages/shared/src/types/index.ts"}
+              variant="background"
+              rows={4}
+            />
           </div>
-          <Textarea
-            id="autofix-ignore-dirs"
-            value={settings.autofixIgnoredDirs}
-            onChange={(e) => updateSetting("autofixIgnoredDirs", e.target.value)}
-            placeholder={"apps/bff/src/*\nREADME.md"}
-            variant="background"
-            rows={4}
-          />
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label htmlFor="autofix-ignore-dirs">Autofix Ignored Paths</Label>
+              <p className="text-sm text-muted-foreground">
+                One path pattern per line, such as README.md or apps/bff/src/*.
+              </p>
+            </div>
+            <Textarea
+              id="autofix-ignore-dirs"
+              value={settings.autofixIgnoredDirs}
+              onChange={(e) => updateSetting("autofixIgnoredDirs", e.target.value)}
+              placeholder={"apps/bff/src/*\nREADME.md"}
+              variant="background"
+              rows={4}
+            />
+          </div>
         </div>
       )}
 
       {/* Sensitivity slider */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label htmlFor="sensitivity" className="text-base">
+          <Label htmlFor="sensitivity" size="base">
             Review Sensitivity
           </Label>
           <span className="text-sm text-muted-foreground tabular-nums">
@@ -146,7 +188,6 @@ export function RepoSettingsForm({
           max={100}
           step={5}
           disabled={false}
-          className="w-full"
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>Lenient</span>
@@ -159,7 +200,7 @@ export function RepoSettingsForm({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="custom-rules" className="text-base">
+        <Label htmlFor="custom-rules" size="base">
           Custom Review Rules
         </Label>
         <p className="text-sm text-muted-foreground">
