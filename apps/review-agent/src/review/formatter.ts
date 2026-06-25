@@ -278,10 +278,11 @@ export class ReviewFormatter {
       ),
       ...bodyOnlyIssues,
     ];
-    const counts = this.countBySeverity(openIssues.length > 0 ? openIssues : result.issues);
+    const counts = this.countBySeverity(openIssues);
+    const canUseGeneratedMergeSafety = this.matchesReviewedIssueSet(openIssues, result.issues);
     let summary = "## OpenDiff Summary\n\n";
     summary += this.formatChangeSummary(result.summary);
-    summary += this.formatMergeSafety(result, counts);
+    summary += this.formatMergeSafety(result, counts, canUseGeneratedMergeSafety);
     summary += "### Findings\n\n";
     summary += `${this.formatFindings(result, counts)}\n\n`;
 
@@ -366,9 +367,12 @@ export class ReviewFormatter {
 
   private formatMergeSafety(
     result: ReviewResult,
-    counts: Record<CodeIssue["severity"], number>
+    counts: Record<CodeIssue["severity"], number>,
+    canUseGeneratedMergeSafety: boolean
   ): string {
-    const generatedMergeSafety = this.normalizeGeneratedMergeSafety(result.mergeSafety);
+    const generatedMergeSafety = canUseGeneratedMergeSafety
+      ? this.normalizeGeneratedMergeSafety(result.mergeSafety)
+      : null;
     if (generatedMergeSafety) {
       return `${generatedMergeSafety}\n\n`;
     }
@@ -388,6 +392,28 @@ export class ReviewFormatter {
     }
 
     return normalized.replace(/^#+\s+Merge Safety\s*\n+/i, "").trim();
+  }
+
+  private matchesReviewedIssueSet(
+    renderedOpenIssues: SummaryIssue[],
+    reviewedIssues: CodeIssue[]
+  ): boolean {
+    const renderedFingerprints = new Set(
+      renderedOpenIssues.map((issue) => issue.fingerprint ?? buildIssueFingerprint(issue))
+    );
+    const reviewedFingerprints = new Set(reviewedIssues.map((issue) => buildIssueFingerprint(issue)));
+
+    if (renderedFingerprints.size !== reviewedFingerprints.size) {
+      return false;
+    }
+
+    for (const fingerprint of renderedFingerprints) {
+      if (!reviewedFingerprints.has(fingerprint)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private formatIssueCountSummary(counts: Record<CodeIssue["severity"], number>): string {
