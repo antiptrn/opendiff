@@ -17,6 +17,10 @@ export interface SummaryHistory {
   addressedIssues?: StoredIssueRecord[];
 }
 
+interface MergeSafetyContext {
+  addressedIssueCount?: number;
+}
+
 type SummaryIssue = Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message"> &
   Partial<Pick<CodeIssue, "description" | "suggestion" | "suggestedCode" | "endLine">> & {
     fingerprint?: string;
@@ -284,7 +288,10 @@ export class ReviewFormatter {
     summary += this.formatMergeSafety(
       result,
       openIssues.length > 0 ? openIssues : result.issues,
-      counts
+      counts,
+      {
+        addressedIssueCount: history?.addressedIssues?.length ?? 0,
+      }
     );
     summary += "### Findings\n\n";
     summary += `${this.formatFindings(result, counts)}\n\n`;
@@ -371,16 +378,22 @@ export class ReviewFormatter {
   private formatMergeSafety(
     result: ReviewResult,
     openIssues: SummaryIssue[],
-    counts: Record<CodeIssue["severity"], number>
+    counts: Record<CodeIssue["severity"], number>,
+    context: MergeSafetyContext = {}
   ): string {
     const issueTotal = counts.critical + counts.warning + counts.suggestion;
+    const riskBasis = this.formatMergeSafetyRiskBasis(
+      result,
+      counts,
+      context.addressedIssueCount ?? 0
+    );
 
     if (issueTotal === 0) {
       if (result.verdict === "approve") {
-        return "Safe to merge based on this review. OpenDiff approved the current diff and found no open issues against the changed code or the unresolved historical issue set, so the review evidence does not show behavior, security, performance, or maintainability risk that should block this merge.\n\n";
+        return `Safe to merge. ${riskBasis} OpenDiff approved the current diff, and there is no open review evidence of behavior, security, performance, or maintainability risk that should block this merge.\n\n`;
       }
 
-      return `No blocking issues were found for the reviewed changes. OpenDiff found no open issues in the changed code or unresolved historical issue set, but the review verdict was \`${result.verdict}\` instead of \`approve\`; confirm that non-approval verdict is expected before merging.\n\n`;
+      return `No blocking issues were found for the reviewed changes. ${riskBasis} The review verdict was \`${result.verdict}\` instead of \`approve\`; confirm that non-approval verdict is expected before merging.\n\n`;
     }
 
     const issueSummary = this.formatIssueCountSummary(counts);
@@ -388,14 +401,54 @@ export class ReviewFormatter {
     const reviewContext = `OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
 
     if (counts.critical > 0 || result.verdict === "request_changes") {
-      return `Not safe to merge yet. ${reviewContext} ${evidenceSummary} These findings are tied to changed code or unresolved review history and should be addressed before merging.\n\n`;
+      return `Not safe to merge yet. ${riskBasis} ${reviewContext} ${evidenceSummary} These open findings indicate behavior, security, performance, or maintainability risk tied to changed code or unresolved review history and should be addressed before merging.\n\n`;
     }
 
     if (counts.warning > 0) {
-      return `Merge with caution. ${reviewContext} There are no critical blockers, but warning-level findings remain. ${evidenceSummary} Because these are warnings rather than critical findings, they are not hard blockers, but they should be verified before merging.\n\n`;
+      return `Merge with caution. ${riskBasis} ${reviewContext} There are no critical blockers, but warning-level findings remain. ${evidenceSummary} Because these are warnings rather than critical findings, they are not hard blockers, but their risk should be verified before merging.\n\n`;
     }
 
-    return `Safe to merge if the remaining suggestions are acceptable. ${reviewContext} OpenDiff found no critical or warning issues, but suggestion-level findings remain. ${evidenceSummary} Treat these as non-blocking review notes unless they point to behavior you want to clean up before merge.\n\n`;
+    return `Safe to merge if the remaining suggestions are acceptable. ${riskBasis} ${reviewContext} OpenDiff found no critical or warning issues, but suggestion-level findings remain. ${evidenceSummary} Treat these as non-blocking review notes unless they point to behavior, security, performance, or maintainability risk you want to clean up before merge.\n\n`;
+  }
+
+  private formatMergeSafetyRiskBasis(
+    result: ReviewResult,
+    counts: Record<CodeIssue["severity"], number>,
+    addressedIssueCount: number
+  ): string {
+    const issueTotal = counts.critical + counts.warning + counts.suggestion;
+    const changeContext = this.formatMergeSafetyChangeContext(result.summary);
+    const addressedContext = this.formatAddressedIssueContext(addressedIssueCount);
+
+    if (issueTotal === 0) {
+      return `Risk basis: ${changeContext}; OpenDiff found no open findings in the current diff or unresolved historical issue set, and ${addressedContext}.`;
+    }
+
+    const issueSummary = this.formatIssueCountSummary(counts);
+    return `Risk basis: ${changeContext}; OpenDiff still tracks ${issueSummary}; also, ${addressedContext}.`;
+  }
+
+  private formatMergeSafetyChangeContext(summary: string): string {
+    const normalized = summary.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "the reviewed code changes have no detailed summary available";
+    }
+
+    const sentenceMatch = normalized.match(/^.*?[.!?](?:\s|$)/);
+    const firstSentence = (sentenceMatch?.[0] ?? normalized).trim();
+    const summaryText =
+      firstSentence.length > 180 ? `${firstSentence.slice(0, 177).trimEnd()}...` : firstSentence;
+    return `the reviewed code changes are summarized as "${summaryText}"`;
+  }
+
+  private formatAddressedIssueContext(addressedIssueCount: number): string {
+    if (addressedIssueCount <= 0) {
+      return "no historical findings are closed as addressed in this summary";
+    }
+
+    return `${addressedIssueCount} historical finding${
+      addressedIssueCount === 1 ? " is" : "s are"
+    } closed as addressed in this summary`;
   }
 
   private formatMergeSafetyEvidence(openIssues: SummaryIssue[]): string {
