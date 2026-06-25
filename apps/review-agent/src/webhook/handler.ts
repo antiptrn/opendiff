@@ -429,7 +429,9 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
 
   const lines = ["Previously reported findings on this PR:"];
   for (const issue of [...historicalIssues.values()].slice(-20)) {
-    lines.push(`- ${issue.file}:${issue.line} ${issue.message}`);
+    lines.push(
+      `- ${issue.file}:${issue.line} type=${issue.type} severity=${issue.severity} message="${issue.message}"`
+    );
   }
   return lines.join("\n");
 }

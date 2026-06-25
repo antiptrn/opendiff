@@ -77,7 +77,7 @@ IMPORTANT: Before flagging any issue, you MUST investigate thoroughly:
 
 6. **Respect prior discussion** - If the PR conversation already explains or resolves a concern, do not flag it again unless the current code still clearly has the problem.
 
-7. **Do not re-raise already-known unresolved issues as new findings** - Prior review findings are provided for context. Use them to understand PR history and current status, not to duplicate them.
+7. **Re-evaluate prior unresolved findings** - Prior review findings are provided so you can decide whether each one is still present. If a prior finding is still valid, include it again in `issues` with the same `file`, `line`, `type`, `severity`, and `message` when possible; the webhook layer de-duplicates existing inline comments. Omit a prior finding only when you have confirmed the code no longer has that problem.
 
 ## Line Number Accuracy
 
