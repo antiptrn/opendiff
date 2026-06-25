@@ -374,43 +374,28 @@ export class ReviewFormatter {
     counts: Record<CodeIssue["severity"], number>
   ): string {
     const issueTotal = counts.critical + counts.warning + counts.suggestion;
-    const changeContext = this.formatMergeSafetyChangeContext(result.summary);
 
     if (issueTotal === 0) {
       if (result.verdict === "approve") {
-        return `Safe to merge based on this review. ${changeContext} OpenDiff approved those changes and found no open issues against the changed code or the unresolved historical issue set, so the review evidence does not show behavior, security, performance, or maintainability risk that should block this merge.\n\n`;
+        return "Safe to merge based on this review. OpenDiff approved the current diff and found no open issues against the changed code or the unresolved historical issue set, so the review evidence does not show behavior, security, performance, or maintainability risk that should block this merge.\n\n";
       }
 
-      return `No blocking issues were found for the reviewed changes. ${changeContext} OpenDiff found no open issues in the changed code or unresolved historical issue set, but the review verdict was \`${result.verdict}\` instead of \`approve\`; confirm that non-approval verdict is expected before merging.\n\n`;
+      return `No blocking issues were found for the reviewed changes. OpenDiff found no open issues in the changed code or unresolved historical issue set, but the review verdict was \`${result.verdict}\` instead of \`approve\`; confirm that non-approval verdict is expected before merging.\n\n`;
     }
 
     const issueSummary = this.formatIssueCountSummary(counts);
     const evidenceSummary = this.formatMergeSafetyEvidence(openIssues);
-    const reviewContext = `${changeContext} OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
+    const reviewContext = `OpenDiff returned a \`${result.verdict}\` verdict and the durable summary still tracks ${issueSummary}.`;
 
     if (counts.critical > 0 || result.verdict === "request_changes") {
-      return `Not safe to merge yet. ${reviewContext} ${evidenceSummary} These unresolved findings should be addressed before merging.\n\n`;
+      return `Not safe to merge yet. ${reviewContext} ${evidenceSummary} These findings are tied to changed code or unresolved review history and should be addressed before merging.\n\n`;
     }
 
     if (counts.warning > 0) {
-      return `Merge with caution. ${reviewContext} There are no critical blockers, but warning-level findings remain. ${evidenceSummary} Review these warnings before merging.\n\n`;
+      return `Merge with caution. ${reviewContext} There are no critical blockers, but warning-level findings remain. ${evidenceSummary} Because these are warnings rather than critical findings, they are not hard blockers, but they should be verified before merging.\n\n`;
     }
 
     return `Safe to merge if the remaining suggestions are acceptable. ${reviewContext} OpenDiff found no critical or warning issues, but suggestion-level findings remain. ${evidenceSummary} Treat these as non-blocking review notes unless they point to behavior you want to clean up before merge.\n\n`;
-  }
-
-  private formatMergeSafetyChangeContext(summary: string): string {
-    const normalized = summary
-      .replace(/\r?\n\s*(?:[-*]|\d+\.)\s+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!normalized) {
-      return "No detailed code-change summary was available for this pass.";
-    }
-
-    const changeSummary = this.splitSummarySentences(normalized).slice(0, 3).join(" ");
-    return `The reviewed changes are: ${this.formatIssueSentence(changeSummary)}`;
   }
 
   private formatMergeSafetyEvidence(openIssues: SummaryIssue[]): string {
@@ -605,9 +590,7 @@ export class ReviewFormatter {
       : `${issue.file}:${issue.line}`;
   }
 
-  private formatIssueDisplayLocations(
-    issues: SummaryIssue[]
-  ): Map<SummaryIssue, string> {
+  private formatIssueDisplayLocations(issues: SummaryIssue[]): Map<SummaryIssue, string> {
     const counts = new Map<string, number>();
     const shortLocations = new Map<SummaryIssue, string>();
 
@@ -622,9 +605,7 @@ export class ReviewFormatter {
         const shortLocation = shortLocations.get(issue) ?? this.formatIssueDisplayLocation(issue);
         return [
           issue,
-          (counts.get(shortLocation) ?? 0) > 1
-            ? this.formatIssueLocation(issue)
-            : shortLocation,
+          (counts.get(shortLocation) ?? 0) > 1 ? this.formatIssueLocation(issue) : shortLocation,
         ];
       })
     );
