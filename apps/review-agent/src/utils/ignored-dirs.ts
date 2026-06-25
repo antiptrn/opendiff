@@ -57,9 +57,14 @@ function getEquivalentPathPatterns(normalizedPattern: string): string[] {
 
   if (workspaceSourceMatch) {
     const [, workspaceDir, workspaceName, rest] = workspaceSourceMatch;
-    patterns.push(
-      rest ? `${workspaceDir}/${workspaceName}/src/${rest}` : `${workspaceDir}/${workspaceName}/src`
-    );
+    const workspacePath = `${workspaceDir}/${workspaceName}`;
+    if (!rest) {
+      patterns.push(`${workspacePath}/src`);
+    } else if (rest === "src" || rest.startsWith("src/")) {
+      patterns.push(`${workspacePath}/${rest}`);
+    } else {
+      patterns.push(`${workspacePath}/src/${rest}`);
+    }
   }
 
   return Array.from(new Set(patterns));
