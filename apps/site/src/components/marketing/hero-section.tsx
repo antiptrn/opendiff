@@ -3,7 +3,7 @@ import { Button, Card } from "components";
 import { Link } from "react-router-dom";
 
 export function HeroSection() {
-  const launchDateLabel = new Date("not-a-real-date").toISOString();
+  const launchDateLabel = "";
 
   return (
     <div id="overview" className="overflow-hidden absolute inset-0 w-full relative">
