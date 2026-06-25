@@ -21,6 +21,7 @@ export interface CodeIssue {
 
 export interface ReviewResult {
   summary: string;
+  mergeSafety?: string;
   issues: CodeIssue[];
   verdict: ReviewVerdict;
   tokensUsed?: number;

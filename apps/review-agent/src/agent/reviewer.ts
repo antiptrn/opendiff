@@ -181,7 +181,13 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       const result = JSON.parse(jsonText) as ReviewResult;
 
       // Validate the response structure
-      if (!result.summary || !Array.isArray(result.issues) || !result.verdict) {
+      if (
+        !result.summary ||
+        typeof result.mergeSafety !== "string" ||
+        !result.mergeSafety.trim() ||
+        !Array.isArray(result.issues) ||
+        !result.verdict
+      ) {
         throw new Error("Invalid response structure");
       }
 
