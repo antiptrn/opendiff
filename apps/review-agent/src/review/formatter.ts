@@ -434,8 +434,7 @@ export class ReviewFormatter {
       return "the reviewed code changes have no detailed summary available";
     }
 
-    const sentenceMatch = normalized.match(/^.*?[.!?](?:\s|$)/);
-    const firstSentence = (sentenceMatch?.[0] ?? normalized).trim();
+    const firstSentence = this.splitSummarySentences(normalized)[0]?.trim() ?? normalized;
     const summaryText =
       firstSentence.length > 180 ? `${firstSentence.slice(0, 177).trimEnd()}...` : firstSentence;
     return `the reviewed code changes are summarized as "${summaryText}"`;
