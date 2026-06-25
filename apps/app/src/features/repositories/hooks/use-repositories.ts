@@ -88,6 +88,8 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       repo,
       enabled,
       autofixEnabled,
+      reviewIncludedDirs,
+      autofixIncludedDirs,
       reviewIgnoredDirs,
       autofixIgnoredDirs,
       sensitivity,
@@ -98,6 +100,8 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       repo: string;
       enabled: boolean;
       autofixEnabled?: boolean;
+      reviewIncludedDirs?: string;
+      autofixIncludedDirs?: string;
       reviewIgnoredDirs?: string;
       autofixIgnoredDirs?: string;
       sensitivity?: number;
@@ -114,6 +118,8 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
         body: JSON.stringify({
           enabled,
           autofixEnabled,
+          reviewIncludedDirs,
+          autofixIncludedDirs,
           reviewIgnoredDirs,
           autofixIgnoredDirs,
           sensitivity,

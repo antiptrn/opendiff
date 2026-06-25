@@ -21,7 +21,11 @@ mock.module("../utils/git", () => ({
   },
 }));
 
-import { getAutofixIgnoredDirForPath, handleTriageAfterReview } from "./triage-handler";
+import {
+  getAutofixIgnoredDirForPath,
+  getAutofixIncludedDirForPath,
+  handleTriageAfterReview,
+} from "./triage-handler";
 
 describe("handleTriageAfterReview", () => {
   let mockGitHubClient: Partial<GitHubClient>;
@@ -191,6 +195,39 @@ describe("handleTriageAfterReview", () => {
     expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
   });
 
+  it("should not fix issues outside included autofix paths", async () => {
+    const outOfScopeIssue: CodeIssue = {
+      type: "bug-risk",
+      severity: "warning",
+      file: "apps/bff/src/index.ts",
+      line: 22,
+      message: "Server issue outside app scope",
+    };
+
+    const result = await handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      {
+        number: 42,
+        head: { sha: "abc123", ref: "feature-branch" },
+      },
+      [outOfScopeIssue],
+      "owner",
+      "repo",
+      "opendiff-bot",
+      true,
+      { autofixIncludedDirs: ["src/apps/app/*"] }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.fixedIssues).toHaveLength(0);
+    expect(result.skippedIssues).toHaveLength(0);
+    expect(result.clarificationIssues).toHaveLength(0);
+    expect(mockTriageAgent.fixIssue).not.toHaveBeenCalled();
+    expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+    expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+  });
+
   it("should match autofix ignored path patterns", () => {
     expect(getAutofixIgnoredDirForPath("README.md", ["README.md"])).toBe("README.md");
     expect(getAutofixIgnoredDirForPath("docs/README.md", ["README.md"])).toBeNull();
@@ -205,5 +242,16 @@ describe("handleTriageAfterReview", () => {
         "src/apps/site/*",
       ])
     ).toBe("src/apps/site/*");
+  });
+
+  it("should match autofix included path patterns", () => {
+    expect(
+      getAutofixIncludedDirForPath("apps/site/src/components/marketing/hero-section.tsx", [
+        "src/apps/site/*",
+      ])
+    ).toBe("src/apps/site/*");
+    expect(
+      getAutofixIncludedDirForPath("apps/site/public/robots.txt", ["src/apps/site/*"])
+    ).toBeNull();
   });
 });

@@ -200,6 +200,8 @@ model RepositorySettings {
   repo              String        // Keep for lookups
   enabled           Boolean        @default(true)
   autofixEnabled    Boolean        @default(true)
+  reviewIncludedDirs  String?
+  autofixIncludedDirs String?
   reviewIgnoredDirs String?
   autofixIgnoredDirs String?
   sensitivity       Int            @default(50) // 0-100 scale for review strictness

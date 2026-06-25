@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getIgnoredDirForPath, parseIgnoredDirs } from "./ignored-dirs";
+import { getIgnoredDirForPath, getPathPatternForPath, parseIgnoredDirs } from "./ignored-dirs";
 
 describe("ignored path pattern matching", () => {
   it("parses newline-separated path pattern settings", () => {
@@ -40,6 +40,16 @@ describe("ignored path pattern matching", () => {
       getIgnoredDirForPath("packages/shared/src/auth/index.ts", ["src/packages/shared/*"])
     ).toBe("src/packages/shared/*");
     expect(getIgnoredDirForPath("apps/site/public/robots.txt", ["src/apps/site/*"])).toBeNull();
+  });
+
+  it("matches include path patterns with the same wildcard behavior", () => {
+    expect(getPathPatternForPath("apps/app/src/main.tsx", ["src/apps/app/*"])).toBe(
+      "src/apps/app/*"
+    );
+    expect(getPathPatternForPath("apps/app/public/robots.txt", ["src/apps/app/*"])).toBeNull();
+    expect(
+      getPathPatternForPath("packages/shared/src/types/index.ts", ["packages/shared/src/*"])
+    ).toBe("packages/shared/src/*");
   });
 
   it("treats bare path entries as exact matches and legacy directory prefixes", () => {

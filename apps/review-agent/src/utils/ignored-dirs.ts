@@ -65,23 +65,35 @@ function getEquivalentPathPatterns(normalizedPattern: string): string[] {
   return Array.from(new Set(patterns));
 }
 
-export function parseIgnoredDirs(value?: string): string[] {
-  return normalizeIgnoredDirs((value || "").split(/\r?\n/));
+export function parsePathPatterns(value?: string): string[] {
+  return normalizePathPatterns((value || "").split(/\r?\n/));
 }
 
-export function normalizeIgnoredDirs(dirs: string[]): string[] {
+export function parseIgnoredDirs(value?: string): string[] {
+  return parsePathPatterns(value);
+}
+
+export function normalizePathPatterns(dirs: string[]): string[] {
   return Array.from(new Set(dirs.map(normalizeIgnoredPathPattern).filter(Boolean)));
 }
 
-export function getIgnoredDirForPath(filePath: string, ignoredDirs: string[]): string | null {
+export function normalizeIgnoredDirs(dirs: string[]): string[] {
+  return normalizePathPatterns(dirs);
+}
+
+export function getPathPatternForPath(filePath: string, patterns: string[]): string | null {
   const normalizedPath = normalizeFilePath(filePath);
   if (!normalizedPath) {
     return null;
   }
 
   return (
-    normalizeIgnoredDirs(ignoredDirs).find((pattern) =>
+    normalizePathPatterns(patterns).find((pattern) =>
       matchesIgnoredPathPattern(normalizedPath, pattern)
     ) ?? null
   );
+}
+
+export function getIgnoredDirForPath(filePath: string, ignoredDirs: string[]): string | null {
+  return getPathPatternForPath(filePath, ignoredDirs);
 }

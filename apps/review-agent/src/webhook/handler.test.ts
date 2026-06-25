@@ -934,6 +934,71 @@ describe("WebhookHandler", () => {
       ]);
     });
 
+    it("should only review files matching review included path patterns", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "+code" },
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
+        { filename: "apps/bff/src/index.ts", status: "modified", patch: "+server" },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "OK",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "OK",
+        event: "APPROVE",
+      });
+
+      await handler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot",
+        [],
+        null,
+        undefined,
+        [],
+        ["src/apps/app/*"]
+      );
+
+      const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
+      expect(reviewedFiles.map((file: { filename: string }) => file.filename)).toEqual([
+        "apps/app/src/page.tsx",
+      ]);
+    });
+
+    it("should let review ignored paths override included paths", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
+        { filename: "apps/app/src/generated/client.ts", status: "modified", patch: "+generated" },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "OK",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "OK",
+        event: "APPROVE",
+      });
+
+      await handler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot",
+        [],
+        null,
+        undefined,
+        ["apps/app/src/generated/*"],
+        ["src/apps/app/*"]
+      );
+
+      const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
+      expect(reviewedFiles.map((file: { filename: string }) => file.filename)).toEqual([
+        "apps/app/src/page.tsx",
+      ]);
+    });
+
     it("should drop review findings matching ignored path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
       mockGitHubClient.getPullRequestFiles.mockResolvedValue([
@@ -983,6 +1048,51 @@ describe("WebhookHandler", () => {
       expect(result.success).toBe(true);
       expect(result.issues).toHaveLength(1);
       expect(result.issues?.[0]?.file).toBe("src/code.ts");
+    });
+
+    it("should drop review findings outside included path patterns", async () => {
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
+      ]);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Found issues",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "apps/app/src/page.tsx",
+            line: 1,
+            message: "Included issue",
+          },
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "apps/bff/src/index.ts",
+            line: 1,
+            message: "Out of scope issue",
+          },
+        ],
+        verdict: "comment",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "Review body",
+        event: "COMMENT",
+      });
+
+      const result = await handler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot",
+        [],
+        null,
+        undefined,
+        [],
+        ["src/apps/app/*"]
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues?.[0]?.file).toBe("apps/app/src/page.tsx");
     });
 
     it("should handle API errors gracefully", async () => {
