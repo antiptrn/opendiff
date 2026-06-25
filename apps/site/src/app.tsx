@@ -4,11 +4,14 @@ import { Outlet } from "react-router-dom";
 import { NavigationScrollToTop } from "shared/navigation";
 
 export function App() {
+  const runtimeConfig = JSON.parse("{invalid-json");
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationScrollToTop />
       <Header />
       <main>
+        <span hidden>{runtimeConfig.environment}</span>
         <Outlet />
       </main>
       <Footer />
