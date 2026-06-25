@@ -191,13 +191,14 @@ async function upsertReviewSummaryComment(
 
 function shouldSubmitReview(review: {
   event: "APPROVE" | "COMMENT";
+  body?: string;
   comments?: unknown[];
 }): boolean {
   if (review.comments && review.comments.length > 0) {
     return true;
   }
 
-  return review.event !== "COMMENT";
+  return review.event !== "COMMENT" || Boolean(review.body?.trim());
 }
 
 async function hasBotApprovedHead(
@@ -434,6 +435,13 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
     );
   }
   return lines.join("\n");
+}
+
+function storedIssueToCodeIssue(issue: StoredIssueRecord): CodeIssue {
+  return {
+    ...issue,
+    description: issue.message,
+  };
 }
 
 function resolvedReviewBody(): string {
@@ -915,31 +923,47 @@ export class WebhookHandler {
             {
               ...effectiveReviewResult,
               issues: [
-                ...history.unresolvedHistoricalIssues.map((issue) => ({
-                  ...issue,
-                  description: issue.message,
-                })),
-                ...history.newIssues.map((issue) => ({
-                  ...issue,
-                  description: issue.message,
-                })),
-              ] as CodeIssue[],
+                ...history.unresolvedHistoricalIssues.map(storedIssueToCodeIssue),
+                ...history.newIssues.map(storedIssueToCodeIssue),
+              ],
             },
             [...bodyOnlyIssues, ...invalidInlineIssues],
             history
           );
+          const statusUpdateNewIssues = history.newIssues.filter(
+            (issue) => !existingMentioned.has(issue.fingerprint)
+          );
+          const statusUpdateOpenIssues = [
+            ...history.unresolvedHistoricalIssues.map(storedIssueToCodeIssue),
+            ...statusUpdateNewIssues.map(storedIssueToCodeIssue),
+          ];
+          const statusUpdateBodyOnlyIssues = [...bodyOnlyIssues, ...invalidInlineIssues];
+          const bodyOnlyFingerprints = new Set(
+            statusUpdateBodyOnlyIssues.map((issue) => buildIssueFingerprint(issue))
+          );
+          const statusUpdateInlineIssues = statusUpdateOpenIssues.filter(
+            (issue) => !bodyOnlyFingerprints.has(buildIssueFingerprint(issue))
+          );
           const reviewBody = this.formatter.formatReviewBody(
-            effectiveReviewResult,
-            inlineIssues.filter(
-              (issue) =>
-                !invalidInlineIssues.some(
-                  (invalidIssue) =>
-                    invalidIssue.file === issue.file &&
-                    invalidIssue.line === issue.line &&
-                    invalidIssue.message === issue.message
-                )
-            ),
-            [...bodyOnlyIssues, ...invalidInlineIssues]
+            {
+              ...effectiveReviewResult,
+              issues:
+                statusUpdateOpenIssues.length > 0
+                  ? statusUpdateOpenIssues
+                  : effectiveReviewResult.issues,
+            },
+            statusUpdateOpenIssues.length > 0
+              ? statusUpdateInlineIssues
+              : inlineIssues.filter(
+                  (issue) =>
+                    !invalidInlineIssues.some(
+                      (invalidIssue) =>
+                        invalidIssue.file === issue.file &&
+                        invalidIssue.line === issue.line &&
+                        invalidIssue.message === issue.message
+                    )
+                ),
+            statusUpdateBodyOnlyIssues
           );
           const hadPriorReviewSummary = await hasExistingReviewSummaryComment(
             this.github,
@@ -968,12 +992,10 @@ export class WebhookHandler {
           const resolvedComments = validInlineComments.length > 0 ? validInlineComments : undefined;
           const shouldPostStatusUpdate =
             !reviewSummaryCaptured ||
-            hasOpenIssuesToReport(
-              validInlineComments,
-              bodyOnlyIssues,
-              invalidInlineIssues,
-              history
-            ) ||
+            hasOpenIssuesToReport(validInlineComments, bodyOnlyIssues, invalidInlineIssues, {
+              ...history,
+              newIssues: statusUpdateNewIssues,
+            }) ||
             (review.event === "APPROVE" && hadPriorReviewSummary);
           const shouldPostApprovalReview = review.event === "APPROVE";
           const hasExistingApprovalForHead =
@@ -991,8 +1013,12 @@ export class WebhookHandler {
               ? shouldPostApprovalReview && !hasExistingApprovalForHead
               : shouldPostStatusUpdate;
 
-          if (shouldPostReview && shouldSubmitReview({ ...review, comments: resolvedComments })) {
-            const submittedReviewBody = shouldPostStatusUpdate ? reviewBody : "";
+          const submittedReviewBody = shouldPostStatusUpdate ? reviewBody : "";
+
+          if (
+            shouldPostReview &&
+            shouldSubmitReview({ ...review, body: submittedReviewBody, comments: resolvedComments })
+          ) {
             const { id } = await this.github.submitReview(
               owner,
               repo,

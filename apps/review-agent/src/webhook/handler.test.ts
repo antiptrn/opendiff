@@ -184,7 +184,7 @@ describe("WebhookHandler", () => {
       getPullRequest: vi.fn(),
       getPullRequestFiles: vi.fn(),
       getFileContent: vi.fn(),
-      submitReview: vi.fn(),
+      submitReview: vi.fn().mockResolvedValue({ id: 123 }),
       validateReviewComments: vi
         .fn()
         .mockImplementation(async (_owner, _repo, _pull, _commit, comments) => ({
@@ -498,7 +498,7 @@ describe("WebhookHandler", () => {
       );
     });
 
-    it("should keep repeated historical issues unresolved while suppressing duplicate comments", async () => {
+    it("should post a status update for repeated historical issues without duplicate comments", async () => {
       const repeatedIssue = {
         type: "bug-risk" as const,
         severity: "warning" as const,
@@ -545,10 +545,12 @@ describe("WebhookHandler", () => {
           "## OpenDiff Summary\n\nStill open.\n\n### Still Open From Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
         );
       mockFormatter.formatReviewBody = vi.fn().mockReturnValue("## Status Update\n\nStill open.");
+      mockGitHubClient.submitReview.mockResolvedValue({ id: 131 });
 
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       expect(result.success).toBe(true);
+      expect(result.reviewId).toBe(131);
       expect(result.issues).toEqual([]);
       expect(mockAgent.reviewFiles).toHaveBeenCalledWith(
         expect.anything(),
@@ -570,13 +572,30 @@ describe("WebhookHandler", () => {
           addressedIssues: [],
         })
       );
+      expect(mockFormatter.formatReviewBody).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issues: [expect.objectContaining(repeatedIssue)],
+        }),
+        [expect.objectContaining(repeatedIssue)],
+        []
+      );
       expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         101,
         "## OpenDiff Summary\n\nStill open.\n\n### Still Open From Earlier Reviews\n\n- `src/index.ts:5` Previously reported issue"
       );
-      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "## Status Update\n\nStill open.",
+          comments: undefined,
+          event: "COMMENT",
+        })
+      );
     });
 
     it("should not coerce a filtered comment review into an approval", async () => {
@@ -647,14 +666,24 @@ describe("WebhookHandler", () => {
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       expect(result.success).toBe(true);
-      expect(result.reviewId).toBeUndefined();
+      expect(result.reviewId).toBe(123);
       expect(mockGitHubClient.updateIssueComment).toHaveBeenCalledWith(
         "owner",
         "repo",
         101,
         "## Review Summary\n\nStatus update only.\n\n### Addressed Since Earlier Reviews\n\n- `src/old.ts:3` Resolved issue"
       );
-      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "abc123",
+        expect.objectContaining({
+          body: "## Status Update\n\nResolved earlier issues.",
+          comments: undefined,
+          event: "COMMENT",
+        })
+      );
     });
 
     it("should update the existing review summary comment on re-review", async () => {
