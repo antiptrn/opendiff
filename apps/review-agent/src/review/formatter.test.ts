@@ -9,6 +9,8 @@ describe("ReviewFormatter", () => {
     it("should convert request-changes verdicts into conversational comment reviews", () => {
       const reviewResult: ReviewResult = {
         summary: "Found some issues that need attention.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change includes a blocking security issue that should be fixed before merge.",
         issues: [
           {
             type: "security",
@@ -35,6 +37,8 @@ describe("ReviewFormatter", () => {
     it("should format the review body as a current issues breakdown", () => {
       const reviewResult: ReviewResult = {
         summary: "Found some issues that need attention.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has an open security issue that should be addressed before merge.",
         issues: [
           {
             type: "security",
@@ -62,6 +66,8 @@ describe("ReviewFormatter", () => {
     it("should format approval correctly", () => {
       const reviewResult: ReviewResult = {
         summary: "Code looks great!",
+        mergeSafety:
+          "Safe to merge. The reviewed changes do not introduce blocking behavior, security, or maintainability risk.",
         issues: [],
         verdict: "approve",
       };
@@ -76,6 +82,8 @@ describe("ReviewFormatter", () => {
     it("should format comment-only review", () => {
       const reviewResult: ReviewResult = {
         summary: "A few suggestions for improvement.",
+        mergeSafety:
+          "Safe to merge. The reviewed change only has minor suggestions and no blocking risk.",
         issues: [
           {
             type: "style",
@@ -96,6 +104,8 @@ describe("ReviewFormatter", () => {
     it("should omit emojis from inline comment titles", () => {
       const reviewResult: ReviewResult = {
         summary: "Issues found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change includes open issues across multiple severities that should be handled before merge.",
         issues: [
           {
             type: "security",
@@ -136,6 +146,8 @@ describe("ReviewFormatter", () => {
     it("should include suggestion in code block when provided", () => {
       const reviewResult: ReviewResult = {
         summary: "Issue found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has a bug-risk warning that should be resolved before merge.",
         issues: [
           {
             type: "bug-risk",
@@ -158,6 +170,8 @@ describe("ReviewFormatter", () => {
     it("should add issue type badge", () => {
       const reviewResult: ReviewResult = {
         summary: "Multiple issue types.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change contains multiple open issue types, including a security concern.",
         issues: [
           {
             type: "security",
@@ -186,6 +200,8 @@ describe("ReviewFormatter", () => {
     it("should format summary with issue counts", () => {
       const reviewResult: ReviewResult = {
         summary: "Multiple issues found.",
+        mergeSafety:
+          "Not safe to merge. The reviewed change still has critical and warning-level issues that should be fixed before merge.",
         issues: [
           { type: "security", severity: "critical", file: "a.ts", line: 1, message: "x" },
           { type: "security", severity: "critical", file: "b.ts", line: 2, message: "y" },
@@ -444,6 +460,8 @@ describe("ReviewFormatter", () => {
       const reviewResult: ReviewResult = {
         summary:
           "This PR wires the billing dialog into the settings flow. It adds the `BillingDialog` component. It updates `settings-page.tsx` to open the dialog from the plan card.",
+        mergeSafety:
+          "Safe to merge. The reviewed UI wiring change is straightforward and does not introduce blocking risk in the touched paths.",
         issues: [],
         verdict: "approve",
       };

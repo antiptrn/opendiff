@@ -158,7 +158,13 @@ function parseLocalReviewResponse(text: string): ReviewResult {
   }
 
   const result = JSON.parse(jsonText) as ReviewResult;
-  if (!result.summary || !Array.isArray(result.issues) || !result.verdict) {
+  if (
+    !result.summary ||
+    typeof result.mergeSafety !== "string" ||
+    !result.mergeSafety.trim() ||
+    !Array.isArray(result.issues) ||
+    !result.verdict
+  ) {
     throw new Error("Invalid response structure");
   }
 
