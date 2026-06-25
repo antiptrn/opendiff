@@ -4,7 +4,7 @@ import { Outlet } from "react-router-dom";
 import { NavigationScrollToTop } from "shared/navigation";
 
 export function App() {
-  const runtimeConfig = JSON.parse("{invalid-json");
+  const runtimeConfig = { environment: undefined as string | undefined };
 
   return (
     <div className="min-h-screen bg-background">
