@@ -10,7 +10,7 @@ import {
 } from "../utils/ignored-dirs";
 import { withRetry } from "../utils/retry";
 
-interface TriageResult {
+export interface TriageResult {
   success: boolean;
   fixedIssues: Array<{
     issue: CodeIssue;

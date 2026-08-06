@@ -40,6 +40,12 @@ Copy `.env.example` to `.env` and configure values.
 | `REVIEW_QUEUE_MAX_SIZE` | Optional | Maximum queued full PR reviews before returning `503` for GitHub retry. Defaults to `100`. |
 | `REVIEW_QUEUE_MAX_ATTEMPTS` | Optional | Attempts per queued full PR review. Defaults to `2`. |
 | `REVIEW_QUEUE_RETRY_DELAY_MS` | Optional | Delay before retrying a failed queued review. Defaults to `15000`. |
+| `TRIAGE_QUEUE_CONCURRENCY` | Optional | Number of post-review triage/autofix jobs to process at once. Defaults to `1`. |
+| `TRIAGE_QUEUE_MAX_SIZE` | Optional | Maximum queued triage/autofix jobs. Defaults to `100`. |
+| `TRIAGE_QUEUE_MAX_ATTEMPTS` | Optional | Attempts per queued triage/autofix job. Defaults to `1`. |
+| `TRIAGE_QUEUE_RETRY_DELAY_MS` | Optional | Delay before retrying a failed triage/autofix job. Defaults to `30000`. |
+| `OPENCODE_PROMPT_TIMEOUT_MS` | Optional | Hard timeout for OpenCode startup/session/prompt calls. Defaults to `600000`. |
+| `OPENCODE_SERVER_TIMEOUT_MS` | Optional | Timeout passed to the OpenCode server client. Defaults to `600000`. |
 
 \* At least one default credential should be set for non-Self-sufficient organizations.
 
@@ -79,6 +85,7 @@ Configure a GitHub webhook pointing to this service:
 ## Triage and auto-fix flow
 
 - Review issues are generated first.
+- Full PR review jobs and post-review triage/autofix jobs run in separate in-memory queues.
 - Triage attempts to fix up to 10 issues per cycle.
 - If triage cannot safely proceed, it asks a clarification question in the relevant review thread.
 - With autofix enabled, fixes are committed and pushed to the PR branch, then matching review threads are replied to and resolved.
