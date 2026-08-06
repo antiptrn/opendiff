@@ -59,11 +59,7 @@ function executionLaneForMode(mode: PermissionMode): OpenCodeExecutionLane {
   return mode === "read_write" ? "write" : "read";
 }
 
-function queueOp<T>(
-  lane: OpenCodeExecutionLane,
-  title: string,
-  fn: () => Promise<T>
-): Promise<T> {
+function queueOp<T>(lane: OpenCodeExecutionLane, title: string, fn: () => Promise<T>): Promise<T> {
   const queuedAt = Date.now();
   const executionQueue = executionQueues.get(lane) ?? Promise.resolve();
   const run = executionQueue.then(
@@ -96,6 +92,16 @@ function stopProcess(proc: ChildProcessWithoutNullStreams): void {
   if (proc.exitCode !== null || proc.signalCode !== null) {
     return;
   }
+
+  if (proc.pid) {
+    try {
+      process.kill(-proc.pid, "SIGTERM");
+      return;
+    } catch {
+      // Fall back to killing only the parent process.
+    }
+  }
+
   proc.kill();
 }
 
@@ -130,6 +136,7 @@ async function createScopedOpencode(options: {
       ...options.env,
       OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config),
     }),
+    detached: true,
   });
 
   const url = await new Promise<string>((resolve, reject) => {
@@ -213,8 +220,26 @@ function createTempXdgEnv(prefix: string): {
 } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const dataHome = path.join(root, "data");
+  const stateHome = path.join(root, "state");
+  const cacheHome = path.join(root, "cache");
+  const configHome = path.join(root, "config");
+  const home = path.join(root, "home");
+  const temp = path.join(root, "tmp");
+  const npmCache = path.join(cacheHome, "npm");
+  const bunInstallCache = path.join(cacheHome, "bun-install");
   const authDir = path.join(dataHome, "opencode");
-  fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+  for (const dir of [
+    authDir,
+    stateHome,
+    cacheHome,
+    configHome,
+    home,
+    temp,
+    npmCache,
+    bunInstallCache,
+  ]) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
 
   return {
     root,
@@ -222,9 +247,16 @@ function createTempXdgEnv(prefix: string): {
     authPath: path.join(authDir, "auth.json"),
     env: {
       XDG_DATA_HOME: dataHome,
-      XDG_STATE_HOME: path.join(root, "state"),
-      XDG_CACHE_HOME: path.join(root, "cache"),
-      XDG_CONFIG_HOME: path.join(root, "config"),
+      XDG_STATE_HOME: stateHome,
+      XDG_CACHE_HOME: cacheHome,
+      XDG_CONFIG_HOME: configHome,
+      HOME: home,
+      TMPDIR: temp,
+      TMP: temp,
+      TEMP: temp,
+      NPM_CONFIG_CACHE: npmCache,
+      npm_config_cache: npmCache,
+      BUN_INSTALL_CACHE_DIR: bunInstallCache,
     },
   };
 }
@@ -567,10 +599,7 @@ export async function runOpencodePrompt(
 
       // For BYOK OAuth users with refresh token, create a temp auth.json
       // so the opencode CodexAuthPlugin can authenticate via the Codex auth flow
-      if (
-        input.aiConfig?.authMethod === "OAUTH_TOKEN" &&
-        input.aiConfig.refreshToken
-      ) {
+      if (input.aiConfig?.authMethod === "OAUTH_TOKEN" && input.aiConfig.refreshToken) {
         const authJson = {
           openai: {
             type: "oauth",
