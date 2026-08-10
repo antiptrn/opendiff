@@ -18,6 +18,7 @@ interface ConfigRepoDialogProps {
   isRepoAlreadyActive: boolean;
   onSave: (settings: {
     enabled: boolean;
+    approveEnabled: boolean;
     reviewIncludedDirs: string;
     reviewIgnoredDirs: string;
     autofixEnabled: boolean;
@@ -66,9 +67,10 @@ export function ConfigRepoDialog({
 
         {selectedRepo && settings && !isLoadingSettings && !isRepoAlreadyActive && (
           <RepoSettingsForm
-            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.reviewIncludedDirs || ""}-${settings.reviewIgnoredDirs || ""}-${settings.autofixEnabled}-${settings.autofixIncludedDirs || ""}-${settings.autofixIgnoredDirs || ""}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
+            key={`${selectedRepo.owner}/${selectedRepo.name}-${settings.enabled}-${settings.approveEnabled}-${settings.reviewIncludedDirs || ""}-${settings.reviewIgnoredDirs || ""}-${settings.autofixEnabled}-${settings.autofixIncludedDirs || ""}-${settings.autofixIgnoredDirs || ""}-${settings.sensitivity}-${settings.customReviewRules || ""}`}
             initialSettings={{
               enabled: settings.enabled,
+              approveEnabled: settings.approveEnabled ?? false,
               reviewIncludedDirs: settings.reviewIncludedDirs || "",
               reviewIgnoredDirs: settings.reviewIgnoredDirs || "",
               autofixEnabled: settings.autofixEnabled ?? true,

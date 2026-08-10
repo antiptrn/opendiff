@@ -202,7 +202,13 @@ async function initWebhookContext(payload: {
   const agent = new CodeReviewAgent(aiConfig);
   const formatter = new ReviewFormatter();
   const triageAgent = new TriageAgent(aiConfig);
-  const handler = new WebhookHandler(githubClient, agent, formatter, triageAgent);
+  const handler = new WebhookHandler(
+    githubClient,
+    agent,
+    formatter,
+    triageAgent,
+    settings.approveEnabled
+  );
 
   const customRules = await getCustomReviewRules(owner, repo, githubRepoId);
   if (customRules) {

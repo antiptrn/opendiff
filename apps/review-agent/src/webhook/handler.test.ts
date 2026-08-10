@@ -218,7 +218,9 @@ describe("WebhookHandler", () => {
     handler = new WebhookHandler(
       mockGitHubClient as GitHubClient,
       mockAgent as CodeReviewAgent,
-      mockFormatter as ReviewFormatter
+      mockFormatter as ReviewFormatter,
+      undefined,
+      true
     );
   });
 
@@ -288,6 +290,49 @@ describe("WebhookHandler", () => {
           comments: undefined,
         })
       );
+    });
+
+    it("should post the summary without approving when approvals are disabled", async () => {
+      const nonApprovingHandler = new WebhookHandler(
+        mockGitHubClient as GitHubClient,
+        mockAgent as CodeReviewAgent,
+        mockFormatter as ReviewFormatter
+      );
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+        {
+          filename: "src/index.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 5,
+          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+        },
+      ]);
+      mockGitHubClient.getFileContent.mockResolvedValue("const x = 1;");
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "LGTM",
+        issues: [],
+        verdict: "approve",
+      });
+      mockFormatter.formatReview.mockReturnValue({
+        body: "Review body",
+        event: "APPROVE",
+      });
+
+      const result = await nonApprovingHandler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot"
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.reviewId).toBeUndefined();
+      expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
+        "owner",
+        "repo",
+        42,
+        "Review body"
+      );
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
     });
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {

@@ -87,6 +87,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       owner,
       repo,
       enabled,
+      approveEnabled,
       autofixEnabled,
       reviewIncludedDirs,
       autofixIncludedDirs,
@@ -99,6 +100,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
       owner: string;
       repo: string;
       enabled: boolean;
+      approveEnabled?: boolean;
       autofixEnabled?: boolean;
       reviewIncludedDirs?: string;
       autofixIncludedDirs?: string;
@@ -117,6 +119,7 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
         },
         body: JSON.stringify({
           enabled,
+          approveEnabled,
           autofixEnabled,
           reviewIncludedDirs,
           autofixIncludedDirs,

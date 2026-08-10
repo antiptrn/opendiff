@@ -78,6 +78,7 @@ export async function getRepositorySettings(
     repo,
     enabled: false,
     effectiveEnabled: false,
+    approveEnabled: false,
     autofixEnabled: false,
     reviewIncludedDirs: "",
     autofixIncludedDirs: "",
@@ -114,7 +115,11 @@ export async function getRepositorySettings(
       response.status
     );
   }
-  return (await response.json()) as RepositorySettings;
+  const settings = (await response.json()) as RepositorySettings;
+  return {
+    ...settings,
+    approveEnabled: settings.approveEnabled === true,
+  };
 }
 
 export async function getCustomReviewRules(

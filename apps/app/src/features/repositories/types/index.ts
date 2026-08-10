@@ -14,6 +14,7 @@ export interface RepositorySettings {
   repo: string;
   githubRepoId?: number | null;
   enabled: boolean;
+  approveEnabled: boolean;
   autofixEnabled: boolean;
   reviewIncludedDirs?: string;
   autofixIncludedDirs?: string;
@@ -38,6 +39,7 @@ export interface OrgRepository {
   language: string | null;
   pushedAt: string | null;
   enabled: boolean;
+  approveEnabled: boolean;
   autofixEnabled: boolean;
   reviewIncludedDirs?: string;
   autofixIncludedDirs?: string;

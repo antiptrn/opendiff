@@ -90,12 +90,14 @@ accountRoutes.get("/account/export", async (c) => {
         owner: string;
         repo: string;
         enabled: boolean;
+        approveEnabled: boolean;
         createdAt: Date;
         updatedAt: Date;
       }) => ({
         owner: r.owner,
         repo: r.repo,
         enabled: r.enabled,
+        approveEnabled: r.approveEnabled,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       })

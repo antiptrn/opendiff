@@ -8,6 +8,7 @@ import { useState } from "react";
 interface RepoSettingsFormProps {
   initialSettings: {
     enabled: boolean;
+    approveEnabled: boolean;
     reviewIncludedDirs: string;
     reviewIgnoredDirs: string;
     autofixEnabled: boolean;
@@ -18,6 +19,7 @@ interface RepoSettingsFormProps {
   };
   onSave: (settings: {
     enabled: boolean;
+    approveEnabled: boolean;
     reviewIncludedDirs: string;
     reviewIgnoredDirs: string;
     autofixEnabled: boolean;
@@ -77,6 +79,24 @@ export function RepoSettingsForm({
 
       {settings.enabled && (
         <div className="ml-7 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-[3px]">
+              <Checkbox
+                id="approve"
+                checked={settings.approveEnabled}
+                onCheckedChange={(checked) => updateSetting("approveEnabled", checked === true)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="approve" size="base" interactive>
+                Approve Pull Requests
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, OpenDiff submits an approving GitHub review when it finds no issues.
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <div className="space-y-1">
               <Label htmlFor="review-include-dirs">Review Included Paths</Label>
