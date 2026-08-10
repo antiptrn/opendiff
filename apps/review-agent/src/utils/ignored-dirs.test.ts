@@ -11,6 +11,10 @@ describe("ignored path pattern matching", () => {
     ]);
   });
 
+  it("deduplicates equivalent repeated path patterns", () => {
+    expect(parseIgnoredDirs("vendor/\nvendor/*\n/vendor/")).toEqual(["vendor/*"]);
+  });
+
   it("matches exact file paths at the repository root", () => {
     expect(getIgnoredDirForPath("README.md", ["README.md"])).toBe("README.md");
     expect(getIgnoredDirForPath("/README.md", ["README.md"])).toBe("README.md");
