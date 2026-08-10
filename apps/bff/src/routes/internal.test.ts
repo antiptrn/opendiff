@@ -90,6 +90,7 @@ describe("internal settings routes", () => {
       owner: "new-owner",
       repo: "new-repo",
       enabled: true,
+      approveEnabled: false,
       autofixEnabled: true,
       sensitivity: 75,
       organizationId: "org-1",
@@ -108,6 +109,7 @@ describe("internal settings routes", () => {
       repo: "new-repo",
       enabled: true,
       effectiveEnabled: true,
+      approveEnabled: false,
       autofixEnabled: true,
       sensitivity: 75,
     });

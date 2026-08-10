@@ -44,6 +44,7 @@ describe("settings API client", () => {
     const settings = await getRepositorySettings("owner", "repo", 123);
 
     expect(settings.effectiveEnabled).toBe(true);
+    expect(settings.approveEnabled).toBe(false);
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
       "https://settings.internal/api/internal/settings/owner/repo?githubRepoId=123"

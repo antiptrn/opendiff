@@ -16,6 +16,7 @@ describe("quota comment", () => {
     repo: "repo",
     enabled: true,
     effectiveEnabled: false,
+    approveEnabled: false,
     autofixEnabled: true,
     sensitivity: 50,
     disabledReason: "quota_exhausted",

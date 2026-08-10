@@ -199,6 +199,7 @@ model RepositorySettings {
   owner             String        // Keep for lookups
   repo              String        // Keep for lookups
   enabled           Boolean        @default(true)
+  approveEnabled    Boolean        @default(false)
   autofixEnabled    Boolean        @default(true)
   reviewIncludedDirs  String?
   autofixIncludedDirs String?

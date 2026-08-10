@@ -589,7 +589,8 @@ export class WebhookHandler {
     private github: GitHubClient,
     private agent: CodeReviewAgent,
     private formatter: ReviewFormatter,
-    private triageAgent?: TriageAgent
+    private triageAgent?: TriageAgent,
+    private approveEnabled = false
   ) {}
 
   async handlePullRequestOpened(
@@ -997,7 +998,7 @@ export class WebhookHandler {
               newIssues: statusUpdateNewIssues,
             }) ||
             (review.event === "APPROVE" && hadPriorReviewSummary);
-          const shouldPostApprovalReview = review.event === "APPROVE";
+          const shouldPostApprovalReview = this.approveEnabled && review.event === "APPROVE";
           const hasExistingApprovalForHead =
             shouldPostApprovalReview &&
             (await hasBotApprovedHead(

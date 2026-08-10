@@ -157,6 +157,7 @@ reposRoutes.get("/settings", async (c) => {
         owner: s.owner,
         repo: s.repo,
         enabled: s.enabled,
+        approveEnabled: s.approveEnabled,
         autofixEnabled: s.autofixEnabled,
         reviewIncludedDirs: s.reviewIncludedDirs || "",
         autofixIncludedDirs: s.autofixIncludedDirs || "",
@@ -186,6 +187,7 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
       owner,
       repo,
       enabled: false,
+      approveEnabled: false,
       customReviewRules: "",
       reviewIncludedDirs: "",
       autofixIncludedDirs: "",
@@ -201,6 +203,7 @@ reposRoutes.get("/settings/:owner/:repo", requireAuth(), async (c) => {
     owner: settings.owner,
     repo: settings.repo,
     enabled: settings.enabled,
+    approveEnabled: settings.approveEnabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
@@ -220,6 +223,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
   // Extract settings from body (githubRepoId stored for stable identification)
   const {
     enabled,
+    approveEnabled,
     autofixEnabled,
     sensitivity,
     customReviewRules,
@@ -230,6 +234,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     githubRepoId,
   } = body as {
     enabled?: boolean;
+    approveEnabled?: boolean;
     autofixEnabled?: boolean;
     sensitivity?: number;
     customReviewRules?: string;
@@ -251,6 +256,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     where: { owner_repo: { owner, repo } },
     update: {
       enabled: enabled ?? false,
+      approveEnabled: approveEnabled !== undefined ? approveEnabled : undefined,
       autofixEnabled: autofixEnabled !== undefined ? autofixEnabled : undefined,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : undefined,
       customReviewRules: customReviewRules !== undefined ? customReviewRules || null : undefined,
@@ -271,6 +277,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
       owner,
       repo,
       enabled: enabled ?? false,
+      approveEnabled: approveEnabled ?? false,
       autofixEnabled: autofixEnabled ?? true,
       sensitivity: sensitivity !== undefined ? Math.max(0, Math.min(100, sensitivity)) : 50,
       customReviewRules: customReviewRules || null,
@@ -289,7 +296,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     userId,
     action: "repo.settings.updated",
     target: `${owner}/${repo}`,
-    metadata: { enabled },
+    metadata: { enabled, approveEnabled },
     c,
   });
 
@@ -307,6 +314,7 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
     repo: settings.repo,
     githubRepoId: settings.githubRepoId ? Number(settings.githubRepoId) : null,
     enabled: settings.enabled,
+    approveEnabled: settings.approveEnabled,
     autofixEnabled: settings.autofixEnabled,
     sensitivity: settings.sensitivity,
     customReviewRules: settings.customReviewRules || "",
@@ -385,6 +393,7 @@ reposRoutes.get("/org/repos", requireAuth(), async (c) => {
           language: meta?.language ?? null,
           pushedAt: meta?.pushedAt ?? null,
           enabled: r.enabled,
+          approveEnabled: r.approveEnabled,
           autofixEnabled: r.autofixEnabled,
           sensitivity: r.sensitivity,
           customReviewRules: r.customReviewRules || "",
@@ -458,6 +467,7 @@ reposRoutes.get("/org/repos/:owner/:repo", requireAuth(), async (c) => {
       language: meta?.language ?? null,
       pushedAt: meta?.pushedAt ?? null,
       enabled: r.enabled,
+      approveEnabled: r.approveEnabled,
       autofixEnabled: r.autofixEnabled,
       sensitivity: r.sensitivity,
       customReviewRules: r.customReviewRules || "",
