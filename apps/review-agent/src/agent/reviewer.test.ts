@@ -183,6 +183,62 @@ describe("CodeReviewAgent", () => {
       ).rejects.toThrow("Failed to parse review response");
     });
 
+    it("should derive a missing issue message from its description", async () => {
+      const files: FileToReview[] = [{ filename: "src/auth.ts" }];
+      mockPromptResult = JSON.stringify({
+        summary: "Found an authentication issue.",
+        mergeSafety: "Not safe to merge. Authentication can fail for valid users.",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/auth.ts",
+            line: 42,
+            description:
+              "The callback assumes every identity has an email address. Add a fallback before reading it.",
+          },
+        ],
+        verdict: "comment",
+      });
+
+      const result = await agent.reviewFiles(
+        files,
+        { prTitle: "Update authentication", prBody: null },
+        "/tmp/test-repo"
+      );
+
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0].message).toBe(
+        "The callback assumes every identity has an email address."
+      );
+    });
+
+    it("should drop an irrecoverably malformed issue instead of failing the review", async () => {
+      const files: FileToReview[] = [{ filename: "src/auth.ts" }];
+      mockPromptResult = JSON.stringify({
+        summary: "No actionable findings remained.",
+        mergeSafety: "Safe to merge. Malformed model output did not identify a usable finding.",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/auth.ts",
+            line: 42,
+          },
+        ],
+        verdict: "comment",
+      });
+
+      const result = await agent.reviewFiles(
+        files,
+        { prTitle: "Update authentication", prBody: null },
+        "/tmp/test-repo"
+      );
+
+      expect(result.issues).toHaveLength(0);
+      expect(result.verdict).toBe("comment");
+    });
+
     it("should filter non-actionable praise issues", async () => {
       const files: FileToReview[] = [{ filename: "src/select.tsx" }];
 
