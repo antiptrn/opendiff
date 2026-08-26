@@ -1,5 +1,5 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import * as fs from "node:fs";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk";
@@ -43,7 +43,7 @@ export class OpenCodeAuthError extends Error {
   }
 }
 
-type OpenCodeExecutionLane = "read" | "write";
+type OpenCodeExecutionLane = "read" | "write" | "shared";
 
 interface ScopedOpencode {
   client: ReturnType<typeof createOpencodeClient>;
@@ -55,7 +55,11 @@ interface ScopedOpencode {
 
 const executionQueues = new Map<OpenCodeExecutionLane, Promise<void>>();
 
-function executionLaneForMode(mode: PermissionMode): OpenCodeExecutionLane {
+export function executionLaneForMode(mode: PermissionMode): OpenCodeExecutionLane {
+  if (process.env.OPENCODE_EXECUTION_MODE?.trim().toLowerCase() === "serial") {
+    return "shared";
+  }
+
   return mode === "read_write" ? "write" : "read";
 }
 
