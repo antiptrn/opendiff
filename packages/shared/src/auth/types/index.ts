@@ -21,7 +21,7 @@ export interface UserOrganization {
   seat: SeatInfo | null;
 }
 
-export type AuthProvider = "github" | "google";
+export type AuthProvider = "github" | "google" | "microsoft";
 
 export interface User {
   id: number | string;

@@ -4,6 +4,8 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
 export const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID ?? "";
 export const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET ?? "";
+export const MICROSOFT_TENANT_ID = process.env.MICROSOFT_TENANT_ID || "common";
+export const MICROSOFT_SCOPES = "openid email profile User.Read offline_access";
 export const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY ?? "";
 export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
 export const OAUTH_CALLBACK_BASE_URL = process.env.OAUTH_CALLBACK_BASE_URL || "";
@@ -47,6 +49,50 @@ interface TurnstileContext {
 
 export function getTurnstileErrorRedirect(): string {
   return TURNSTILE_VERIFY_ERROR_REDIRECT;
+}
+
+function parseCsvEnv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeDomain(domain: string): string {
+  return domain.trim().toLowerCase().replace(/^@/, "");
+}
+
+export function isLoginEmailAllowed(email: string | null | undefined): boolean {
+  const allowedEmails = parseCsvEnv(process.env.AUTH_ALLOWED_EMAILS);
+  const allowedDomains = parseCsvEnv(process.env.AUTH_ALLOWED_DOMAINS).map(normalizeDomain);
+
+  if (allowedEmails.length === 0 && allowedDomains.length === 0) {
+    return true;
+  }
+
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  if (allowedEmails.includes(normalizedEmail)) {
+    return true;
+  }
+
+  const emailDomain = normalizedEmail.split("@")[1];
+  return !!emailDomain && allowedDomains.includes(emailDomain);
+}
+
+export function getUnauthorizedLoginRedirect(): string {
+  return `${FRONTEND_URL}/login?error=unauthorized_email&message=${encodeURIComponent(
+    "This account is not allowed to sign in."
+  )}`;
+}
+
+export function getOAuthProviderNotConfiguredRedirect(provider: string): string {
+  return `${FRONTEND_URL}/login?error=oauth_provider_not_configured&message=${encodeURIComponent(
+    `${provider} login is not configured.`
+  )}`;
 }
 
 export function extractClientIp(req: TurnstileContext["req"]): string {

@@ -101,6 +101,24 @@ describe("ReviewFormatter", () => {
       expect(review.event).toBe("COMMENT");
     });
 
+    it("should not crash when runtime issue text is malformed", () => {
+      const reviewResult = {
+        summary: "A malformed issue reached the formatter.",
+        mergeSafety: "Safe to merge. No usable blocking finding was produced.",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "warning",
+            file: "src/utils.ts",
+            line: 5,
+          },
+        ],
+        verdict: "comment",
+      } as unknown as ReviewResult;
+
+      expect(() => formatter.formatReview(reviewResult)).not.toThrow();
+    });
+
     it("should omit emojis from inline comment titles", () => {
       const reviewResult: ReviewResult = {
         summary: "Issues found.",

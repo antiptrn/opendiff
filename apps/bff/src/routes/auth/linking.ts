@@ -2,14 +2,29 @@
 import { Hono } from "hono";
 import { prisma } from "../../db";
 import { getAuthUser, requireAuth } from "../../middleware/auth";
-import { GITHUB_CLIENT_ID, getBaseUrl } from "./utils";
+import {
+  GITHUB_CLIENT_ID,
+  GITHUB_CLIENT_SECRET,
+  OAUTH_CALLBACK_BASE_URL,
+  getBaseUrl,
+} from "./utils";
 
 const linkingRoutes = new Hono();
 
 linkingRoutes.get("/link", requireAuth(), async (c) => {
   const user = getAuthUser(c);
 
-  const redirectUri = `${getBaseUrl(c)}/auth/github/callback`;
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    return c.json(
+      {
+        error: "GitHub account linking is not configured.",
+      },
+      503
+    );
+  }
+
+  const callbackBase = OAUTH_CALLBACK_BASE_URL || getBaseUrl(c);
+  const redirectUri = `${callbackBase}/auth/github/callback`;
   const scope = "read:user user:email repo";
   const state = Buffer.from(JSON.stringify({ type: "link", userId: user.id })).toString("base64");
 

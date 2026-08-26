@@ -11,10 +11,15 @@ import {
   GOOGLE_CLIENT_SECRET,
   MICROSOFT_CLIENT_ID,
   MICROSOFT_CLIENT_SECRET,
+  MICROSOFT_SCOPES,
+  MICROSOFT_TENANT_ID,
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getOAuthProviderNotConfiguredRedirect,
   getTurnstileErrorRedirect,
+  getUnauthorizedLoginRedirect,
+  isLoginEmailAllowed,
   sanitizeRedirectUrl,
   verifyTurnstileRequest,
 } from "./utils";
@@ -22,6 +27,10 @@ import {
 const githubRoutes = new Hono();
 
 githubRoutes.get("/", async (c) => {
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    return c.redirect(getOAuthProviderNotConfiguredRedirect("GitHub"));
+  }
+
   const isHuman = await verifyTurnstileRequest(c);
 
   if (!isHuman) {
@@ -108,7 +117,7 @@ githubRoutes.get("/callback", async (c) => {
 
     const userData = await userResponse.json();
 
-    // Handle GitHub account linking for Google-auth users
+    // Handle GitHub account linking for Google/Microsoft-authenticated users.
     if (linkOperation) {
       const existingGithubUser = await prisma.user.findUnique({
         where: { githubId: userData.id },
@@ -145,7 +154,7 @@ githubRoutes.get("/callback", async (c) => {
 
       // Get a fresh Google/Microsoft access token so user keeps their original session
       let sessionAccessToken: string | null = null;
-      let authProvider: "google" | "microsoft" = "google";
+      let authProvider: "google" | "microsoft" | null = null;
 
       if (existingUser.googleRefreshToken) {
         try {
@@ -170,7 +179,7 @@ githubRoutes.get("/callback", async (c) => {
       } else if (existingUser.microsoftRefreshToken) {
         try {
           const refreshResponse = await fetch(
-            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
             {
               method: "POST",
               headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -179,6 +188,7 @@ githubRoutes.get("/callback", async (c) => {
                 client_secret: MICROSOFT_CLIENT_SECRET,
                 refresh_token: existingUser.microsoftRefreshToken,
                 grant_type: "refresh_token",
+                scope: MICROSOFT_SCOPES,
               }),
             }
           );
@@ -193,7 +203,11 @@ githubRoutes.get("/callback", async (c) => {
       }
 
       if (!sessionAccessToken) {
-        sessionAccessToken = tokenData.access_token;
+        return c.redirect(
+          `${FRONTEND_URL}/console/settings?error=session_refresh_failed&message=${encodeURIComponent(
+            "GitHub was linked, but please sign in again to refresh your session."
+          )}`
+        );
       }
 
       const organizations = await getUserOrganizations(updatedUser.id);
@@ -236,6 +250,10 @@ githubRoutes.get("/callback", async (c) => {
     const primaryEmail = emails.find((e: { primary: boolean }) => e.primary)?.email;
 
     const email = primaryEmail || userData.email;
+
+    if (!isLoginEmailAllowed(email)) {
+      return c.redirect(getUnauthorizedLoginRedirect());
+    }
 
     let user = await prisma.user.findUnique({
       where: { githubId: userData.id },

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { getDbUserWhere, getOrgIdFromHeader } from "./auth";
 import type { ProviderUser } from "./auth";
+import { isLoginEmailAllowed } from "./routes/auth/utils";
 
 describe("getDbUserWhere", () => {
   it("should return githubId clause for GitHub provider", () => {
@@ -38,6 +39,15 @@ describe("getDbUserWhere", () => {
     };
     expect(getDbUserWhere(user)).toBeNull();
   });
+
+  it("should return microsoftId clause for Microsoft provider", () => {
+    const user: ProviderUser = {
+      id: "microsoft-id-abc",
+      _provider: "microsoft",
+      _microsoftId: "microsoft-id-abc",
+    };
+    expect(getDbUserWhere(user)).toEqual({ microsoftId: "microsoft-id-abc" });
+  });
 });
 
 describe("getOrgIdFromHeader", () => {
@@ -57,5 +67,52 @@ describe("getOrgIdFromHeader", () => {
       },
     };
     expect(getOrgIdFromHeader(mockContext)).toBeUndefined();
+  });
+});
+
+describe("isLoginEmailAllowed", () => {
+  const originalAllowedEmails = process.env.AUTH_ALLOWED_EMAILS;
+  const originalAllowedDomains = process.env.AUTH_ALLOWED_DOMAINS;
+
+  function resetAuthAllowlistEnv() {
+    if (originalAllowedEmails === undefined) {
+      delete process.env.AUTH_ALLOWED_EMAILS;
+    } else {
+      process.env.AUTH_ALLOWED_EMAILS = originalAllowedEmails;
+    }
+
+    if (originalAllowedDomains === undefined) {
+      delete process.env.AUTH_ALLOWED_DOMAINS;
+    } else {
+      process.env.AUTH_ALLOWED_DOMAINS = originalAllowedDomains;
+    }
+  }
+
+  afterEach(() => {
+    resetAuthAllowlistEnv();
+  });
+
+  it("allows everyone when no allowlist is configured", () => {
+    delete process.env.AUTH_ALLOWED_EMAILS;
+    delete process.env.AUTH_ALLOWED_DOMAINS;
+
+    expect(isLoginEmailAllowed("person@example.com")).toBe(true);
+  });
+
+  it("allows exact configured emails case-insensitively", () => {
+    process.env.AUTH_ALLOWED_EMAILS = "Alice@Example.com,bob@example.com";
+    delete process.env.AUTH_ALLOWED_DOMAINS;
+
+    expect(isLoginEmailAllowed("alice@example.com")).toBe(true);
+    expect(isLoginEmailAllowed("carol@example.com")).toBe(false);
+  });
+
+  it("allows configured domains", () => {
+    delete process.env.AUTH_ALLOWED_EMAILS;
+    process.env.AUTH_ALLOWED_DOMAINS = "example.com,@visma.com";
+
+    expect(isLoginEmailAllowed("alice@visma.com")).toBe(true);
+    expect(isLoginEmailAllowed("bob@example.com")).toBe(true);
+    expect(isLoginEmailAllowed("carol@other.com")).toBe(false);
   });
 });

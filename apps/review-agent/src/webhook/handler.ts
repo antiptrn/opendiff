@@ -123,15 +123,6 @@ interface HandlerResult {
   };
 }
 
-interface TriageOptions {
-  enabled: boolean;
-  autofixEnabled: boolean;
-  autofixIncludedDirs?: string[];
-  autofixIgnoredDirs?: string[];
-  triageAgent: TriageAgent;
-  botUsername: string;
-}
-
 type IssueComment = Awaited<ReturnType<GitHubClient["getIssueComments"]>>[number];
 
 function isReviewSummaryComment(body: string): boolean {
@@ -597,7 +588,6 @@ export class WebhookHandler {
     payload: WebhookPayload,
     botUsername: string,
     customRules?: string | null,
-    triageOptions?: TriageOptions,
     sensitivity?: number,
     reviewIgnoredDirs: string[] = [],
     reviewIncludedDirs: string[] = []
@@ -611,7 +601,7 @@ export class WebhookHandler {
       return { success: true, skipped: true };
     }
 
-    const reviewResult = await this.performReview(
+    return this.performReview(
       payload,
       botUsername,
       customRules,
@@ -619,47 +609,6 @@ export class WebhookHandler {
       reviewIgnoredDirs,
       reviewIncludedDirs
     );
-
-    // If review succeeded and triage is enabled, run auto-fix
-    if (
-      reviewResult.success &&
-      !reviewResult.skipped &&
-      triageOptions?.enabled &&
-      reviewResult.issues &&
-      reviewResult.issues.length > 0
-    ) {
-      console.log(`Triage enabled: ${reviewResult.issues.length} issues to process`);
-
-      const triageResult = await handleTriageAfterReview(
-        this.github,
-        triageOptions.triageAgent,
-        {
-          number: payload.pull_request.number,
-          head: payload.pull_request.head,
-        },
-        reviewResult.issues,
-        payload.repository.owner.login,
-        payload.repository.name,
-        triageOptions.botUsername,
-        triageOptions.autofixEnabled,
-        {
-          autofixIncludedDirs: triageOptions.autofixIncludedDirs,
-          autofixIgnoredDirs: triageOptions.autofixIgnoredDirs,
-        }
-      );
-
-      if (triageResult.error) {
-        console.error(`Triage error: ${triageResult.error}`);
-      }
-
-      reviewResult.triageResult = {
-        fixedIssues: triageResult.fixedIssues,
-        skippedIssues: triageResult.skippedIssues,
-        clarificationIssues: triageResult.clarificationIssues,
-      };
-    }
-
-    return reviewResult;
   }
 
   async handlePullRequestReviewRequested(

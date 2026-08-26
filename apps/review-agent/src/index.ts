@@ -4,6 +4,7 @@ import { Octokit } from "@octokit/rest";
 import { type Context, Hono } from "hono";
 import { CodeReviewAgent } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
+import type { CodeIssue } from "./agent/types";
 import { GitHubClient } from "./github/client";
 import { generateReviewSummary } from "./internal/generate-summary";
 import { runLocalReview } from "./internal/local-review";
@@ -33,6 +34,10 @@ import {
   recordReviewComments,
 } from "./utils/settings";
 import { WebhookHandler } from "./webhook/handler";
+import {
+  handleTriageAfterReview,
+  type TriageResult,
+} from "./webhook/triage-handler";
 import { validateWebhookSignature } from "./webhook/validator";
 
 // Configuration from environment
@@ -45,6 +50,12 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 const BOT_USERNAME = process.env.BOT_USERNAME || "opendiff-bot";
 const BOT_TEAMS = (process.env.BOT_TEAMS || "").split(",").filter(Boolean);
+const REVIEW_TRIGGER_LABELS = (
+  process.env.REVIEW_TRIGGER_LABELS || `opendiff,${BOT_USERNAME}`
+)
+  .split(",")
+  .map((label) => label.trim().toLowerCase())
+  .filter(Boolean);
 const REVIEW_AGENT_API_KEY = process.env.REVIEW_AGENT_API_KEY;
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
@@ -56,6 +67,10 @@ const REVIEW_QUEUE_CONCURRENCY = parsePositiveIntegerEnv("REVIEW_QUEUE_CONCURREN
 const REVIEW_QUEUE_MAX_SIZE = parsePositiveIntegerEnv("REVIEW_QUEUE_MAX_SIZE", 100);
 const REVIEW_QUEUE_MAX_ATTEMPTS = parsePositiveIntegerEnv("REVIEW_QUEUE_MAX_ATTEMPTS", 2);
 const REVIEW_QUEUE_RETRY_DELAY_MS = parsePositiveIntegerEnv("REVIEW_QUEUE_RETRY_DELAY_MS", 15_000);
+const TRIAGE_QUEUE_CONCURRENCY = parsePositiveIntegerEnv("TRIAGE_QUEUE_CONCURRENCY", 1);
+const TRIAGE_QUEUE_MAX_SIZE = parsePositiveIntegerEnv("TRIAGE_QUEUE_MAX_SIZE", 100);
+const TRIAGE_QUEUE_MAX_ATTEMPTS = parsePositiveIntegerEnv("TRIAGE_QUEUE_MAX_ATTEMPTS", 1);
+const TRIAGE_QUEUE_RETRY_DELAY_MS = parsePositiveIntegerEnv("TRIAGE_QUEUE_RETRY_DELAY_MS", 30_000);
 
 interface PullRequestWebhookPayload {
   action: string;
@@ -94,6 +109,15 @@ type PullRequestReviewJobPayload = Omit<PullRequestWebhookPayload, "pull_request
 interface PullRequestReviewJob {
   payload: PullRequestReviewJobPayload;
   deliveryId: string | null;
+}
+
+interface PullRequestTriageJob {
+  payload: PullRequestWebhookPayload;
+  issues: CodeIssue[];
+  dbReviewId: string | null;
+  autofixEnabled: boolean;
+  autofixIgnoredDirs: string[];
+  autofixIncludedDirs: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -498,7 +522,6 @@ async function processPullRequestReviewJob(
       githubClient: contextGithubClient,
       handler,
       customRules,
-      triageAgent,
     } = await initWebhookContext(payload);
     githubClient = contextGithubClient;
 
@@ -545,16 +568,10 @@ async function processPullRequestReviewJob(
       }
     }
 
-    const triageOptions = {
-      enabled: triageEnabled,
-      autofixEnabled: settings.autofixEnabled,
-      autofixIncludedDirs: parseIgnoredDirs(settings.autofixIncludedDirs),
-      autofixIgnoredDirs: parseIgnoredDirs(settings.autofixIgnoredDirs),
-      triageAgent,
-      botUsername: BOT_USERNAME,
-    };
     const reviewIncludedDirs = parseIgnoredDirs(settings.reviewIncludedDirs);
     const reviewIgnoredDirs = parseIgnoredDirs(settings.reviewIgnoredDirs);
+    const autofixIncludedDirs = parseIgnoredDirs(settings.autofixIncludedDirs);
+    const autofixIgnoredDirs = parseIgnoredDirs(settings.autofixIgnoredDirs);
 
     reviewReaction = {
       githubClient,
@@ -584,7 +601,6 @@ async function processPullRequestReviewJob(
             reviewPayload,
             BOT_USERNAME,
             customRules,
-            triageOptions,
             settings.sensitivity,
             reviewIgnoredDirs,
             reviewIncludedDirs
@@ -613,8 +629,32 @@ async function processPullRequestReviewJob(
       tokensUsed: result.tokensUsed,
     });
 
-    if (dbReviewId && result.issues && result.issues.length > 0) {
-      await recordReviewComments(dbReviewId, result.issues, result.triageResult);
+    if (result.issues && result.issues.length > 0) {
+      if (triageEnabled && reviewPayload.action !== "review_requested") {
+        const enqueueResult = triageQueue.enqueue(buildPullRequestReviewJobKey(reviewPayload), {
+          payload: reviewPayload,
+          issues: result.issues,
+          dbReviewId,
+          autofixEnabled: settings.autofixEnabled,
+          autofixIgnoredDirs,
+          autofixIncludedDirs,
+        });
+
+        if (enqueueResult.accepted) {
+          console.log(
+            `Queued PR triage ${enqueueResult.jobId} for ${owner}/${repo}#${reviewPayload.pull_request.number} (${enqueueResult.status})`
+          );
+        } else {
+          console.warn(
+            `Triage queue full; recording review comments without triage for ${owner}/${repo}#${reviewPayload.pull_request.number}`
+          );
+          if (dbReviewId) {
+            await recordReviewComments(dbReviewId, result.issues);
+          }
+        }
+      } else if (dbReviewId) {
+        await recordReviewComments(dbReviewId, result.issues);
+      }
     }
 
     console.log(`Queued review submitted successfully: ${result.reviewId}`);
@@ -629,6 +669,87 @@ async function processPullRequestReviewJob(
       );
     }
   }
+}
+
+async function processPullRequestTriageJob(job: PullRequestTriageJob): Promise<void> {
+  const { payload, issues, dbReviewId } = job;
+
+  if (!payload.pull_request) {
+    console.log("Skipping queued triage job without pull_request payload");
+    return;
+  }
+
+  let commentsRecorded = false;
+  const { owner, repo, settings, githubClient, triageAgent } = await initWebhookContext(payload);
+
+  try {
+    if (!settings.effectiveEnabled) {
+      console.log(
+        `Triage disabled for ${owner}/${repo} (enabled: ${settings.enabled}, effectiveEnabled: ${settings.effectiveEnabled})`
+      );
+      if (dbReviewId) {
+        await recordReviewComments(dbReviewId, issues);
+        commentsRecorded = true;
+      }
+      return;
+    }
+
+    if (payload.pull_request.draft) {
+      console.log(`Skipping triage for draft PR ${owner}/${repo}#${payload.pull_request.number}`);
+      if (dbReviewId) {
+        await recordReviewComments(dbReviewId, issues);
+        commentsRecorded = true;
+      }
+      return;
+    }
+
+    console.log(
+      `Running queued triage for ${owner}/${repo}#${payload.pull_request.number} (${issues.length} issue${issues.length === 1 ? "" : "s"}, autofix=${job.autofixEnabled})`
+    );
+
+    const triageResult = await handleTriageAfterReview(
+      githubClient,
+      triageAgent,
+      {
+        number: payload.pull_request.number,
+        head: payload.pull_request.head,
+      },
+      issues,
+      owner,
+      repo,
+      BOT_USERNAME,
+      job.autofixEnabled,
+      { autofixIncludedDirs: job.autofixIncludedDirs, autofixIgnoredDirs: job.autofixIgnoredDirs }
+    );
+
+    if (dbReviewId) {
+      await recordReviewComments(dbReviewId, issues, triageResult);
+      commentsRecorded = true;
+    }
+
+    if (triageResult.error) {
+      throw new Error(triageResult.error);
+    }
+
+    logTriageResult(owner, repo, payload.pull_request.number, triageResult);
+  } catch (error) {
+    if (dbReviewId && !commentsRecorded) {
+      await recordReviewComments(dbReviewId, issues);
+      commentsRecorded = true;
+    }
+    throw error;
+  }
+}
+
+function logTriageResult(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  triageResult: TriageResult
+): void {
+  console.log(
+    `Queued triage completed for ${owner}/${repo}#${pullNumber}: ${triageResult.fixedIssues.length} fixed, ${triageResult.skippedIssues.length} skipped, ${triageResult.clarificationIssues.length} needs clarification`
+  );
 }
 
 const app = new Hono();
@@ -653,11 +774,33 @@ const reviewQueue = new AsyncJobQueue<PullRequestReviewJob>({
   },
 });
 
+const triageQueue = new AsyncJobQueue<PullRequestTriageJob>({
+  name: "triage",
+  concurrency: TRIAGE_QUEUE_CONCURRENCY,
+  maxQueuedJobs: TRIAGE_QUEUE_MAX_SIZE,
+  maxAttempts: TRIAGE_QUEUE_MAX_ATTEMPTS,
+  retryDelayMs: TRIAGE_QUEUE_RETRY_DELAY_MS,
+  processor: processPullRequestTriageJob,
+  onError: (error, job, context) => {
+    const pullNumber = job.payload.pull_request?.number ?? "unknown";
+    const repo = `${job.payload.repository.owner.login}/${job.payload.repository.name}`;
+    console.error(
+      `Triage queue job ${context.id} failed for ${repo}#${pullNumber} (attempt ${context.attempt}/${context.maxAttempts}):`,
+      error
+    );
+  },
+});
+
 function isAuthorizedInternalApiKey(headerValue: string | undefined): boolean {
   if (!REVIEW_AGENT_API_KEY) {
     return process.env.NODE_ENV !== "production";
   }
   return headerValue === REVIEW_AGENT_API_KEY;
+}
+
+function isReviewTriggerLabel(payload: { label?: { name?: string } }): boolean {
+  const labelName = payload.label?.name?.trim().toLowerCase();
+  return !!labelName && REVIEW_TRIGGER_LABELS.includes(labelName);
 }
 
 async function createGitHubClientForRepo(owner: string, repo: string): Promise<GitHubClient> {
@@ -687,6 +830,7 @@ app.get("/health", (c) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     reviewQueue: reviewQueue.getStats(),
+    triageQueue: triageQueue.getStats(),
   });
 });
 
@@ -696,7 +840,10 @@ app.get("/internal/review-queue", (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  return c.json(reviewQueue.getSnapshot());
+  return c.json({
+    ...reviewQueue.getSnapshot(),
+    triageQueue: triageQueue.getSnapshot(),
+  });
 });
 
 app.get("/internal/provider-models", async (c) => {
@@ -824,9 +971,20 @@ app.post("/webhook", async (c) => {
 
   // Handle pull request events
   if (event === "pull_request") {
-    const triggerActions = ["opened", "synchronize", "ready_for_review", "review_requested"];
+    const triggerActions = [
+      "opened",
+      "synchronize",
+      "ready_for_review",
+      "review_requested",
+      "labeled",
+    ];
 
     if (triggerActions.includes(payload.action)) {
+      if (payload.action === "labeled" && !isReviewTriggerLabel(payload)) {
+        console.log(`Ignoring non-trigger label: ${payload.label?.name || "unknown"}`);
+        return c.json({ status: "ignored", reason: "non-trigger-label" });
+      }
+
       if (!hasNumberField(payload.pull_request)) {
         return c.json({ status: "ignored", reason: "missing_pull_request" });
       }
@@ -1264,6 +1422,9 @@ console.log(`Bot username: ${BOT_USERNAME}`);
 console.log(`Bot teams: ${BOT_TEAMS.length > 0 ? BOT_TEAMS.join(", ") : "none"}`);
 console.log(
   `Review queue: concurrency=${REVIEW_QUEUE_CONCURRENCY}, maxSize=${REVIEW_QUEUE_MAX_SIZE}, maxAttempts=${REVIEW_QUEUE_MAX_ATTEMPTS}, retryDelayMs=${REVIEW_QUEUE_RETRY_DELAY_MS}`
+);
+console.log(
+  `Triage queue: concurrency=${TRIAGE_QUEUE_CONCURRENCY}, maxSize=${TRIAGE_QUEUE_MAX_SIZE}, maxAttempts=${TRIAGE_QUEUE_MAX_ATTEMPTS}, retryDelayMs=${TRIAGE_QUEUE_RETRY_DELAY_MS}`
 );
 const privateKey = getPrivateKey();
 if (GITHUB_APP_ID && privateKey) {

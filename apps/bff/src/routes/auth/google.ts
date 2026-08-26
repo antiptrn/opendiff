@@ -10,7 +10,10 @@ import {
   OAUTH_CALLBACK_BASE_URL,
   PREVIEW_PR_NUMBER,
   getBaseUrl,
+  getOAuthProviderNotConfiguredRedirect,
   getTurnstileErrorRedirect,
+  getUnauthorizedLoginRedirect,
+  isLoginEmailAllowed,
   sanitizeRedirectUrl,
   verifyTurnstileRequest,
 } from "./utils";
@@ -18,6 +21,10 @@ import {
 const googleRoutes = new Hono();
 
 googleRoutes.get("/", async (c) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return c.redirect(getOAuthProviderNotConfiguredRedirect("Google"));
+  }
+
   const isHuman = await verifyTurnstileRequest(c);
 
   if (!isHuman) {
@@ -106,6 +113,10 @@ googleRoutes.get("/callback", async (c) => {
 
     if (!googleUser.email) {
       return c.redirect(`${FRONTEND_URL}/login?error=no_email`);
+    }
+
+    if (!isLoginEmailAllowed(googleUser.email)) {
+      return c.redirect(getUnauthorizedLoginRedirect());
     }
 
     const login = googleUser.email

@@ -81,7 +81,7 @@ export function useUpdateAccountType() {
   });
 }
 
-/** Initiates GitHub account linking for users authenticated via Google. */
+/** Initiates GitHub account linking for users authenticated via Google or Microsoft. */
 export function useLinkGitHub(token?: string) {
   return useMutation({
     mutationFn: async () => {

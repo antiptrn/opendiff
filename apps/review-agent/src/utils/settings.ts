@@ -19,7 +19,12 @@ function parsePositiveIntegerEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const SETTINGS_API_TIMEOUT_MS = parsePositiveIntegerEnv("SETTINGS_API_TIMEOUT_MS", 10_000);
+const SETTINGS_API_TIMEOUT_MS = parsePositiveIntegerEnv("SETTINGS_API_TIMEOUT_MS", 30_000);
+const SETTINGS_API_MAX_ATTEMPTS = parsePositiveIntegerEnv("SETTINGS_API_MAX_ATTEMPTS", 3);
+const SETTINGS_API_RETRY_DELAY_MS = parsePositiveIntegerEnv(
+  "SETTINGS_API_RETRY_DELAY_MS",
+  1_000
+);
 
 export class SettingsApiUnavailableError extends Error {
   constructor(
@@ -45,20 +50,71 @@ function buildSettingsApiUrl(pathname: string): URL | null {
 }
 
 async function fetchSettingsApi(url: URL, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SETTINGS_API_TIMEOUT_MS);
+  const method = (init?.method ?? "GET").toUpperCase();
+  const maxAttempts = isRetryableSettingsMethod(method) ? SETTINGS_API_MAX_ATTEMPTS : 1;
+  let lastError: unknown;
 
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new SettingsApiUnavailableError(`Settings API request failed: ${reason}`);
-  } finally {
-    clearTimeout(timeout);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SETTINGS_API_TIMEOUT_MS);
+    let retryReason: string | null = null;
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      if (
+        attempt < maxAttempts &&
+        response.status !== 404 &&
+        isRetryableSettingsStatus(response.status)
+      ) {
+        retryReason = `HTTP ${response.status}`;
+      } else {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < maxAttempts) {
+        retryReason = error instanceof Error ? error.message : String(error);
+      } else {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new SettingsApiUnavailableError(`Settings API request failed: ${reason}`);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (retryReason) {
+      await delaySettingsRetry(url, method, attempt, maxAttempts, retryReason);
+    }
   }
+
+  const reason = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new SettingsApiUnavailableError(`Settings API request failed: ${reason}`);
+}
+
+function isRetryableSettingsMethod(method: string): boolean {
+  return method === "GET" || method === "HEAD";
+}
+
+function isRetryableSettingsStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+async function delaySettingsRetry(
+  url: URL,
+  method: string,
+  attempt: number,
+  maxAttempts: number,
+  reason: string
+): Promise<void> {
+  console.warn(
+    `Settings API ${method} ${url.pathname} failed on attempt ${attempt}/${maxAttempts}: ${reason}; retrying`
+  );
+  await new Promise((resolve) => setTimeout(resolve, SETTINGS_API_RETRY_DELAY_MS));
 }
 
 function headersWithApiKey(extra?: Record<string, string>): Record<string, string> {

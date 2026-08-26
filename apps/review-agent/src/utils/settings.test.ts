@@ -52,9 +52,68 @@ describe("settings API client", () => {
     expect(init.headers).toEqual({ "X-API-Key": "internal-secret" });
   });
 
+  it("retries transient settings API read failures", async () => {
+    process.env.SETTINGS_API_URL = "https://settings.internal";
+    process.env.REVIEW_AGENT_API_KEY = "internal-secret";
+    process.env.SETTINGS_API_MAX_ATTEMPTS = "2";
+    process.env.SETTINGS_API_RETRY_DELAY_MS = "1";
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("The operation was aborted.");
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            owner: "owner",
+            repo: "repo",
+            enabled: true,
+            effectiveEnabled: true,
+            autofixEnabled: false,
+            sensitivity: 50,
+          }),
+          { status: 200 }
+        )
+      );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { getRepositorySettings } = await loadSettingsModule();
+    const settings = await getRepositorySettings("owner", "repo", 123);
+
+    expect(settings.effectiveEnabled).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry settings API writes", async () => {
+    process.env.SETTINGS_API_URL = "https://settings.internal";
+    process.env.REVIEW_AGENT_API_KEY = "internal-secret";
+    process.env.SETTINGS_API_MAX_ATTEMPTS = "3";
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("unavailable", { status: 503 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { recordReview } = await loadSettingsModule();
+    const result = await recordReview({
+      githubRepoId: 123,
+      owner: "owner",
+      repo: "repo",
+      pullNumber: 1,
+      reviewType: "initial",
+    });
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("throws instead of treating settings API failures as disabled repositories", async () => {
     process.env.SETTINGS_API_URL = "https://settings.internal";
     process.env.REVIEW_AGENT_API_KEY = "internal-secret";
+    process.env.SETTINGS_API_MAX_ATTEMPTS = "1";
 
     globalThis.fetch = vi
       .fn()
