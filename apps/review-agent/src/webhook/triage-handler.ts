@@ -35,6 +35,9 @@ interface TriageResult {
 
 interface PullRequestInfo {
   number: number;
+  user?: {
+    login: string;
+  };
   head: {
     sha: string;
     ref: string;
@@ -110,7 +113,11 @@ export async function handleTriageAfterReview(
           github,
           owner,
           repo,
-          pullRequest.number
+          pullRequest.number,
+          {
+            pullRequestAuthor: pullRequest.user?.login,
+            trustedUsers: [botUsername, `${botUsername}[bot]`],
+          }
         );
         const previousFixes: string[] = [];
         const botComments = reviewComments.filter(

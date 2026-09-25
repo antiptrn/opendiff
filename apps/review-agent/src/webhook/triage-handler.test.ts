@@ -33,6 +33,8 @@ describe("handleTriageAfterReview", () => {
 
   beforeEach(() => {
     mockGitHubClient = {
+      getPullRequest: vi.fn().mockResolvedValue({ user: { login: "author" } }),
+      getCollaboratorPermission: vi.fn().mockResolvedValue("write"),
       getPullRequestCommits: vi.fn().mockResolvedValue([]),
       getPullRequestReviews: vi.fn().mockResolvedValue([]),
       getIssueComments: vi.fn().mockResolvedValue([]),

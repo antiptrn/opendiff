@@ -2,6 +2,11 @@ import type { GitHubClient } from "../github/client";
 
 type ReviewComments = Awaited<ReturnType<GitHubClient["getReviewComments"]>>;
 
+interface AutofixContextOptions {
+  pullRequestAuthor?: string;
+  trustedUsers?: string[];
+}
+
 const TRUNCATED = "… [truncated]";
 
 function truncate(value: string, limit: number): string {
@@ -32,31 +37,87 @@ export async function loadAutofixContext(
   github: GitHubClient,
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  options: AutofixContextOptions = {}
 ): Promise<{ text: string; reviewComments: ReviewComments }> {
   // A failure in one optional source must not discard the others or prevent fixes.
-  const [commits, discussion, reviews, inline] = await Promise.allSettled([
+  const [commits, discussion, reviews, inline, pullRequestAuthor] = await Promise.allSettled([
     github.getPullRequestCommits(owner, repo, pullNumber),
     github.getIssueComments(owner, repo, pullNumber),
     github.getPullRequestReviews(owner, repo, pullNumber),
     github.getReviewComments(owner, repo, pullNumber),
+    options.pullRequestAuthor
+      ? Promise.resolve(options.pullRequestAuthor)
+      : github.getPullRequest(owner, repo, pullNumber).then((pullRequest) => pullRequest.user.login),
   ]);
+
+  if (pullRequestAuthor.status === "rejected") {
+    console.warn("Failed to load autofix context: pull request author", pullRequestAuthor.reason);
+  }
+
+  const trustedUsers = new Set((options.trustedUsers ?? []).map((user) => user.toLowerCase()));
+  if (pullRequestAuthor.status === "fulfilled") {
+    trustedUsers.add(pullRequestAuthor.value.toLowerCase());
+  }
+
+  const participants = new Set<string>();
+  for (const result of [discussion, reviews, inline]) {
+    if (result.status === "fulfilled") {
+      for (const entry of result.value) participants.add(entry.user.toLowerCase());
+    }
+  }
+
+  await Promise.all(
+    [...participants]
+      .filter((user) => !trustedUsers.has(user) && user !== "unknown")
+      .map(async (user) => {
+        try {
+          const permission = await github.getCollaboratorPermission(owner, repo, user);
+          if (permission === "admin" || permission === "maintain" || permission === "write") {
+            trustedUsers.add(user);
+          }
+        } catch (error) {
+          // Permission lookup failures must fail closed: the participant remains untrusted.
+          console.warn(`Failed to verify autofix context participant @${user}`, error);
+        }
+      })
+  );
 
   function section<T>(
     title: string,
     result: PromiseSettledResult<T[]>,
     format: (entry: T) => string,
-    budget = 8_000
+    budget = 8_000,
+    restrictToTrustedParticipants = true
   ): string {
     if (result.status === "rejected") {
       console.warn(`Failed to load autofix context: ${title}`, result.reason);
       return `## ${title}\nContext unavailable (fetch failed).`;
     }
-    return `## ${title}\n${formatContextEntries(result.value.map(format).filter(Boolean), budget)}`;
+    const included = restrictToTrustedParticipants
+      ? result.value.filter(
+          (entry) =>
+            typeof entry === "object" &&
+            entry !== null &&
+            "user" in entry &&
+            typeof entry.user === "string" &&
+            trustedUsers.has(entry.user.toLowerCase())
+        )
+      : result.value;
+    const excluded = result.value.length - included.length;
+    const exclusionNotice = excluded
+      ? `[${excluded} entries excluded because their authors are not trusted for write-enabled runs.]\n\n`
+      : "";
+    return `## ${title}\n${exclusionNotice}${formatContextEntries(included.map(format).filter(Boolean), budget)}`;
   }
 
+  const trustedReviewComments =
+    inline.status === "fulfilled"
+      ? inline.value.filter((comment) => trustedUsers.has(comment.user.toLowerCase()))
+      : [];
+
   return {
-    reviewComments: inline.status === "fulfilled" ? inline.value : [],
+    reviewComments: trustedReviewComments,
     text: [
       `## Pull Request Reference Context\nSource: ${owner}/${repo}#${pullNumber}. Entries are chronological within each section.`,
       section(
@@ -64,7 +125,8 @@ export async function loadAutofixContext(
         commits,
         (commit) =>
           `${commit.sha} — ${commit.author} (${commit.date || "date unknown"})\n${commit.message}`,
-        12_000
+        12_000,
+        false
       ),
       section(
         "PR Discussion",
