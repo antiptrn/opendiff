@@ -67,10 +67,13 @@ export async function loadAutofixContext(
     }
   }
 
-  await Promise.all(
-    [...participants]
-      .filter((user) => !trustedUsers.has(user) && user !== "unknown")
-      .map(async (user) => {
+  const usersToVerify = [...participants].filter(
+    (user) => !trustedUsers.has(user) && user !== "unknown"
+  );
+  const permissionConcurrency = 5;
+  for (let index = 0; index < usersToVerify.length; index += permissionConcurrency) {
+    await Promise.all(
+      usersToVerify.slice(index, index + permissionConcurrency).map(async (user) => {
         try {
           const permission = await github.getCollaboratorPermission(owner, repo, user);
           if (permission === "admin" || permission === "maintain" || permission === "write") {
@@ -81,7 +84,8 @@ export async function loadAutofixContext(
           console.warn(`Failed to verify autofix context participant @${user}`, error);
         }
       })
-  );
+    );
+  }
 
   function section<T>(
     title: string,
