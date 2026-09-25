@@ -134,11 +134,10 @@ export async function loadAutofixContext(
         (comment) =>
           `Comment #${comment.id} — @${comment.user} (${comment.createdAt})\n${comment.body}`
       ),
-      section("PR Reviews", reviews, (review) =>
-        review.body.trim()
-          ? `Review #${review.id} — @${review.user}, ${review.state}, commit ${review.commitId || "unknown"} (${review.submittedAt || "not submitted"})\n${review.body}`
-          : ""
-      ),
+      section("PR Reviews", reviews, (review) => {
+        const body = review.body.trim();
+        return `Review #${review.id} — @${review.user}, ${review.state}, commit ${review.commitId || "unknown"} (${review.submittedAt || "not submitted"})${body ? `\n${body}` : ""}`;
+      }),
       section(
         "Inline Review Comments",
         inline,

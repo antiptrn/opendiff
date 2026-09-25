@@ -85,4 +85,30 @@ describe("autofix context", () => {
     expect(result.text).not.toContain("Malicious inline context");
     expect(result.reviewComments).toEqual([]);
   });
+
+  it("includes review metadata when the review has no body", async () => {
+    const github = {
+      getPullRequest: vi.fn().mockResolvedValue({ user: { login: "author" } }),
+      getCollaboratorPermission: vi.fn().mockResolvedValue("write"),
+      getPullRequestCommits: vi.fn().mockResolvedValue([]),
+      getIssueComments: vi.fn().mockResolvedValue([]),
+      getPullRequestReviews: vi.fn().mockResolvedValue([
+        {
+          id: 8,
+          user: "reviewer",
+          body: "   ",
+          state: "APPROVED",
+          commitId: "abc123",
+          submittedAt: "2026-09-25",
+        },
+      ]),
+      getReviewComments: vi.fn().mockResolvedValue([]),
+    };
+
+    const result = await loadAutofixContext(github as unknown as GitHubClient, "owner", "repo", 42);
+
+    expect(result.text).toContain(
+      "Review #8 — @reviewer, APPROVED, commit abc123 (2026-09-25)"
+    );
+  });
 });
