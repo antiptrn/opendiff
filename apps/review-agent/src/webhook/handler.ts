@@ -635,6 +635,7 @@ export class WebhookHandler {
         triageOptions.triageAgent,
         {
           number: payload.pull_request.number,
+          user: payload.pull_request.user,
           head: payload.pull_request.head,
         },
         reviewResult.issues,
@@ -1172,6 +1173,7 @@ export class WebhookHandler {
               this.triageAgent,
               {
                 number: prNumber,
+                user: pull_request.user,
                 head: pull_request.head,
               },
               [issueToFix],

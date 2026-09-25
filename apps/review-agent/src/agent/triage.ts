@@ -14,6 +14,8 @@ interface FixResult {
 
 interface FixIssueContext {
   conversationContext?: string;
+  pullRequestContext?: string;
+  previousFixesContext?: string;
   autofixIncludedDirs?: string[];
   autofixIgnoredDirs?: string[];
 }
@@ -39,6 +41,10 @@ export class TriageAgent {
       line: String(issue.line),
       message: issue.message,
       suggestionLine: issue.suggestion ? `- Suggestion: ${issue.suggestion}` : "",
+      pullRequestSection: context?.pullRequestContext || "",
+      previousFixesSection: context?.previousFixesContext
+        ? `\n## Fixes Already Committed During This Run\n${context.previousFixesContext}\n`
+        : "",
       conversationSection: context?.conversationContext?.trim()
         ? `\n## Review Thread Context\n${context.conversationContext}\n`
         : "",

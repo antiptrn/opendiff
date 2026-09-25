@@ -3,16 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClient } from "./client";
 import type { PullRequest, PullRequestFile, Review } from "./types";
 
+const mockPaginate = vi.fn();
+
 // Mock Octokit
 const mockOctokit = {
+  paginate: mockPaginate,
   rest: {
     pulls: {
       get: vi.fn(),
       listFiles: vi.fn(),
+      listCommits: vi.fn(),
+      listReviewComments: vi.fn(),
       createReview: vi.fn(),
       deletePendingReview: vi.fn(),
       listReviews: vi.fn(),
     },
+    issues: { listComments: vi.fn() },
     repos: {
       getContent: vi.fn(),
     },
@@ -28,6 +34,10 @@ describe("GitHubClient", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    mockPaginate.mockImplementation(async (method: unknown, options: unknown) => {
+      const response = await (method as (args: unknown) => Promise<{ data: unknown[] }>)(options);
+      return response.data;
+    });
     client = new GitHubClient(mockOctokit);
   });
 
@@ -59,6 +69,54 @@ describe("GitHubClient", () => {
 
       await expect(client.getPullRequest("owner", "repo", 999)).rejects.toThrow("Not found");
     });
+  });
+
+  it("loads commit messages and author metadata through pagination", async () => {
+    const entries = Array.from({ length: 101 }, (_, index) => ({
+      sha: `sha-${index}`,
+      author: null,
+      commit: {
+        message: `Subject ${index}\n\nReason for this change`,
+        author: { name: "Author", date: "2026-09-25" },
+      },
+    }));
+    mockPaginate.mockResolvedValueOnce(entries);
+
+    const commits = await client.getPullRequestCommits("owner", "repo", 42);
+
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(mockOctokit.rest.pulls.listCommits, {
+      owner: "owner",
+      repo: "repo",
+      pull_number: 42,
+      per_page: 100,
+    });
+    expect(commits).toHaveLength(101);
+    expect(commits[100]).toEqual({
+      sha: "sha-100",
+      message: "Subject 100\n\nReason for this change",
+      author: "Author",
+      date: "2026-09-25",
+    });
+  });
+
+  it("uses pagination for all PR discussion sources", async () => {
+    mockPaginate.mockResolvedValue([]);
+    await client.getIssueComments("owner", "repo", 42);
+    await client.getPullRequestReviews("owner", "repo", 42);
+    await client.getReviewComments("owner", "repo", 42);
+    expect(mockOctokit.paginate).toHaveBeenCalledTimes(3);
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(
+      mockOctokit.rest.issues.listComments,
+      expect.objectContaining({ issue_number: 42, per_page: 100 })
+    );
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(
+      mockOctokit.rest.pulls.listReviews,
+      expect.objectContaining({ pull_number: 42, per_page: 100 })
+    );
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(
+      mockOctokit.rest.pulls.listReviewComments,
+      expect.objectContaining({ pull_number: 42, per_page: 100 })
+    );
   });
 
   describe("getPullRequestFiles", () => {
