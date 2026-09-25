@@ -1,6 +1,7 @@
 import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
+import { formatContextEntries, loadAutofixContext } from "../utils/autofix-context";
 import { withClonedRepo } from "../utils/git";
 import {
   getIgnoredDirForPath,
@@ -105,11 +106,16 @@ export async function handleTriageAfterReview(
         botUsername,
       },
       async (_tempDir, git) => {
-        const reviewComments = await github.getReviewComments(owner, repo, pullRequest.number);
+        const { text: pullRequestContext, reviewComments } = await loadAutofixContext(
+          github,
+          owner,
+          repo,
+          pullRequest.number
+        );
+        const previousFixes: string[] = [];
         const botComments = reviewComments.filter(
           (c) => c.user === botUsername || c.user === `${botUsername}[bot]`
         );
-        const threadContextByCommentId = new Map<number, string | undefined>();
         let ignoredIssueCount = 0;
 
         // Process each issue one by one using the OpenCode SDK
@@ -132,36 +138,22 @@ export async function handleTriageAfterReview(
             }
 
             const matchingComment = findMatchingComment(botComments, issue, new Set<number>());
-            let conversationContext: string | undefined;
-
-            if (matchingComment) {
-              if (!threadContextByCommentId.has(matchingComment.id)) {
-                try {
-                  const thread = await github.getReviewCommentThread(
-                    owner,
-                    repo,
-                    pullRequest.number,
-                    matchingComment.id
-                  );
-                  threadContextByCommentId.set(
-                    matchingComment.id,
-                    formatThreadContext(thread.comments)
-                  );
-                } catch (error) {
-                  console.warn(
-                    `Failed to load review thread context for comment ${matchingComment.id}:`,
-                    error
-                  );
-                  threadContextByCommentId.set(matchingComment.id, undefined);
-                }
-              }
-
-              conversationContext = threadContextByCommentId.get(matchingComment.id);
-            }
+            const rootId = matchingComment?.inReplyToId || matchingComment?.id;
+            const conversationContext = rootId
+              ? formatThreadContext(
+                  reviewComments.filter(
+                    (comment) => comment.id === rootId || comment.inReplyToId === rootId
+                  )
+                )
+              : undefined;
 
             // Use OpenCode SDK to fix the issue - it has full access to read/write files
             const fix = await triageAgent.fixIssue(issue, _tempDir, {
               conversationContext,
+              pullRequestContext,
+              previousFixesContext: previousFixes.length
+                ? formatContextEntries(previousFixes)
+                : undefined,
               autofixIncludedDirs,
               autofixIgnoredDirs,
             });
@@ -229,6 +221,7 @@ export async function handleTriageAfterReview(
             const commitResult = await git.commit(commitMessage);
 
             console.log(`Committed fix: ${commitResult.commit}`);
+            previousFixes.push(`${commitResult.commit} — ${commitMessage}\n${fix.explanation}`);
             result.fixedIssues.push({
               issue,
               commitSha: commitResult.commit,
@@ -357,6 +350,7 @@ interface BotComment {
   line: number | null;
   body: string;
   user: string;
+  inReplyToId?: number | null;
 }
 
 function formatThreadContext(
@@ -373,7 +367,7 @@ function formatThreadContext(
     return undefined;
   }
 
-  return lines.slice(-8).join("\n");
+  return formatContextEntries(lines);
 }
 
 // Find matching comment using flexible matching:

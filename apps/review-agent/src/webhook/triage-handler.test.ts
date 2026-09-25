@@ -33,6 +33,8 @@ describe("handleTriageAfterReview", () => {
 
   beforeEach(() => {
     mockGitHubClient = {
+      getPullRequestCommits: vi.fn().mockResolvedValue([]),
+      getPullRequestReviews: vi.fn().mockResolvedValue([]),
       getIssueComments: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
       createIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
@@ -226,6 +228,117 @@ describe("handleTriageAfterReview", () => {
     expect(mockTriageAgent.fixIssue).not.toHaveBeenCalled();
     expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
     expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+  });
+
+  it("passes PR history and the matching thread to each fix, including earlier commits in the run", async () => {
+    const issue: CodeIssue = {
+      type: "bug-risk",
+      severity: "warning",
+      file: "src/auth.ts",
+      line: 10,
+      message: "Preserve login behavior",
+    };
+    mockGitHubClient.getPullRequestCommits = vi.fn().mockResolvedValue([
+      {
+        sha: "head-sha",
+        message: "Keep legacy login\n\nMobile clients depend on it",
+        author: "author",
+        date: "2026-09-25",
+      },
+    ]);
+    mockGitHubClient.getIssueComments = vi.fn().mockResolvedValue([
+      {
+        id: 1,
+        user: "maintainer",
+        body: "Maintain backward compatibility",
+        createdAt: "2026-09-25",
+      },
+    ]);
+    mockGitHubClient.getPullRequestReviews = vi.fn().mockResolvedValue([
+      {
+        id: 2,
+        user: "reviewer",
+        body: "Avoid changing the API",
+        state: "CHANGES_REQUESTED",
+        commitId: "head-sha",
+        submittedAt: "2026-09-25",
+      },
+    ]);
+    mockGitHubClient.getReviewComments = vi.fn().mockResolvedValue([
+      {
+        id: 3,
+        nodeId: "node3",
+        user: "opendiff-bot",
+        path: issue.file,
+        line: 10,
+        body: issue.message,
+        inReplyToId: null,
+        createdAt: "2026-09-25",
+      },
+      {
+        id: 4,
+        nodeId: "node4",
+        user: "maintainer",
+        path: issue.file,
+        line: 10,
+        body: "Keep the fallback",
+        inReplyToId: 3,
+        createdAt: "2026-09-25",
+      },
+    ]);
+    const fixIssue = vi
+      .fn()
+      .mockResolvedValue({ fixed: true, explanation: "Preserved the fallback" });
+    mockTriageAgent.fixIssue = fixIssue;
+
+    const result = await handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      { number: 42, head: { sha: "head-sha", ref: "feature" } },
+      [issue, { ...issue, line: 20 }],
+      "owner",
+      "repo",
+      "opendiff-bot",
+      false
+    );
+
+    expect(result.fixedIssues).toHaveLength(2);
+    const first = fixIssue.mock.calls[0][2];
+    expect(first.pullRequestContext).toContain("Mobile clients depend on it");
+    expect(first.pullRequestContext).toContain("Maintain backward compatibility");
+    expect(first.pullRequestContext).toContain("Avoid changing the API");
+    expect(first.pullRequestContext).toContain("reply to #3");
+    expect(first.conversationContext).toContain("Keep the fallback");
+    expect(first.previousFixesContext).toBeUndefined();
+    expect(fixIssue.mock.calls[1][2].previousFixesContext).toContain(
+      "abc123 — fix(bug-risk): Preserve login behavior"
+    );
+    expect(fixIssue.mock.calls[1][2].previousFixesContext).toContain("Preserved the fallback");
+    expect(mockGitHubClient.getPullRequestCommits).toHaveBeenCalledTimes(1);
+    expect(mockGitHubClient.getPullRequestReviews).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues fixing when optional context fetches fail", async () => {
+    mockGitHubClient.getPullRequestCommits = vi
+      .fn()
+      .mockRejectedValue(new Error("API unavailable"));
+    mockGitHubClient.getReviewComments = vi.fn().mockRejectedValue(new Error("API unavailable"));
+    const fixIssue = vi.fn().mockResolvedValue({ fixed: false, explanation: "No change needed" });
+    mockTriageAgent.fixIssue = fixIssue;
+    await handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      { number: 42, head: { sha: "head-sha", ref: "feature" } },
+      [{ type: "bug-risk", severity: "warning", file: "src/auth.ts", line: 10, message: "Issue" }],
+      "owner",
+      "repo",
+      "opendiff-bot",
+      false
+    );
+    expect(fixIssue).toHaveBeenCalledTimes(1);
+    expect(fixIssue.mock.calls[0][2].pullRequestContext).toContain(
+      "Context unavailable (fetch failed)."
+    );
   });
 
   it("should match autofix ignored path patterns", () => {

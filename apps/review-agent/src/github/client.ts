@@ -22,6 +22,23 @@ export class GitHubClient {
     return data as PullRequest;
   }
 
+  async getPullRequestCommits(owner: string, repo: string, pullNumber: number) {
+    // GitHub's PR endpoint returns at most 250 commits, even with pagination.
+    const data = await this.octokit.paginate(this.octokit.rest.pulls.listCommits, {
+      owner,
+      repo,
+      pull_number: pullNumber,
+      per_page: 100,
+    });
+
+    return data.map((entry) => ({
+      sha: entry.sha,
+      message: entry.commit.message,
+      author: entry.author?.login || entry.commit.author?.name || "unknown",
+      date: entry.commit.author?.date || null,
+    }));
+  }
+
   async getPullRequestFiles(
     owner: string,
     repo: string,
@@ -374,7 +391,7 @@ export class GitHubClient {
     repo: string,
     issueNumber: number
   ): Promise<Array<{ user: string; body: string; id: number; createdAt: string }>> {
-    const { data } = await this.octokit.rest.issues.listComments({
+    const data = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
       owner,
       repo,
       issue_number: issueNumber,
@@ -403,7 +420,7 @@ export class GitHubClient {
       commitId: string | null;
     }>
   > {
-    const { data } = await this.octokit.rest.pulls.listReviews({
+    const data = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
       owner,
       repo,
       pull_number: pullNumber,
@@ -507,7 +524,7 @@ export class GitHubClient {
       createdAt: string;
     }>
   > {
-    const { data } = await this.octokit.rest.pulls.listReviewComments({
+    const data = await this.octokit.paginate(this.octokit.rest.pulls.listReviewComments, {
       owner,
       repo,
       pull_number: pullNumber,

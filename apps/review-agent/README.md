@@ -79,6 +79,8 @@ Configure a GitHub webhook pointing to this service:
 - Review issues are generated first.
 - Triage attempts to fix up to 10 issues per cycle.
 - If triage cannot safely proceed, it asks a clarification question in the relevant review thread.
+- Each fix receives commit SHAs, authors, and messages from the PR, general discussion, review summaries, inline comments, and its matching review thread. Context is fetched once per triage run; later fixes also receive the commit messages and explanations of fixes already committed during that run.
+- Context sections retain recent entries within character budgets and mark omissions/truncation. GitHub limits the PR commits endpoint to 250 commits. Discussion is paginated, and failures in individual context sources are reported to the agent without blocking fixes.
 - With autofix enabled, fixes are committed and pushed to the PR branch, then matching review threads are replied to and resolved.
 - With autofix disabled, fix metadata is collected without pushing commits.
 - In review comment threads, the bot can distinguish between discussion and explicit "do this" requests and trigger a fix attempt for executable requests.
