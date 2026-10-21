@@ -1,5 +1,5 @@
 import { ResourceContainer } from "@/components/layout/resource-container";
-import { ResourceHeader } from "@/components/layout/resource-header";
+import { PageHero } from "@/components/layout/page-hero";
 import { ArticleList } from "../components";
 import { getAllArticles } from "../lib/articles";
 
@@ -7,9 +7,11 @@ const articles = getAllArticles();
 
 export function BlogPage() {
   return (
-    <ResourceContainer>
-      <ResourceHeader title="Blog" />
-      <ArticleList articles={articles} />
-    </ResourceContainer>
+    <>
+      <PageHero title="Blog" />
+      <ResourceContainer>
+        <ArticleList articles={articles} />
+      </ResourceContainer>
+    </>
   );
 }

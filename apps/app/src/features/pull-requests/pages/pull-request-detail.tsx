@@ -11,10 +11,18 @@ import { Card, CardContent } from "components/components/ui/card";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
 
+import {
+  CheckCheckIcon,
+  CircleDotIcon,
+  ExternalLinkIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
+  Loading03Icon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Separator } from "components/components/ui/separator";
 import { Skeleton } from "components/components/ui/skeleton";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckCheckIcon, CircleDotIcon, ExternalLinkIcon, GitMergeIcon, GitPullRequestIcon, Loading03Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 
 import { Link, useParams } from "react-router-dom";

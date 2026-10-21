@@ -1,18 +1,15 @@
 import { useReviewRules, useUpdateReviewRules } from "@/features/settings";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { Skeleton } from "components/components/ui/skeleton";
 import { Textarea } from "components/components/ui/textarea";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { toast } from "sonner";
+
+const RULES_DESCRIPTION =
+  "Rules and guidelines the AI follows when reviewing your code. They're included in every review.";
 
 interface CustomReviewRulesCardProps {
   token?: string;
@@ -47,24 +44,24 @@ function RulesForm({ initialRules, onSave, isSaving }: RulesFormProps) {
   };
 
   return (
-    <CardContent className="space-y-4">
+    <div className="space-y-4">
       <Textarea
         placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
         value={localRules}
         onChange={(e) => setLocalRules(e.target.value)}
-        variant="background"
+        variant="muted"
         minHeight="lg"
         maxLength={5000}
       />
 
-      <div className="flex items-center justify-between mt-6">
+      <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{localRules.length}/5000 characters</p>
         <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
           {isSaving && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
-          {isSaving ? "Saving..." : "Save Rules"}
+          {isSaving ? "Saving..." : "Save rules"}
         </Button>
       </div>
-    </CardContent>
+    </div>
   );
 }
 
@@ -77,32 +74,18 @@ export function CustomReviewRulesCard({ token, orgId }: CustomReviewRulesCardPro
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Custom Review Rules</CardTitle>
-          <CardDescription>
-            Define custom rules and guidelines for the AI to follow when reviewing your code. These
-            rules will be included in every review.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SettingsSection title="Custom review rules" description={RULES_DESCRIPTION}>
+        <div>
           <Skeleton muted className="h-[150px] w-full rounded-3xl" />
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsSection>
     );
   }
 
   const currentRules = rulesData?.rules ?? "";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Custom Review Rules</CardTitle>
-        <CardDescription>
-          Define custom rules and guidelines for the AI to follow when reviewing your code. These
-          rules will be included in every review.
-        </CardDescription>
-      </CardHeader>
+    <SettingsSection title="Custom review rules" description={RULES_DESCRIPTION}>
       {/* Key resets form when rules change from server */}
       <RulesForm
         key={currentRules}
@@ -110,6 +93,6 @@ export function CustomReviewRulesCard({ token, orgId }: CustomReviewRulesCardPro
         onSave={updateRules.mutateAsync}
         isSaving={updateRules.isPending}
       />
-    </Card>
+    </SettingsSection>
   );
 }

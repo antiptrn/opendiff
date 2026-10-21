@@ -1,3 +1,5 @@
+import { Delete02Icon, EllipsisVerticalIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
 import { Button } from "components/components/ui/button";
 import {
@@ -11,8 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "components/components/ui/dropdown-menu";
 import { TableCell, TableRow } from "components/components/ui/table";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Delete02Icon, EllipsisVerticalIcon } from "@hugeicons/core-free-icons";
 import type { OrganizationRole } from "shared/auth";
 import { formatRoleName } from "shared/billing";
 import { SeatBadge } from "./seat-badge";

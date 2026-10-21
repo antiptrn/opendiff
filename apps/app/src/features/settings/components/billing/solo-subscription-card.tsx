@@ -8,19 +8,12 @@ import {
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsRow, SettingsSection } from "components/components/console";
 import { LoadingButton } from "components/components/ui/loading-button";
+import { Skeleton } from "components/components/ui/skeleton";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { formatDate, getTierName } from "shared/billing";
-import { QuotaProgress } from "./quota-progress";
-import { SubscriptionInfoItem, SubscriptionInfoList } from "./subscription-info-list";
+import { formatDate, formatTokenQuota, getTierName } from "shared/billing";
 
 interface QuotaPool {
   used: number;
@@ -69,80 +62,77 @@ export function SoloSubscriptionCard({
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Subscription</CardTitle>
-          {!hasSubscription && !isLoading && (
-            <CardDescription>No subscription found</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          <SubscriptionInfoList isLoading={isLoading}>
-            {seat && hasSubscription && (
+      <SettingsSection title="Subscription">
+        {isLoading ? (
+          <SettingsRow
+            title={<Skeleton muted className="h-6 w-24 rounded-md" />}
+            description={<Skeleton muted className="h-5 w-48 rounded-md" />}
+          >
+            <Skeleton muted className="h-10 w-24 rounded-md" />
+          </SettingsRow>
+        ) : seat && hasSubscription ? (
+          <SettingsRow
+            title={getTierName(seat.tier)}
+            description={
               <>
-                <SubscriptionInfoItem label="Status">
-                  {seat.status === "ACTIVE" ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      {cancelAtPeriodEnd ? (
-                        <p className="text-orange-600 dark:text-orange-400">Cancelling</p>
-                      ) : (
-                        <p className="text-green-600 dark:text-green-400">Active</p>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="text-orange-600 dark:text-orange-400">{seat.status}</span>
-                  )}
-                </SubscriptionInfoItem>
-                <SubscriptionInfoItem label="Plan" separator={!!seat.expiresAt}>
-                  {getTierName(seat.tier)}
-                </SubscriptionInfoItem>
-                {seat.expiresAt && (
-                  <SubscriptionInfoItem
-                    label={cancelAtPeriodEnd ? "Access Until" : "Next Billing Date"}
-                    separator={false}
-                  >
-                    {formatDate(seat.expiresAt)}
-                  </SubscriptionInfoItem>
+                {seat.status !== "ACTIVE" ? (
+                  <span className="text-orange-600 dark:text-orange-400">{seat.status}</span>
+                ) : cancelAtPeriodEnd ? (
+                  <span className="text-orange-600 dark:text-orange-400">Cancelling</span>
+                ) : (
+                  <span className="text-green-600 dark:text-green-400">Active</span>
                 )}
+                {seat.expiresAt &&
+                  ` · ${cancelAtPeriodEnd ? "Access until" : "Renews"} ${formatDate(seat.expiresAt)}`}
               </>
+            }
+          >
+            {cancelAtPeriodEnd ? (
+              <LoadingButton
+                variant="outline"
+                isLoading={isReactivating}
+                loadingText="Reactivating..."
+                onClick={onReactivate}
+              >
+                Reactivate
+              </LoadingButton>
+            ) : (
+              <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
+                Cancel
+              </Button>
             )}
-          </SubscriptionInfoList>
-
-          {!hasSubscription && !isLoading ? (
+            <Button asChild>
+              <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Change plan</Link>
+            </Button>
+          </SettingsRow>
+        ) : (
+          <SettingsRow title="Free" description="You're not on a paid plan.">
             <Button asChild>
               <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Upgrade</Link>
             </Button>
-          ) : (
-            hasSubscription && (
-              <div className="flex gap-2 mt-6">
-                <Button asChild>
-                  <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Change Plan</Link>
-                </Button>
-                {cancelAtPeriodEnd ? (
-                  <LoadingButton
-                    variant="outline"
-                    isLoading={isReactivating}
-                    loadingText="Reactivating..."
-                    onClick={onReactivate}
-                  >
-                    Reactivate
-                  </LoadingButton>
-                ) : (
-                  <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
-                    Cancel Subscription
-                  </Button>
-                )}
-              </div>
-            )
-          )}
+          </SettingsRow>
+        )}
 
-          {quotaPool && !quotaPool.hasUnlimited && (
-            <div className="mt-6">
-              <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {quotaPool && !quotaPool.hasUnlimited && !isLoading && (
+          <SettingsRow
+            title="Usage"
+            description={
+              quotaPool.total > 0
+                ? `${formatTokenQuota(quotaPool.used)} of ${formatTokenQuota(quotaPool.total)} tokens used this cycle`
+                : `${formatTokenQuota(quotaPool.used)} tokens used this cycle`
+            }
+          >
+            {quotaPool.total > 0 && (
+              <div className="h-2 w-40 rounded-full bg-muted">
+                <div
+                  className="h-2 rounded-full bg-yellow transition-all"
+                  style={{ width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%` }}
+                />
+              </div>
+            )}
+          </SettingsRow>
+        )}
+      </SettingsSection>
 
       <AlertDialog
         open={showCancelDialog}

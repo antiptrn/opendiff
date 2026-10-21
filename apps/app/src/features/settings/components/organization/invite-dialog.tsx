@@ -14,6 +14,7 @@ import { LoadingButton } from "components/components/ui/loading-button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -59,7 +60,7 @@ export function InviteDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button className="mt-4">Invite member</Button>
+        <Button>Invite member</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -73,6 +74,7 @@ export function InviteDialog({
           <div className="space-y-2">
             <Label htmlFor="email">Email address (optional)</Label>
             <Input
+              variant="muted"
               id="email"
               type="email"
               placeholder="colleague@example.com"
@@ -87,8 +89,10 @@ export function InviteDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="MEMBER">Member</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="MEMBER">Member</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground mt-4">

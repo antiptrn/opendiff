@@ -33,5 +33,6 @@ export * from "./tabs";
 export * from "./tabs.variants";
 export * from "./text-scramble";
 export * from "./textarea";
+export * from "./theme-toggle";
 export * from "./tooltip";
 export * from "./use-combobox-anchor";

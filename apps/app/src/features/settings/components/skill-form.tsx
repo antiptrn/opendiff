@@ -60,7 +60,7 @@ export function SkillForm({
               placeholder="e.g. security-review"
               value={form.name}
               onChange={(e) => onFormChange({ ...form, name: e.target.value })}
-              className="bg-background"
+              variant="muted"
             />
             <p className="text-xs text-muted-foreground">
               Letters, numbers, hyphens, and underscores only.
@@ -74,7 +74,7 @@ export function SkillForm({
               placeholder="e.g. Review code for common security vulnerabilities"
               value={form.description}
               onChange={(e) => onFormChange({ ...form, description: e.target.value })}
-              className="bg-background"
+              variant="muted"
             />
             <p className="text-xs text-muted-foreground">
               Short description used for skill routing.
@@ -88,7 +88,8 @@ export function SkillForm({
               placeholder="Write the instructions the agent should follow..."
               value={form.content}
               onChange={(e) => onFormChange({ ...form, content: e.target.value })}
-              className="min-h-[140px] max-h-[240px] w-full bg-background"
+              variant="muted"
+              className="min-h-[140px] max-h-[240px] w-full"
             />
           </div>
 

@@ -80,7 +80,7 @@ const router = createBrowserRouter([
   },
 ]);
 
-/** Signed-out pages always render light so they match the marketing site */
+/** Signed-out pages always render dark so they match the marketing site */
 const SIGNED_OUT_PATH_PREFIXES = ["/login", "/auth/callback", "/invite/"];
 
 function isSignedOutPath(pathname: string) {
@@ -90,7 +90,7 @@ function isSignedOutPath(pathname: string) {
 function useForcedTheme() {
   const [pathname, setPathname] = useState(router.state.location.pathname);
   useEffect(() => router.subscribe((state) => setPathname(state.location.pathname)), []);
-  return isSignedOutPath(pathname) ? "light" : undefined;
+  return isSignedOutPath(pathname) ? "dark" : undefined;
 }
 
 function App() {

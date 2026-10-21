@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -28,6 +28,8 @@
     <meta name="twitter:title" content="OpenDiff" />
     <meta name="twitter:description" content="Open-source AI-powered code reviews that catch bugs before they ship." />
     <meta name="twitter:image" content="https://opendiff.dev/og-image.png" />
+    <!-- The site is always dark: paint its background before the CSS and React load, so pages never flash white -->
+    <style>html { background-color: #151515; }</style>
   </head>
   <body>
     <div id="root"></div>

@@ -1,3 +1,4 @@
+export { FeaturesSection } from "./features-section";
 export { HeroSection } from "./hero-section";
 export { OpenSourceSection } from "./open-source-section";
 export { LanderCtaSection } from "./lander-cta-section";

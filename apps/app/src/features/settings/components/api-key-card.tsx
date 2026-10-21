@@ -6,24 +6,19 @@ import {
   useDeleteAiConfig,
   useUpdateAiConfig,
 } from "@/features/settings";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { Input } from "components/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "components/components/ui/select";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -117,17 +112,14 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>AI Credentials</CardTitle>
-        <CardDescription>
-          Self-sufficient plans use your own API key for the selected model provider.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+    <SettingsSection
+      title="AI credentials"
+      description="Self-sufficient plans use your own API key for the selected model provider."
+    >
+      <div>
+        <div className="max-w-xl space-y-4">
           {isLoading ? (
-            <Input type="text" value="Loading credentials..." readOnly disabled />
+            <Input variant="muted" type="text" value="Loading credentials..." readOnly disabled />
           ) : aiConfigStatus?.hasCredential && !showInput ? (
             <div className="space-y-4">
               <div className="space-y-2">
@@ -138,6 +130,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 <div className="text-sm text-muted-foreground">Model: {aiConfigStatus.model}</div>
                 <div className="flex items-center gap-2 mb-4">
                   <Input
+                    variant="muted"
                     type="password"
                     value={aiConfigStatus.maskedCredential || ""}
                     readOnly
@@ -154,7 +147,9 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                   onClick={handleDelete}
                   disabled={deleteAiConfig.isPending}
                 >
-                  {deleteAiConfig.isPending && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin mr-2" />}
+                  {deleteAiConfig.isPending && (
+                    <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin mr-2" />
+                  )}
                   Remove
                 </Button>
               </div>
@@ -165,12 +160,14 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Provider</div>
                   <Select value={provider} onValueChange={(v) => setProvider(v as AiProvider)}>
-                    <SelectTrigger fullWidth>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectGroup>
+                        <SelectItem value="anthropic">Anthropic</SelectItem>
+                        <SelectItem value="openai">OpenAI</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
@@ -178,17 +175,19 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Model</div>
                   <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger fullWidth>
+                    <SelectTrigger className="w-full">
                       <SelectValue
                         placeholder={isLoadingModels ? "Loading models..." : "Select model"}
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {modelOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
+                      <SelectGroup>
+                        {modelOptions.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
@@ -198,6 +197,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">API Key</div>
                   <Input
+                    variant="muted"
                     type="password"
                     placeholder={credentialPlaceholder}
                     value={credentialInput}
@@ -209,7 +209,9 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
                     onClick={handleSave}
                     disabled={!credentialInput.trim() || !model || updateAiConfig.isPending}
                   >
-                    {updateAiConfig.isPending && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
+                    {updateAiConfig.isPending && (
+                      <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />
+                    )}
                     {updateAiConfig.isPending ? "Saving..." : "Save"}
                   </Button>
                   {showInput && (
@@ -230,7 +232,7 @@ export function ApiKeyCard({ token, orgId }: ApiKeyCardProps) {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }

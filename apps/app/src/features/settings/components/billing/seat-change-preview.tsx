@@ -1,3 +1,5 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Card,
   CardContent,
@@ -7,8 +9,6 @@ import {
 } from "components/components/ui/card";
 import { Separator } from "components/components/ui/separator";
 import { AnimatePresence, motion } from "framer-motion";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { formatCents } from "shared/billing";
 
 /** Props for SeatChangePreview including proration preview data and seat pricing. */

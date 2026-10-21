@@ -1,8 +1,13 @@
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  GitPullRequestIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import { Skeleton } from "components/components/ui/skeleton";
 import { motion } from "framer-motion";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, GitPullRequestIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import type { PullRequestSummary } from "../hooks/use-pull-requests";
 

@@ -1,4 +1,6 @@
 import { useDeleteAccount, useExportData } from "@/features/settings";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,24 +11,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
+import { SettingsRow, SettingsSection } from "components/components/console";
 import { Button } from "components/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "components/components/ui/card";
-import { Separator } from "components/components/ui/separator";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { toast } from "sonner";
 
-interface AccountManagementCardProps {
+interface AccountManagementSectionsProps {
   token?: string;
   orgId?: string | null;
   logout: () => void;
 }
 
 /**
- * Card component for account management (export data, delete account)
+ * Account management settings: exporting data, and deleting the account in the danger zone
  */
-export function AccountManagementCard({ token, orgId, logout }: AccountManagementCardProps) {
+export function AccountManagementSections({
+  token,
+  orgId,
+  logout,
+}: AccountManagementSectionsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const exportData = useExportData(token, orgId);
@@ -62,41 +65,35 @@ export function AccountManagementCard({ token, orgId, logout }: AccountManagemen
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Account</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-base">Export my data</p>
-            <p className="text-sm text-muted-foreground">Download all your data as a JSON file.</p>
-          </div>
+    <>
+      <SettingsSection title="Data">
+        <SettingsRow title="Export my data" description="Download all your data as a JSON file.">
           <Button variant="outline" onClick={handleExportData} disabled={exportData.isPending}>
-            {exportData.isPending && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
-            {exportData.isPending ? "Exporting..." : "Export Data"}
+            {exportData.isPending && (
+              <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />
+            )}
+            {exportData.isPending ? "Exporting..." : "Export data"}
           </Button>
-        </div>
+        </SettingsRow>
+      </SettingsSection>
 
-        <Separator />
-
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-base">Delete my account</p>
-            <p className="text-sm text-muted-foreground">
-              Permanently delete your account and all associated data.
-            </p>
-          </div>
+      <SettingsSection title="Danger zone" variant="danger">
+        <SettingsRow
+          title="Delete account"
+          description="Permanently delete your account and all your data. This can't be undone."
+        >
           <Button
-            variant="outline"
+            variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
             disabled={deleteAccount.isPending}
           >
-            {deleteAccount.isPending && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
-            {deleteAccount.isPending ? "Deleting..." : "Delete Account"}
+            {deleteAccount.isPending && (
+              <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />
+            )}
+            {deleteAccount.isPending ? "Deleting..." : "Delete account"}
           </Button>
-        </div>
-      </CardContent>
+        </SettingsRow>
+      </SettingsSection>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
@@ -115,6 +112,6 @@ export function AccountManagementCard({ token, orgId, logout }: AccountManagemen
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </>
   );
 }

@@ -37,6 +37,7 @@ export function RotatingWord({ words }: { words: readonly string[] }) {
   }, [settled, reduceMotion, words.length]);
 
   // Measure the incoming word so the box eases to its width while the old letters leave
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure each time the word changes
   useLayoutEffect(() => {
     if (measureRef.current) setWidth(measureRef.current.getBoundingClientRect().width);
   }, [target]);

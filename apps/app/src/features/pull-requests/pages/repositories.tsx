@@ -1,3 +1,4 @@
+import { PageTitle } from "components/components/console";
 import {
   ActiveRepoCard,
   AddRepoDialog,
@@ -14,6 +15,8 @@ import {
   useRepositorySettings,
   useUpdateSettings,
 } from "@/features/repositories";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import {
   Dialog,
@@ -25,8 +28,6 @@ import {
 import { SearchBar } from "components/components/ui/search-bar";
 import { Skeleton } from "components/components/ui/skeleton";
 import { useDebounce } from "components/hooks";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useMemo, useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
@@ -192,12 +193,15 @@ export function RepositoriesPage() {
 
   return (
     <div className="p-8">
-      <div className="flex flex-row items-center justify-between w-full">
-        <h1 className="text-2xl mb-6">Repositories</h1>
-        <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
-          Add Repository
-        </Button>
-      </div>
+      <PageTitle
+        action={
+          <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
+            Add Repository
+          </Button>
+        }
+      >
+        Repositories
+      </PageTitle>
 
       <div className="space-y-6">
         {user?.access_token && (
@@ -205,7 +209,6 @@ export function RepositoriesPage() {
             <div className="flex gap-2 mb-4">
               <SearchBar
                 containerClassName="max-w-120"
-                className="shadow-md dark:shadow-none"
                 placeholder="Search repositories..."
                 value={repoSearchQuery}
                 onChange={(e) => setRepoSearchQuery(e.target.value)}
@@ -296,7 +299,10 @@ export function RepositoriesPage() {
 
           {isLoadingEditSettings && (
             <div className="flex items-center justify-center py-6">
-              <HugeiconsIcon icon={Loading03Icon} className="size-6 animate-spin text-muted-foreground" />
+              <HugeiconsIcon
+                icon={Loading03Icon}
+                className="size-6 animate-spin text-muted-foreground"
+              />
             </div>
           )}
 

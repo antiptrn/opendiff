@@ -123,7 +123,7 @@ export function Footer() {
 
   return (
     <footer className="relative z-10 w-full border-t bg-background py-16 lg:mt-16 md:mt-16 mt-8">
-      <div className="max-w-6xl mx-auto px-4 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 lg:px-8">
         <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
           <div className="flex w-full flex-col justify-between gap-6 lg:w-1/3 lg:items-start">
             <div className="flex items-center gap-2 lg:justify-start">
@@ -136,7 +136,7 @@ export function Footer() {
           <div className="grid w-full gap-6 md:grid-cols-4 lg:w-2/3 lg:gap-12">
             {footerSections.map((section) => (
               <div key={section.title}>
-                <h4 className="mb-4 text-base font-medium">{section.title}</h4>
+                <p className="mb-4 text-base">{section.title}</p>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   {section.links.map((link) => (
                     <li key={link.href} className="font-normal whitespace-nowrap hover:text-foreground">

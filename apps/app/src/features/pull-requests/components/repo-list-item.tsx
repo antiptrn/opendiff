@@ -1,5 +1,5 @@
-import { HugeiconsIcon } from "@hugeicons/react";
 import { FolderGitIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
 
 interface RepoListItemProps {

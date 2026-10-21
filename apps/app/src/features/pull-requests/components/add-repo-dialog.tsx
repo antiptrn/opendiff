@@ -1,4 +1,6 @@
 import type { OrgRepository, Repository } from "@/features/repositories";
+import { Loading03Icon, LogInIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import {
   Dialog,
@@ -8,8 +10,6 @@ import {
   DialogTitle,
 } from "components/components/ui/dialog";
 import { SearchBar } from "components/components/ui/search-bar";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon, LogInIcon } from "@hugeicons/core-free-icons";
 import { Link } from "react-router-dom";
 import { RepoListItem } from "./repo-list-item";
 
@@ -95,7 +95,10 @@ export function AddRepoDialog({
             <div className="max-h-80 bg-background overflow-y-auto rounded-md py-2.5">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
-                  <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin text-muted-foreground" />
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    className="size-4 animate-spin text-muted-foreground"
+                  />
                 </div>
               )}
               {!isLoading && repositories.length === 0 && (

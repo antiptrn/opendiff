@@ -26,11 +26,16 @@ export function LiveStat() {
   if (data === undefined) return null;
 
   return (
-    <p className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-      Pull requests merged with Contrast
-      <Badge variant="secondary" className="font-mono tabular-nums text-[11px] h-auto text-foreground">
+    <div className="flex items-center justify-center gap-2.5">
+      <p className="text-[11px] uppercase tracking-wide leading-none text-muted-foreground">
+        Pull requests merged with Contrast
+      </p>
+      <Badge
+        variant="secondary"
+        className="leading-none font-mono tabular-nums text-[11px] h-auto py-px px-1 text-foreground"
+      >
         <NumberFlow value={data.prsMerged} />
       </Badge>
-    </p>
+    </div>
   );
 }

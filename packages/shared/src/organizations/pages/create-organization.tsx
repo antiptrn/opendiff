@@ -12,7 +12,7 @@ import { Label } from "components/components/ui/label";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useOrganization } from "..";
 import { useAuth } from "../../auth";
 import { useNavigationConfig } from "../../navigation";
@@ -21,6 +21,10 @@ import { useApi } from "../../services";
 /** Page for creating a new organization with a name and optional avatar. */
 export default function CreateOrganizationPage() {
   const navigate = useNavigate();
+  // "?new" means the person asked for another organization (from the organization menu), rather
+  // than landing here during onboarding, so don't send them away for already having one
+  const [searchParams] = useSearchParams();
+  const isAddingAnother = searchParams.has("new");
   const { afterAuthUrl } = useNavigationConfig();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { createOrg, isCreating, hasOrganizations, isLoadingOrgs, isUnauthorized } =
@@ -66,7 +70,7 @@ export default function CreateOrganizationPage() {
   }
 
   // If user already has an org, or is a solo user, redirect to console
-  if (hasOrganizations || user.accountType === "SOLO") {
+  if (!isAddingAnother && (hasOrganizations || user.accountType === "SOLO")) {
     return <Navigate to={afterAuthUrl} replace />;
   }
 

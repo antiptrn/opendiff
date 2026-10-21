@@ -1,3 +1,5 @@
+import { CheckIcon, CopyIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import {
   Dialog,
@@ -8,8 +10,6 @@ import {
   DialogTitle,
 } from "components/components/ui/dialog";
 import { Input } from "components/components/ui/input";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckIcon, CopyIcon } from "@hugeicons/core-free-icons";
 import { useRef, useState } from "react";
 
 interface InviteLinkDialogProps {
@@ -54,14 +54,18 @@ export function InviteLinkDialog({ open, onOpenChange, inviteLink }: InviteLinkD
         </DialogHeader>
 
         <div className="relative flex items-center gap-4">
-          <Input value={inviteLink || ""} readOnly className="text-sm pr-11 bg-background" />
+          <Input value={inviteLink || ""} readOnly variant="muted" className="text-sm pr-11" />
           <Button
             variant="ghost"
             className="size-9 rounded-lg absolute top-1 bottom-0 right-1"
             size="icon"
             onClick={handleCopy}
           >
-            {copied ? <HugeiconsIcon icon={CheckIcon} className="h-4 w-4" /> : <HugeiconsIcon icon={CopyIcon} className="h-4 w-4" />}
+            {copied ? (
+              <HugeiconsIcon icon={CheckIcon} className="h-4 w-4" />
+            ) : (
+              <HugeiconsIcon icon={CopyIcon} className="h-4 w-4" />
+            )}
           </Button>
           <div className="h-9 w-6 bg-gradient-to-r from-transparent to-background absolute top-1 bottom-0 right-10" />
         </div>

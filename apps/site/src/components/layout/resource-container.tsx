@@ -10,7 +10,7 @@ export function ResourceContainer({ children, className }: ResourceContainerProp
   return (
     <section
       className={cn(
-        "mx-auto flex max-w-6xl flex-col items-start justify-start px-4 pb-0 md:px-8 md:pb-16 lg:px-8 lg:pb-16 lg:pt-40 md:pt-40 pt-20",
+        "mx-auto flex max-w-7xl flex-col items-start justify-start px-4 pt-16 pb-0 md:px-8 md:pb-16 lg:px-8 lg:pb-16",
         className
       )}
     >

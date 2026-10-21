@@ -1,6 +1,6 @@
 export function PrivacyPolicyPage() {
   return (
-    <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 md:px-8 max-w-6xl mx-auto pb-20">
+    <section className="relative lg:pt-40 md:pt-40 pt-32 px-4 md:px-8 max-w-7xl mx-auto pb-20">
       <h1 className="text-4xl font-medium tracking-tight mb-2">
         Privacy Policy
       </h1>

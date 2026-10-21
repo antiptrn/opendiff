@@ -1,7 +1,1 @@
-export interface Stats {
-  reviewCount: number;
-  connectedRepos: number;
-  totalRepos: number;
-  issuesFound: number;
-  issuesFixed: number;
-}
+export type { DashboardStats as Stats } from "components/components/console";

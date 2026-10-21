@@ -3,7 +3,7 @@ import { Wordmark } from "./wordmark";
 
 export function Logo() {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       <Icon />
       <Wordmark />
     </div>

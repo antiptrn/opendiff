@@ -94,7 +94,7 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
   // Render team billing for non-solo users
   if (!isSoloUser) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-10">
         <TeamSubscriptionCard
           subscription={subscription}
           isLoading={isLoadingDetails}
@@ -116,7 +116,7 @@ export function BillingTab({ user, orgId, isSoloUser }: BillingTabProps) {
 
   // Solo user billing
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <SoloSubscriptionCard
         seat={
           currentSeat

@@ -16,13 +16,7 @@ import {
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { SearchBar } from "components/components/ui/search-bar";
 import { useEffect, useRef, useState } from "react";
 import type { useAuth } from "shared/auth";
@@ -183,40 +177,12 @@ export function SkillsTab({ user }: SkillsTabProps) {
   const isSaving = createSkill.isPending || updateSkill.isPending;
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Skills</CardTitle>
-          <CardDescription>
-            Skills are intelligently applied instructions that the review agent follows when
-            reviewing your code.
-          </CardDescription>
-          <SearchBar
-            containerClassName="mt-3"
-            className="bg-background"
-            placeholder="Search skills..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </CardHeader>
-        <CardContent>
-          <div className="max-h-80 overflow-y-auto mt-2">
-            <SkillsList
-              skills={skills}
-              isLoading={isLoading}
-              searchQuery={debouncedSearch}
-              hasNextPage={hasNextPage ?? false}
-              isFetchingNextPage={isFetchingNextPage}
-              onFetchNextPage={fetchNextPage}
-              onEdit={openEdit}
-              onDelete={(skill) => {
-                setDeleteTarget(skill);
-                setIsDeleteDialogOpen(true);
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 mt-8">
+    <div className="space-y-10">
+      <SettingsSection
+        title="Your skills"
+        description="The review agent follows the ones relevant to each change."
+        action={
+          <>
             <input
               ref={fileInputRef}
               type="file"
@@ -232,10 +198,34 @@ export function SkillsTab({ user }: SkillsTabProps) {
             >
               Upload
             </Button>
-            <Button onClick={openCreate}>New Skill</Button>
+            <Button onClick={openCreate}>New skill</Button>
+          </>
+        }
+      >
+        <div className="space-y-6">
+          <SearchBar
+            variant="muted"
+            placeholder="Search skills..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="max-h-80 overflow-y-auto">
+            <SkillsList
+              skills={skills}
+              isLoading={isLoading}
+              searchQuery={debouncedSearch}
+              hasNextPage={hasNextPage ?? false}
+              isFetchingNextPage={isFetchingNextPage}
+              onFetchNextPage={fetchNextPage}
+              onEdit={openEdit}
+              onDelete={(skill) => {
+                setDeleteTarget(skill);
+                setIsDeleteDialogOpen(true);
+              }}
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsSection>
 
       <SkillForm
         open={dialogOpen}

@@ -1,7 +1,7 @@
 export default function LogoCloudSection() {
   return (
     <section className="bg-background lg:pb-20 md:pb-20 pb-16">
-      <div className="mx-auto lg:mt-20 md:mt-20 mt-16 max-w-6xl px-6">
+      <div className="mx-auto lg:mt-20 md:mt-20 mt-16 max-w-7xl px-6">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-12 gap-y-8 sm:gap-x-16 sm:gap-y-12">
           <img
             className="h-5 w-fit dark:invert"

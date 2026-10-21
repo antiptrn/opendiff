@@ -1,13 +1,7 @@
-import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { ExternalLinkIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "components/components/ui/button";
+import { SettingsRow, SettingsSection } from "components/components/console";
 import type { useAuth } from "shared/auth";
 import { CustomReviewRulesCard } from "./custom-review-rules-card";
 
@@ -28,26 +22,22 @@ export function CodeReviewTab({ user, orgId }: CodeReviewTabProps) {
   const installUrl = `https://github.com/apps/${githubAppSlug}/installations/new`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {/* Install GitHub App - only show if user has GitHub access */}
       {hasGithubAccess && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Install GitHub App</CardTitle>
-            <CardDescription>
-              Install the GitHub App on your repositories to enable code reviews. You can install it
-              on your personal account or any organization you have access to.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <SettingsSection title="GitHub">
+          <SettingsRow
+            title="GitHub App"
+            description="Install the app on your repositories to enable code reviews, on your personal account or any organization you have access to."
+          >
             <Button asChild>
               <a href={installUrl} target="_blank" rel="noopener noreferrer">
                 Install GitHub App
                 <HugeiconsIcon icon={ExternalLinkIcon} className="size-4" />
               </a>
             </Button>
-          </CardContent>
-        </Card>
+          </SettingsRow>
+        </SettingsSection>
       )}
 
       <CustomReviewRulesCard token={user?.access_token} orgId={orgId} />

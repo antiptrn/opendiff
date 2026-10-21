@@ -1,3 +1,4 @@
+import { PageTitle } from "components/components/console";
 import { SearchBar } from "components/components/ui/search-bar";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -34,12 +35,11 @@ export function PullRequestsListPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl mb-6">Pull Requests</h1>
+      <PageTitle>Pull Requests</PageTitle>
 
       <div className="flex gap-2 mb-4">
         <SearchBar
           containerClassName="min-w-120"
-          className="shadow-md dark:shadow-none"
           placeholder="Search pull requests..."
           value={search}
           onChange={(e) => {

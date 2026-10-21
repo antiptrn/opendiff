@@ -1,11 +1,7 @@
+import { Delete02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { Skeleton } from "components/components/ui/skeleton";
 import {
   Table,
@@ -15,8 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "components/components/ui/table";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Delete02Icon } from "@hugeicons/core-free-icons";
 import type { OrganizationRole } from "shared/auth";
 import { formatRoleName } from "shared/billing";
 
@@ -43,12 +37,8 @@ export function PendingInvitesCard({
   onRevokeInvite,
 }: PendingInvitesCardProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pending Invites</CardTitle>
-        <CardDescription>Invites that haven't been accepted yet</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <SettingsSection title="Pending invites" description="Invites that haven't been accepted yet">
+      <div>
         {isLoading ? (
           <div>
             {[1, 2, 3].map((i) => (
@@ -62,9 +52,7 @@ export function PendingInvitesCard({
             ))}
           </div>
         ) : invites.length === 0 ? (
-          <p className="text-base text-muted-foreground text-center pb-4 mt-4">
-            No pending invites
-          </p>
+          <p className="text-base text-muted-foreground">No pending invites</p>
         ) : (
           <Table>
             <TableHeader>
@@ -99,7 +87,7 @@ export function PendingInvitesCard({
             </TableBody>
           </Table>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }

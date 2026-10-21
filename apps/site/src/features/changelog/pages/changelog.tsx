@@ -1,5 +1,5 @@
 import { ResourceContainer } from "@/components/layout/resource-container";
-import { ResourceHeader } from "@/components/layout/resource-header";
+import { PageHero } from "@/components/layout/page-hero";
 import { EntryList } from "../components";
 import type { ChangelogEntry } from "../types";
 
@@ -126,9 +126,11 @@ const entries: ChangelogEntry[] = Object.entries(rawEntries)
 
 export function ChangelogPage() {
   return (
-    <ResourceContainer>
-      <ResourceHeader title="Changelog" />
-      <EntryList entries={entries} />
-    </ResourceContainer>
+    <>
+      <PageHero title="Changelog" />
+      <ResourceContainer>
+        <EntryList entries={entries} />
+      </ResourceContainer>
+    </>
   );
 }

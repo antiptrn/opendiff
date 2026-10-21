@@ -1,8 +1,8 @@
-import { Button } from "components/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "components/components/ui/card";
-import { Skeleton } from "components/components/ui/skeleton";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Download04Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "components/components/ui/button";
+import { SettingsSection } from "components/components/console";
+import { Skeleton } from "components/components/ui/skeleton";
 import { useState } from "react";
 import type { useAuth } from "shared/auth";
 import { formatCurrency, formatDate } from "shared/billing";
@@ -40,11 +40,8 @@ export function BillingHistoryCard({ user, orgId, isSoloUser }: BillingHistoryCa
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Billing History</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <SettingsSection title="Billing history">
+      <div>
         {isLoading ? (
           <div>
             {[1, 2, 3].map((i) => (
@@ -113,7 +110,7 @@ export function BillingHistoryCard({ user, orgId, isSoloUser }: BillingHistoryCa
             </table>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }

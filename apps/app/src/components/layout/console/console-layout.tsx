@@ -1,18 +1,60 @@
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  AppSidebar,
+  getConsoleNavGroups,
+  getSettingsNavGroups,
+  SETTINGS_HREF,
+} from "components/components/console";
+import { Icon } from "components/components";
+import { Button } from "components/components/ui/button";
 import { useThemeCookieSync } from "components/hooks";
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "components/components/ui/sidebar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ClipboardCheckIcon, FolderGitIcon, LayoutGridIcon, Loading03Icon, Settings01Icon, Shield01Icon } from "@hugeicons/core-free-icons";
+import { Loading03Icon, Menu01Icon } from "@hugeicons/core-free-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { NavigationScrollToTop } from "shared/navigation";
 import { useOrganization } from "shared/organizations";
-import { ConsoleHeader, type ConsoleHeaderNavItem } from "./console-header";
+import { useSettingsTabs } from "@/features/settings";
 import { FeedbackDialog } from "./feedback-dialog";
 import { NotificationPopover } from "./notification-popover";
+import { OrganizationMenu } from "./organization-menu";
 import { UserMenu } from "./user-menu";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+/**
+ * Bar above the page while the sidebar is hidden: on mobile, the icon and a menu button that opens
+ * the sidebar from the right; on desktop with the sidebar collapsed, a button to bring it back.
+ */
+function CollapsedSidebarBar() {
+  const { isMobile, openMobile, state, toggleSidebar } = useSidebar();
+  if (isMobile) {
+    return (
+      <div className="flex h-16 shrink-0 items-center justify-between px-6">
+        <Link to="/console" aria-label="Dashboard" className="flex items-center">
+          <Icon />
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={openMobile ? "Close menu" : "Open menu"}
+          aria-expanded={openMobile}
+          onClick={toggleSidebar}
+        >
+          <HugeiconsIcon icon={Menu01Icon} />
+        </Button>
+      </div>
+    );
+  }
+  if (state === "expanded") return null;
+  return (
+    <div className="flex h-12 shrink-0 items-center px-2">
+      <SidebarTrigger />
+    </div>
+  );
+}
 
 export function ConsoleLayout() {
   const { user, accounts, isLoading, logout, switchAccount, refreshAccountToken, removeAccount } =
@@ -26,12 +68,12 @@ export function ConsoleLayout() {
     isUnauthorized,
     currentOrgId,
     currentOrg,
-    currentSeat,
     orgDetails,
   } = useOrganization();
   const location = useLocation();
+  const { showOrganization, showBilling } = useSettingsTabs();
   const queryClient = useQueryClient();
-  const mainRef = useRef<HTMLElement | null>(null);
+  const mainRef = useRef<HTMLDivElement | null>(null);
   const getMainElement = useCallback(() => mainRef.current, []);
 
   // Sync theme with cookie for cross-origin persistence
@@ -189,53 +231,53 @@ export function ConsoleLayout() {
     return <Navigate to="/create-organization" replace />;
   }
 
-  const navItems: ConsoleHeaderNavItem[] = [
-    { label: "Dashboard", href: "/console", icon: LayoutGridIcon },
-    { label: "Pull Requests", href: "/console/pull-requests", icon: ClipboardCheckIcon },
-    { label: "Repositories", href: "/console/repositories", icon: FolderGitIcon },
-    { label: "Settings", href: "/console/settings", icon: Settings01Icon },
-    ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield01Icon }] : []),
-  ];
-
-  const planLabel = currentSeat?.tier || "Free";
+  // In settings the sidebar lists the settings categories instead, with a way back
+  const inSettings = location.pathname.startsWith(SETTINGS_HREF);
+  const navGroups = inSettings
+    ? getSettingsNavGroups({ showOrganization, showBilling })
+    : getConsoleNavGroups({ showAdmin });
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <SidebarProvider persistenceKey="console.sidebar" className="h-svh bg-background">
       <NavigationScrollToTop getContainer={getMainElement} />
-      <ConsoleHeader
-        email={user.email}
-        organizationName={currentOrg?.name || orgDetails?.name}
-        organizationAvatarUrl={currentOrg?.avatarUrl || orgDetails?.avatarUrl}
-        showOrganizationAvatar={!!currentOrg && !currentOrg.isPersonal}
-        planLabel={planLabel}
-        navItems={navItems}
+      <AppSidebar
+        navGroups={navGroups}
+        backLink={inSettings ? { label: "Go back", href: "/console" } : undefined}
         pathname={location.pathname}
-        rightContent={
-          <div className="flex items-center gap-4">
-            <NotificationPopover />
-            <UserMenu
-              user={user}
-              accounts={accounts}
-              switchingToAccountId={switchingToAccountId}
-              onSwitchAccount={handleSwitchAccount}
-              onFeedbackClick={() => setFeedbackOpen(true)}
-              onLogout={logout}
-            />
-          </div>
-        }
+        userName={user.name || user.login || user.email || "Account"}
+        userAvatarUrl={user.avatar_url}
+        footerAction={<NotificationPopover />}
+        renderLink={(href) => <Link to={href} />}
+        organizationName={currentOrg?.name || orgDetails?.name || "Personal"}
+        organizationAvatarUrl={currentOrg?.avatarUrl || orgDetails?.avatarUrl}
+        renderOrganizationMenu={(trigger) => <OrganizationMenu trigger={trigger} />}
+        renderAccountMenu={(trigger) => (
+          <UserMenu
+            user={user}
+            accounts={accounts}
+            switchingToAccountId={switchingToAccountId}
+            onSwitchAccount={handleSwitchAccount}
+            onFeedbackClick={() => setFeedbackOpen(true)}
+            onLogout={logout}
+            trigger={trigger}
+          />
+        )}
       />
 
-      <main ref={mainRef} className="flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl">
-          <Outlet />
+      <SidebarInset className="h-svh">
+        <CollapsedSidebarBar />
+        <div ref={mainRef} className="flex-1 overflow-auto">
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </div>
-      </main>
+      </SidebarInset>
 
       <FeedbackDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}
         accessToken={user?.access_token}
       />
-    </div>
+    </SidebarProvider>
   );
 }

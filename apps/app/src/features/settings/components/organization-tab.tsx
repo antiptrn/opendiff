@@ -10,13 +10,7 @@ import {
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { Skeleton } from "components/components/ui/skeleton";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "components/components/ui/table";
 import { useMemo, useState } from "react";
@@ -191,7 +185,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {/* Organization settings - for owners and admins */}
       {canUpdateOrg ? (
         <OrganizationCard
@@ -206,11 +200,8 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
         />
       ) : (
         /* Read-only org info for members */
-        <Card>
-          <CardHeader>
-            <CardTitle>Team</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <SettingsSection title="Team profile">
+          <div>
             <div className="flex items-center gap-4">
               <Avatar className="size-16">
                 <AvatarImage
@@ -228,23 +219,32 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
       )}
 
       {/* Team Members */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-          <CardDescription>
-            {isLoadingMembers ? (
-              <Skeleton muted className="h-5 w-48" />
-            ) : (
-              `${members.length} member${members.length === 1 ? "" : "s"}, ${assignedSeats} seat${assignedSeats === 1 ? "" : "s"} assigned`
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SettingsSection
+        title="Members"
+        description={
+          isLoadingMembers ? (
+            <Skeleton muted className="h-5 w-48" />
+          ) : (
+            `${members.length} member${members.length === 1 ? "" : "s"}, ${assignedSeats} seat${assignedSeats === 1 ? "" : "s"} assigned`
+          )
+        }
+        action={
+          canManageMembers && (
+            <InviteDialog
+              open={inviteDialogOpen}
+              onOpenChange={setInviteDialogOpen}
+              onCreateInvite={handleCreateInvite}
+              isCreating={isCreatingInvite}
+            />
+          )
+        }
+      >
+        <div>
           {isLoadingMembers ? (
             <div>
               {[1, 2, 3].map((i) => (
@@ -290,25 +290,17 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
           )}
 
           {canManageMembers && (
-            <>
-              <InviteDialog
-                open={inviteDialogOpen}
-                onOpenChange={setInviteDialogOpen}
-                onCreateInvite={handleCreateInvite}
-                isCreating={isCreatingInvite}
-              />
-              <InviteLinkDialog
-                open={inviteLinkDialogOpen}
-                onOpenChange={(open) => {
-                  setInviteLinkDialogOpen(open);
-                  if (!open) setInviteLink(null);
-                }}
-                inviteLink={inviteLink}
-              />
-            </>
+            <InviteLinkDialog
+              open={inviteLinkDialogOpen}
+              onOpenChange={(open) => {
+                setInviteLinkDialogOpen(open);
+                if (!open) setInviteLink(null);
+              }}
+              inviteLink={inviteLink}
+            />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsSection>
 
       {/* Pending Invites */}
       {canManageMembers && (

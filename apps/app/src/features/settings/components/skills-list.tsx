@@ -1,7 +1,7 @@
 import type { Skill } from "@/features/settings";
-import { Skeleton } from "components/components/ui/skeleton";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Skeleton } from "components/components/ui/skeleton";
 import { useEffect, useRef } from "react";
 import { SkillCard } from "./skill-card";
 

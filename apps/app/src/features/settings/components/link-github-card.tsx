@@ -1,24 +1,18 @@
 import { useLinkGitHub, useUnlinkGitHub } from "@/features/settings";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsRow } from "components/components/console";
 import { LoadingButton } from "components/components/ui/loading-button";
 import { toast } from "sonner";
 
-interface LinkGitHubCardProps {
+interface LinkGitHubRowProps {
   token?: string;
   isLinked?: boolean;
   onUnlinked?: () => void;
 }
 
 /**
- * Card component for linking/unlinking GitHub account (for Google users)
+ * Settings row for linking/unlinking a GitHub account (for Google and Microsoft users)
  */
-export function LinkGitHubCard({ token, isLinked, onUnlinked }: LinkGitHubCardProps) {
+export function LinkGitHubRow({ token, isLinked, onUnlinked }: LinkGitHubRowProps) {
   const linkGitHub = useLinkGitHub(token);
   const unlinkGitHub = useUnlinkGitHub(token);
 
@@ -41,42 +35,28 @@ export function LinkGitHubCard({ token, isLinked, onUnlinked }: LinkGitHubCardPr
     }
   };
 
-  if (isLinked) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>GitHub Account</CardTitle>
-          <CardDescription>
-            Your GitHub account is linked. You can unlink it if you no longer want to use it for
-            code reviews.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <LoadingButton
-            variant="outline"
-            onClick={handleUnlinkGitHub}
-            isLoading={unlinkGitHub.isPending}
-          >
-            Unlink GitHub Account
-          </LoadingButton>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>GitHub Account</CardTitle>
-        <CardDescription>
-          Link your GitHub account to access your repositories and enable code reviews.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <LoadingButton onClick={handleLinkGitHub} isLoading={linkGitHub.isPending}>
-          Link GitHub Account
+    <SettingsRow
+      title="GitHub account"
+      description={
+        isLinked
+          ? "Linked. Unlink it if you no longer want to use it for code reviews."
+          : "Link your GitHub account to access your repositories and enable code reviews."
+      }
+    >
+      {isLinked ? (
+        <LoadingButton
+          variant="outline"
+          onClick={handleUnlinkGitHub}
+          isLoading={unlinkGitHub.isPending}
+        >
+          Unlink
         </LoadingButton>
-      </CardContent>
-    </Card>
+      ) : (
+        <LoadingButton onClick={handleLinkGitHub} isLoading={linkGitHub.isPending}>
+          Link GitHub
+        </LoadingButton>
+      )}
+    </SettingsRow>
   );
 }

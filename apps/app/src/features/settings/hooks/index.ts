@@ -14,3 +14,4 @@ export {
   useLinkGitHub,
   useUnlinkGitHub,
 } from "./use-account";
+export { useSettingsTabs } from "./use-settings-tabs";

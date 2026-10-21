@@ -1,6 +1,7 @@
-import { Button, Popover, PopoverContent, PopoverTrigger } from "components/components";
+import { Popover, PopoverContent, PopoverTrigger } from "components/components";
+import { NotificationButton } from "components/components/console";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BellIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "shared/auth";
@@ -129,14 +130,9 @@ export function NotificationPopover() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost" className="relative text-muted-foreground">
-          <HugeiconsIcon icon={BellIcon} />
-          {unreadCount > 0 && (
-            <div className="absolute top-1.5 right-1.5 flex size-1.5 items-center justify-center rounded-full bg-blue-400" />
-          )}
-        </Button>
+        <NotificationButton hasUnread={unreadCount > 0} />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0 min-h-24">
+      <PopoverContent side="top" align="end" className="w-80 p-0 min-h-24">
         <div className="max-h-80 overflow-y-auto h-full">
           {notifications.length === 0 ? (
             <div className="px-4 py-12 text-center text-base text-foreground">No notifications</div>

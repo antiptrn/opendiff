@@ -1,17 +1,11 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { AvatarUpload } from "components/components/ui/avatar-upload";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsRow, SettingsSection } from "components/components/console";
 import { Checkbox } from "components/components/ui/checkbox";
 import { Input } from "components/components/ui/input";
 import { Label } from "components/components/ui/label";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import { useApi } from "shared/services";
 import { toast } from "sonner";
@@ -139,13 +133,11 @@ export function OrganizationCard({
             taxVatIdInput.trim() !== (taxVatId ?? "")))));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Team Profile</CardTitle>
-        <CardDescription>Manage your teams's profile</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Avatar */}
+    <SettingsSection title="Team profile">
+      <SettingsRow
+        title="Team picture"
+        description="Recommended: a square image, at least 128x128 pixels."
+      >
         <AvatarUpload
           src={avatarUrl}
           fallback={orgName.charAt(0)}
@@ -153,72 +145,73 @@ export function OrganizationCard({
           size="md"
           disabled={isSaving}
           onUpload={handleAvatarUpload}
-          helperText="Recommended: Square image, at least 128x128 pixels."
         />
+      </SettingsRow>
 
-        {/* Name */}
-        <div className="space-y-2">
-          <Label htmlFor="org-name">Name</Label>
-          <Input
-            id="org-name"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
+      <SettingsRow title={<Label htmlFor="org-name">Name</Label>} description="Shown to your team.">
+        <Input
+          id="org-name"
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          disabled={isSaving}
+          variant="muted"
+          className="w-72"
+          placeholder="Organization name"
+        />
+      </SettingsRow>
+
+      {/* Business Info - Owner only */}
+      {isOwner && (
+        <SettingsRow
+          title={
+            <Label htmlFor="is-business" className="cursor-pointer text-base">
+              Registered business
+            </Label>
+          }
+          description="Add your legal name and tax ID to invoices."
+        >
+          <Checkbox
+            id="is-business"
+            className="cursor-pointer"
+            checked={isBusinessChecked}
+            onCheckedChange={(checked) => setIsBusinessChecked(checked === true)}
             disabled={isSaving}
-            className="bg-background"
-            placeholder="Organization name"
           />
-        </div>
+        </SettingsRow>
+      )}
+      {isOwner && isBusinessChecked && (
+        <SettingsRow title={<Label htmlFor="business-name">Business name</Label>}>
+          <Input
+            id="business-name"
+            value={businessNameInput}
+            onChange={(e) => setBusinessNameInput(e.target.value)}
+            disabled={isSaving}
+            placeholder="Legal business name"
+            variant="muted"
+            className="w-72"
+          />
+        </SettingsRow>
+      )}
+      {isOwner && isBusinessChecked && (
+        <SettingsRow title={<Label htmlFor="tax-vat-id">TAX / VAT ID</Label>}>
+          <Input
+            id="tax-vat-id"
+            value={taxVatIdInput}
+            onChange={(e) => setTaxVatIdInput(e.target.value)}
+            disabled={isSaving}
+            placeholder="e.g. US12-3456789 or GB123456789"
+            variant="muted"
+            className="w-72"
+          />
+        </SettingsRow>
+      )}
 
-        {/* Business Info - Owner only */}
-        {isOwner && (
-          <>
-            <div className="flex items-center space-x-3 group cursor-pointer">
-              <Checkbox
-                id="is-business"
-                className="cursor-pointer"
-                checked={isBusinessChecked}
-                onCheckedChange={(checked) => setIsBusinessChecked(checked === true)}
-                disabled={isSaving}
-              />
-              <Label htmlFor="is-business" className="cursor-pointer text-base">
-                This organization is a registered business
-              </Label>
-            </div>
-
-            {isBusinessChecked && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="business-name">Business Name</Label>
-                  <Input
-                    id="business-name"
-                    value={businessNameInput}
-                    onChange={(e) => setBusinessNameInput(e.target.value)}
-                    disabled={isSaving}
-                    placeholder="Legal business name"
-                    className="bg-background"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tax-vat-id">TAX / VAT ID</Label>
-                  <Input
-                    id="tax-vat-id"
-                    value={taxVatIdInput}
-                    onChange={(e) => setTaxVatIdInput(e.target.value)}
-                    disabled={isSaving}
-                    placeholder="e.g. US12-3456789 or GB123456789"
-                    className="bg-background"
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        <Button className="w-fit" onClick={handleSave} disabled={!hasChanges || isSaving}>
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
           {isSaving && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
-          {isSaving ? "Saving..." : "Save Changes"}
+          {isSaving ? "Saving..." : "Save changes"}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }

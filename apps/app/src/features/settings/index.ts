@@ -24,6 +24,7 @@ export {
   useUpdateAccountType,
   useLinkGitHub,
   useUnlinkGitHub,
+  useSettingsTabs,
 } from "./hooks";
 export type { Skill } from "./hooks";
 

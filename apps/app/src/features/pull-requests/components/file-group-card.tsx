@@ -1,3 +1,5 @@
+import { FileCodeIcon, MessageSquareIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Accordion,
   AccordionContent,
@@ -7,8 +9,6 @@ import {
 import NumberBadge from "components/components/ui/number-badge";
 import { Skeleton } from "components/components/ui/skeleton";
 import { TooltipContent, TooltipRoot, TooltipTrigger } from "components/components/ui/tooltip";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { FileCodeIcon, MessageSquareIcon } from "@hugeicons/core-free-icons";
 import type { PullRequestCommentDetail } from "../hooks/use-pull-requests";
 import { CommentRow } from "./comment-row";
 

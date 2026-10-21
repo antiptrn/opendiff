@@ -1,8 +1,8 @@
 import type { Skill } from "@/features/settings";
+import { Delete02Icon, PencilIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import { Separator } from "components/components/ui/separator";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Delete02Icon, PencilIcon } from "@hugeicons/core-free-icons";
 
 interface SkillCardProps {
   skill: Skill;

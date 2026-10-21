@@ -1,4 +1,7 @@
+import { PageTitle } from "components/components/console";
 import { type AuditLog, useAuditLogs } from "@/features/admin";
+import { ChevronLeftIcon, ChevronRightIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "components/components/ui/badge";
 import { Button } from "components/components/ui/button";
 import {
@@ -19,8 +22,6 @@ import {
   TableRow,
 } from "components/components/ui/table";
 import { useDebounce } from "components/hooks";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
@@ -237,7 +238,7 @@ export function AdminPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl mb-6">Admin</h1>
+      <PageTitle>Admin</PageTitle>
       <Card>
         <CardHeader>
           <CardTitle>Audit Logs</CardTitle>

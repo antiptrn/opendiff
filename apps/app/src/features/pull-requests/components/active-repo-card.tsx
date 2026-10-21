@@ -1,4 +1,6 @@
 import type { OrgRepository } from "@/features/repositories";
+import { Delete02Icon, PencilIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,8 +14,6 @@ import {
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
 import { motion } from "framer-motion";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Delete02Icon, PencilIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { RepoListItem } from "./repo-list-item";
 

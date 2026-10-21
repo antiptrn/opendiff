@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "apps/site", "dev"],
+      "port": 5173
+    }
+  ]
+}

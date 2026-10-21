@@ -21,7 +21,7 @@ export function BlogArticlePage() {
 
   if (!article) {
     return (
-      <section className="mx-auto flex max-w-6xl flex-col items-start justify-start gap-6 px-4 py-20 md:px-8 md:py-28 lg:px-8 lg:py-32">
+      <section className="mx-auto flex max-w-7xl flex-col items-start justify-start gap-6 px-4 py-20 md:px-8 md:py-28 lg:px-8 lg:py-32">
         <BackToBlogLink />
         <h1 className="text-3xl font-medium tracking-tight md:text-4xl">Article not found</h1>
         <p className="text-muted-foreground">The requested article does not exist.</p>
@@ -30,7 +30,7 @@ export function BlogArticlePage() {
   }
 
   return (
-    <section className="mx-auto flex max-w-6xl flex-col items-start justify-start gap-16 px-4 md:px-8 lg:pt-40 md:pt-40 pt-32 lg:px-8 lg:pb-16 md:pb-16 pb-0">
+    <section className="mx-auto flex max-w-7xl flex-col items-start justify-start gap-16 px-4 md:px-8 lg:pt-40 md:pt-40 pt-32 lg:px-8 lg:pb-16 md:pb-16 pb-0">
       <BackToBlogLink />
       <div className="w-full">
         <p className="mb-6 text-sm text-muted-foreground">{formatDayLabel(article.publishedAt)}</p>

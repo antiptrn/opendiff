@@ -1,5 +1,5 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/components/ui/tabs";
-import { useNavigate, useParams } from "react-router-dom";
+import { PageTitle, SETTINGS_HREF, type SettingsTab } from "components/components/console";
+import { Navigate, useParams } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
 import {
@@ -10,82 +10,49 @@ import {
   OrganizationTab,
   SkillsTab,
 } from "../components";
+import { useSettingsTabs } from "../hooks";
 
-type TabType = "account" | "appearance" | "skills" | "code-review" | "organization" | "billing";
+const TAB_HEADERS: Record<SettingsTab, { title: string; description: string }> = {
+  appearance: { title: "Appearance", description: "Customize how Contrast looks on your device" },
+  account: { title: "Account", description: "Manage your account and connected services" },
+  skills: { title: "Skills", description: "Instructions the review agent follows on your code" },
+  "code-review": {
+    title: "Code Review",
+    description: "Set up and tune reviews on your repositories",
+  },
+  organization: { title: "Team", description: "Manage your team, its members and invites" },
+  billing: { title: "Billing", description: "Manage your plan, seats and invoices" },
+};
 
 /**
- * Settings page - handles tab routing and renders appropriate content
+ * Settings page: shows the category picked in the sidebar. An unknown or missing category goes
+ * to the first one available.
  */
 export function SettingsPage() {
   const { user, logout, setUser } = useAuth();
-  const { currentOrgId, currentOrg } = useOrganization();
+  const { currentOrgId } = useOrganization();
   const { tab: tabParam } = useParams<{ tab?: string }>();
-  const navigate = useNavigate();
+  const { tabs, isPersonalOrg } = useSettingsTabs();
 
-  // Show Organization tab for team orgs, Billing tab for personal orgs and team org owners
-  const isPersonalOrg = currentOrg?.isPersonal ?? false;
-  const isTeamOrgOwner = !isPersonalOrg && currentOrg?.role === "OWNER";
-  const showOrganizationTab = !isPersonalOrg;
-  const showBillingTab = isPersonalOrg || isTeamOrgOwner;
-
-  const showCodeReviewTab = true;
-
-  // Build valid tabs based on account type
-  const validTabs: TabType[] = [
-    "appearance",
-    "account",
-    "skills",
-    ...(showCodeReviewTab ? ["code-review" as TabType] : []),
-    ...(showOrganizationTab ? ["organization" as TabType] : []),
-    ...(showBillingTab ? ["billing" as TabType] : []),
-  ];
-
-  const activeTab: TabType =
-    tabParam && validTabs.includes(tabParam as TabType) ? (tabParam as TabType) : validTabs[0];
-
-  const setActiveTab = (tab: string) => {
-    navigate(`/console/settings/${tab}`, { replace: true });
-  };
+  const activeTab = tabs.find((tab) => tab === tabParam);
+  if (!activeTab) return <Navigate to={`${SETTINGS_HREF}/${tabs[0]}`} replace />;
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl mb-6">Settings</h1>
+    <div className="max-w-3xl p-8">
+      <PageTitle description={TAB_HEADERS[activeTab].description}>
+        {TAB_HEADERS[activeTab].title}
+      </PageTitle>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          <TabsTrigger value="account">Account</TabsTrigger>
-          <TabsTrigger value="skills">Skills</TabsTrigger>
-          {showCodeReviewTab && <TabsTrigger value="code-review">Code Review</TabsTrigger>}
-          {showOrganizationTab && <TabsTrigger value="organization">Team</TabsTrigger>}
-          {showBillingTab && <TabsTrigger value="billing">Billing</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="appearance">
-          <AppearanceTab />
-        </TabsContent>
-        <TabsContent value="account">
-          <AccountTab user={user} logout={logout} orgId={currentOrgId} setUser={setUser} />
-        </TabsContent>
-        <TabsContent value="skills">
-          <SkillsTab user={user} />
-        </TabsContent>
-        {showCodeReviewTab && (
-          <TabsContent value="code-review">
-            <CodeReviewTab user={user} orgId={currentOrgId} />
-          </TabsContent>
-        )}
-        {showOrganizationTab && (
-          <TabsContent value="organization">
-            <OrganizationTab user={user} orgId={currentOrgId} />
-          </TabsContent>
-        )}
-        {showBillingTab && (
-          <TabsContent value="billing">
-            <BillingTab user={user} orgId={currentOrgId} isSoloUser={isPersonalOrg} />
-          </TabsContent>
-        )}
-      </Tabs>
+      {activeTab === "appearance" && <AppearanceTab />}
+      {activeTab === "account" && (
+        <AccountTab user={user} logout={logout} orgId={currentOrgId} setUser={setUser} />
+      )}
+      {activeTab === "skills" && <SkillsTab user={user} />}
+      {activeTab === "code-review" && <CodeReviewTab user={user} orgId={currentOrgId} />}
+      {activeTab === "organization" && <OrganizationTab user={user} orgId={currentOrgId} />}
+      {activeTab === "billing" && (
+        <BillingTab user={user} orgId={currentOrgId} isSoloUser={isPersonalOrg} />
+      )}
     </div>
   );
 }

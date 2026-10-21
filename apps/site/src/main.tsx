@@ -47,7 +47,7 @@ if (!rootElement) throw new Error("Root element not found");
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" forcedTheme="light">
+      <ThemeProvider attribute="class" forcedTheme="dark">
         <KeyedOrganizationProvider>
           <RouterProvider router={router} />
           <Toaster position="bottom-center" />

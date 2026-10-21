@@ -1,3 +1,5 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,10 +10,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "components/components/ui/card";
+import { SettingsRow, SettingsSection } from "components/components/console";
 import { LoadingButton } from "components/components/ui/loading-button";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useLeaveOrganization } from "shared/organizations";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ interface LeaveOrganizationCardProps {
 }
 
 /**
- * Card component for leaving an organization
+ * Danger zone setting for leaving an organization
  */
 export function LeaveOrganizationCard({ orgId, orgName }: LeaveOrganizationCardProps) {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
@@ -40,27 +40,19 @@ export function LeaveOrganizationCard({ orgId, orgName }: LeaveOrganizationCardP
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Leave Organization</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-base">Leave {orgName}</p>
-            <p className="text-sm text-muted-foreground">
-              You will lose access to this organization and its repositories.
-            </p>
-          </div>
-          <LoadingButton
-            variant="outline"
-            onClick={() => setShowLeaveDialog(true)}
-            isLoading={leaveOrganization.isPending}
-          >
-            Leave
-          </LoadingButton>
-        </div>
-      </CardContent>
+    <SettingsSection title="Danger zone" variant="danger">
+      <SettingsRow
+        title={`Leave ${orgName}`}
+        description="You'll lose access to this team and its repositories."
+      >
+        <LoadingButton
+          variant="destructive"
+          onClick={() => setShowLeaveDialog(true)}
+          isLoading={leaveOrganization.isPending}
+        >
+          Leave team
+        </LoadingButton>
+      </SettingsRow>
 
       <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
         <AlertDialogContent>
@@ -73,13 +65,15 @@ export function LeaveOrganizationCard({ orgId, orgName }: LeaveOrganizationCardP
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction onClick={handleLeave} variant="outline">
-              {leaveOrganization.isPending && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
+              {leaveOrganization.isPending && (
+                <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />
+              )}
               Leave Organization
             </AlertDialogAction>
             <AlertDialogCancel variant="default">Cancel</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </SettingsSection>
   );
 }

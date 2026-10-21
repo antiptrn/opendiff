@@ -17,6 +17,8 @@ const APP_URL = import.meta.env.VITE_APP_URL || "";
 export function Header() {
   /** Controls mobile menu visibility */
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  /** A navigation menu is open: the header turns solid so the menu panel reads as part of it */
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const scrolled = useScrolled();
   const openLogin = useCallback(() => {
     window.location.href = APP_URL;
@@ -27,11 +29,15 @@ export function Header() {
     <header
       className={cn(
         "fixed inset-x-0 top-0 z-50 flex w-full flex-col transition-[background-color,backdrop-filter] duration-300",
-        scrolled ? "bg-background/70 backdrop-blur-xl" : "bg-transparent backdrop-blur-none"
+        navigationOpen
+          ? "bg-background backdrop-blur-none"
+          : scrolled
+            ? "bg-background/70 backdrop-blur-xl"
+            : "bg-transparent backdrop-blur-none"
       )}
     >
       <AnnouncementBar />
-      <div className="mx-auto flex h-18 w-full max-w-6xl flex-col justify-center lg:px-8 md:px-8 px-4">
+      <div className="mx-auto flex h-18 w-full max-w-7xl flex-col justify-center lg:px-8 md:px-8 px-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <Button
@@ -43,7 +49,7 @@ export function Header() {
                 <Logo />
               </Link>
             </Button>
-            <SiteNavigation />
+            <SiteNavigation onOpenChange={setNavigationOpen} />
           </div>
           <div className="flex items-center justify-between gap-2">
             <Button variant="secondary" className="hidden md:inline-flex rounded-full" asChild>

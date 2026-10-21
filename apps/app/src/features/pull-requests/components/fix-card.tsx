@@ -1,7 +1,7 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "components/components/ui/badge";
 import { Button } from "components/components/ui/button";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type { PullRequestFixDetail } from "../hooks/use-pull-requests";
 import { DiffBlock } from "./diff-block";
 import MarkdownBlock from "./markdown-block";
@@ -100,7 +100,9 @@ export function FixCard({
             onClick={() => onAccept(reviewId, fix.id)}
             disabled={isAccepting || isRejecting}
           >
-            {isAccepting && <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />}
+            {isAccepting && (
+              <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />
+            )}
             Accept
           </Button>
           <Button
@@ -109,7 +111,9 @@ export function FixCard({
             onClick={() => onReject(reviewId, fix.id)}
             disabled={isAccepting || isRejecting}
           >
-            {isRejecting && <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />}
+            {isRejecting && (
+              <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />
+            )}
             Reject
           </Button>
         </div>

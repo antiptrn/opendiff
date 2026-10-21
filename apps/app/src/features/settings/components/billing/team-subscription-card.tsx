@@ -1,3 +1,5 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import NumberFlow from "@number-flow/react";
 import {
   AlertDialog,
@@ -10,17 +12,9 @@ import {
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
+import { SettingsSection } from "components/components/console";
 import { LoadingButton } from "components/components/ui/loading-button";
 import { Separator } from "components/components/ui/separator";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { formatCents, formatDate, tierLabels, tierPrices } from "shared/billing";
 import {
@@ -131,12 +125,8 @@ export function TeamSubscriptionCard({
     updateSeatCountMutation.isPending || reactivateSubscriptionMutation.isPending;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Team Subscription</CardTitle>
-        <CardDescription>Manage your team's subscription and seats</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <SettingsSection title="Team subscription" description="Your team's plan and seats">
+      <div className="space-y-4">
         <SubscriptionInfoList isLoading={isLoading}>
           {subscription?.status === "ACTIVE" ? (
             <>
@@ -209,59 +199,59 @@ export function TeamSubscriptionCard({
         )}
 
         {subscription?.status === "ACTIVE" && (
-          <>
-            <div className="flex gap-2 mt-6">
-              {subscription.cancelAtPeriodEnd ? (
-                <LoadingButton
-                  isLoading={isReactivating}
-                  loadingText="Reactivating..."
-                  onClick={onReactivateSubscription}
+          <div className="flex gap-2 mt-6">
+            {subscription.cancelAtPeriodEnd ? (
+              <LoadingButton
+                isLoading={isReactivating}
+                loadingText="Reactivating..."
+                onClick={onReactivateSubscription}
+              >
+                Reactivate
+              </LoadingButton>
+            ) : (
+              <>
+                <Button
+                  onClick={() => setShowUpdateDialog(true)}
+                  disabled={!hasChanges || isUpdatingSeats}
                 >
-                  Reactivate
-                </LoadingButton>
-              ) : (
-                <>
-                  <Button
-                    onClick={() => setShowUpdateDialog(true)}
-                    disabled={!hasChanges || isUpdatingSeats}
-                  >
-                    {isUpdatingSeats && <HugeiconsIcon icon={Loading03Icon} className="size-3 animate-spin" />}
-                    {willReactivate ? "Update & Reactivate" : "Update Seats"}
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
-                    Cancel subscription
-                  </Button>
-                  <AlertDialog
-                    open={showCancelDialog}
-                    onOpenChange={(open) => !isCancelPending && setShowCancelDialog(open)}
-                  >
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          All members will lose access at the end of the current billing period. You
-                          can reactivate anytime before then.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <LoadingButton
-                          variant="outline"
-                          isLoading={isCancelPending}
-                          loadingText="Cancelling..."
-                          onClick={handleCancel}
-                        >
-                          Cancel Subscription
-                        </LoadingButton>
-                        <AlertDialogCancel variant="default" disabled={isCancelPending}>
-                          Keep Subscription
-                        </AlertDialogCancel>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
-              )}
-            </div>
-          </>
+                  {isUpdatingSeats && (
+                    <HugeiconsIcon icon={Loading03Icon} className="size-3 animate-spin" />
+                  )}
+                  {willReactivate ? "Update & Reactivate" : "Update Seats"}
+                </Button>
+                <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
+                  Cancel subscription
+                </Button>
+                <AlertDialog
+                  open={showCancelDialog}
+                  onOpenChange={(open) => !isCancelPending && setShowCancelDialog(open)}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        All members will lose access at the end of the current billing period. You
+                        can reactivate anytime before then.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <LoadingButton
+                        variant="outline"
+                        isLoading={isCancelPending}
+                        loadingText="Cancelling..."
+                        onClick={handleCancel}
+                      >
+                        Cancel Subscription
+                      </LoadingButton>
+                      <AlertDialogCancel variant="default" disabled={isCancelPending}>
+                        Keep Subscription
+                      </AlertDialogCancel>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
+          </div>
         )}
 
         {subscription?.status !== "ACTIVE" && !isLoading && (
@@ -309,13 +299,15 @@ export function TeamSubscriptionCard({
             <AlertDialogFooter>
               <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
               <AlertDialogAction size="sm" onClick={handleConfirmUpdate}>
-                {isUpdatingSeats && <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />}
+                {isUpdatingSeats && (
+                  <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin" />
+                )}
                 {willReactivate ? "Confirm & Reactivate" : "Confirm"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
