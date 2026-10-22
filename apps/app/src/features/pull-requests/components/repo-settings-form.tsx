@@ -35,7 +35,7 @@ interface RepoSettingsFormProps {
 
 /**
  * Reusable form for repository settings (reviews, triage, custom rules)
- * Used by both the repository detail page and the add repository dialog
+ * Used by both the repository detail page and the connect repository dialog
  */
 export function RepoSettingsForm({
   initialSettings,

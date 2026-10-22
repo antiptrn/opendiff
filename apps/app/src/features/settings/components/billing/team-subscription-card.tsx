@@ -14,7 +14,7 @@ import {
 import { Button } from "components/components/ui/button";
 import { SettingsSection } from "components/components/console";
 import { LoadingButton } from "components/components/ui/loading-button";
-import { Separator } from "components/components/ui/separator";
+import { DataTable } from "components/components/ui/data-table";
 import { useState } from "react";
 import { formatCents, formatDate, tierLabels, tierPrices } from "shared/billing";
 import {
@@ -27,7 +27,6 @@ import { toast } from "sonner";
 import { PlanSelector } from "./plan-selector";
 import { QuotaProgress } from "./quota-progress";
 import { SeatChangePreview } from "./seat-change-preview";
-import { SubscriptionInfoItem, SubscriptionInfoList } from "./subscription-info-list";
 
 interface QuotaPool {
   used: number;
@@ -124,139 +123,163 @@ export function TeamSubscriptionCard({
   const isUpdatingSeats =
     updateSeatCountMutation.isPending || reactivateSubscriptionMutation.isPending;
 
+  const isActive = subscription?.status === "ACTIVE";
+
   return (
-    <SettingsSection title="Team subscription" description="Your team's plan and seats">
-      <div className="space-y-4">
-        <SubscriptionInfoList isLoading={isLoading}>
-          {subscription?.status === "ACTIVE" ? (
-            <>
-              <SubscriptionInfoItem label="Status">
-                {subscription.cancelAtPeriodEnd ? (
+    <SettingsSection title="Team subscription" description="Your team's plan and seats" fullBleed>
+      <div>
+        <DataTable
+          label="Team subscription"
+          loading={isLoading}
+          skeletonRows={1}
+          rows={[subscription]}
+          getKey={() => "subscription"}
+          columns={[
+            {
+              key: "plan",
+              header: "Plan",
+              cell: (current) => (current && isActive ? tierLabels[current.tier] : "None"),
+            },
+            {
+              key: "status",
+              header: "Status",
+              cell: (current) =>
+                !current || !isActive ? (
+                  <span className="text-muted-foreground">No active subscription</span>
+                ) : current.cancelAtPeriodEnd ? (
                   <span className="text-orange-600 dark:text-orange-400">Cancelling</span>
                 ) : (
                   <span className="text-green-600 dark:text-green-400">Active</span>
-                )}
-              </SubscriptionInfoItem>
-              <SubscriptionInfoItem label="Plan">
-                {tierLabels[subscription.tier]}
-              </SubscriptionInfoItem>
-              <SubscriptionInfoItem label="Seats" separator={false}>
-                <div className="flex items-center">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={handleDecrement}
-                    disabled={displaySeatCount <= Math.max(1, assignedSeats)}
-                  >
-                    <span className="text-lg">-</span>
-                  </Button>
-                  <NumberFlow
-                    value={displaySeatCount}
-                    className="text-lg min-w-[40px] text-center"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={handleIncrement}
-                    disabled={displaySeatCount >= 100}
-                  >
-                    <span className="text-lg">+</span>
-                  </Button>
-                  <span className="text-foreground ml-4">{assignedSeats} assigned</span>
-                </div>
-              </SubscriptionInfoItem>
-
-              <SeatChangePreview
-                hasChanges={hasChanges}
-                willReactivate={willReactivate}
-                isLoadingPreview={isLoadingPreview}
-                preview={preview ?? null}
-                displaySeatCount={displaySeatCount}
-                pricePerSeat={pricePerSeat}
-              />
-
-              {subscription.expiresAt && (
-                <>
-                  <Separator className="my-4" />
-                  <SubscriptionInfoItem
-                    label={subscription.cancelAtPeriodEnd ? "Access Until" : "Next Billing Date"}
-                    separator={false}
-                  >
-                    {formatDate(subscription.expiresAt)}
-                  </SubscriptionInfoItem>
-                </>
-              )}
-            </>
-          ) : (
-            <SubscriptionInfoItem label="Status" separator={false}>
-              <span className="text-muted-foreground">No active subscription</span>
-            </SubscriptionInfoItem>
-          )}
-        </SubscriptionInfoList>
-
-        {quotaPool && !quotaPool.hasUnlimited && quotaPool.total !== -1 && (
-          <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
-        )}
-
-        {subscription?.status === "ACTIVE" && (
-          <div className="flex gap-2 mt-6">
-            {subscription.cancelAtPeriodEnd ? (
-              <LoadingButton
-                isLoading={isReactivating}
-                loadingText="Reactivating..."
-                onClick={onReactivateSubscription}
-              >
-                Reactivate
-              </LoadingButton>
-            ) : (
-              <>
-                <Button
-                  onClick={() => setShowUpdateDialog(true)}
-                  disabled={!hasChanges || isUpdatingSeats}
-                >
-                  {isUpdatingSeats && (
-                    <HugeiconsIcon icon={Loading03Icon} className="size-3 animate-spin" />
-                  )}
-                  {willReactivate ? "Update & Reactivate" : "Update Seats"}
-                </Button>
-                <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
-                  Cancel subscription
-                </Button>
-                <AlertDialog
-                  open={showCancelDialog}
-                  onOpenChange={(open) => !isCancelPending && setShowCancelDialog(open)}
-                >
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        All members will lose access at the end of the current billing period. You
-                        can reactivate anytime before then.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
+                ),
+            },
+            {
+              key: "seats",
+              header: "Seats",
+              cell: () =>
+                isActive ? (
+                  <span className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Remove a seat"
+                      onClick={handleDecrement}
+                      disabled={displaySeatCount <= Math.max(1, assignedSeats)}
+                    >
+                      -
+                    </Button>
+                    <NumberFlow value={displaySeatCount} className="min-w-6 text-center tabular-nums" />
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Add a seat"
+                      onClick={handleIncrement}
+                      disabled={displaySeatCount >= 100}
+                    >
+                      +
+                    </Button>
+                    <span className="ml-2 text-muted-foreground">{assignedSeats} assigned</span>
+                  </span>
+                ) : (
+                  "—"
+                ),
+            },
+            {
+              key: "billing",
+              header: subscription?.cancelAtPeriodEnd ? "Access until" : "Next billing",
+              cell: (current) =>
+                isActive && current?.expiresAt ? formatDate(current.expiresAt) : "—",
+            },
+            {
+              key: "actions",
+              header: <span className="sr-only">Actions</span>,
+              cell: (current) =>
+                isActive && current ? (
+                  <span className="flex items-center justify-end gap-2">
+                    {current.cancelAtPeriodEnd ? (
                       <LoadingButton
-                        variant="outline"
-                        isLoading={isCancelPending}
-                        loadingText="Cancelling..."
-                        onClick={handleCancel}
+                        size="sm"
+                        isLoading={isReactivating}
+                        loadingText="Reactivating..."
+                        onClick={onReactivateSubscription}
                       >
-                        Cancel Subscription
+                        Reactivate
                       </LoadingButton>
-                      <AlertDialogCancel variant="default" disabled={isCancelPending}>
-                        Keep Subscription
-                      </AlertDialogCancel>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </>
-            )}
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => setShowUpdateDialog(true)}
+                          disabled={!hasChanges || isUpdatingSeats}
+                        >
+                          {isUpdatingSeats && (
+                            <HugeiconsIcon icon={Loading03Icon} className="size-3 animate-spin" />
+                          )}
+                          {willReactivate ? "Update & Reactivate" : "Update seats"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowCancelDialog(true)}>
+                          Cancel
+                        </Button>
+                      </>
+                    )}
+                  </span>
+                ) : null,
+            },
+          ]}
+        />
+
+        {/* Under the table: the price change for pending seats, usage, or the plans to pick */}
+        {isActive && hasChanges && (
+          <div className="border-t border-border-solid px-4 py-4">
+            <SeatChangePreview
+              hasChanges={hasChanges}
+              willReactivate={willReactivate}
+              isLoadingPreview={isLoadingPreview}
+              preview={preview ?? null}
+              displaySeatCount={displaySeatCount}
+              pricePerSeat={pricePerSeat}
+            />
           </div>
         )}
 
-        {subscription?.status !== "ACTIVE" && !isLoading && (
-          <PlanSelector onManageSubscription={onManageSubscription} isManaging={isManaging} />
+        {quotaPool && !quotaPool.hasUnlimited && quotaPool.total !== -1 && (
+          <div className="border-t border-border-solid px-4 py-4">
+            <QuotaProgress used={quotaPool.used} total={quotaPool.total} />
+          </div>
         )}
+
+        {!isActive && !isLoading && (
+          <div className="border-t border-border-solid px-4 py-4">
+            <PlanSelector onManageSubscription={onManageSubscription} isManaging={isManaging} />
+          </div>
+        )}
+
+        <AlertDialog
+          open={showCancelDialog}
+          onOpenChange={(open) => !isCancelPending && setShowCancelDialog(open)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
+              <AlertDialogDescription>
+                All members will lose access at the end of the current billing period. You can
+                reactivate anytime before then.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <LoadingButton
+                variant="outline"
+                isLoading={isCancelPending}
+                loadingText="Cancelling..."
+                onClick={handleCancel}
+              >
+                Cancel Subscription
+              </LoadingButton>
+              <AlertDialogCancel variant="default" disabled={isCancelPending}>
+                Keep Subscription
+              </AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Update Seats Confirmation Dialog */}
         <AlertDialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>

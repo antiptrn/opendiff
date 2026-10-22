@@ -49,6 +49,7 @@ const fakePrisma = {
 
 const { createMergedPullRequestService } = await import("./merged-pull-requests");
 const { createPublicRoutes } = await import("../routes/public");
+const { createPublicStatsService } = await import("./public-stats");
 
 describe("merged pull requests", () => {
   // biome-ignore lint/suspicious/noExplicitAny: in-memory stand-in for the two Prisma delegates used
@@ -99,15 +100,25 @@ describe("merged pull requests", () => {
     expect(countCalls).toBe(1);
   });
 
-  it("serves the total publicly with an open CORS header", async () => {
+  it("serves the totals publicly with an open CORS header, counting only accepted fixes", async () => {
     reviews.push({ pullNumber: 1, owner: "acme", repo: "api" });
     await recordMergedPullRequest({ owner: "acme", repo: "api", pullNumber: 1, mergedAt: new Date() });
 
-    const app = new Hono().route("/api/public", createPublicRoutes(countMergedPullRequests));
+    const fixStatuses: string[] = ["ACCEPTED", "PENDING", "ACCEPTED"];
+    const statsDb = {
+      reviewComment: { count: async () => 5 },
+      reviewFix: {
+        count: async ({ where }: { where: { status: string } }) =>
+          fixStatuses.filter((status) => status === where.status).length,
+      },
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: in-memory stand-in for the two Prisma delegates used
+    const getStats = createPublicStatsService(() => statsDb as any, countMergedPullRequests);
+    const app = new Hono().route("/api/public", createPublicRoutes(getStats));
     const res = await app.fetch(new Request("http://localhost/api/public/stats"));
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(await res.json()).toEqual({ prsMerged: 1 });
+    expect(await res.json()).toEqual({ prsMerged: 1, issuesFound: 5, fixesCommitted: 2 });
   });
 });

@@ -6,6 +6,10 @@ const review = {
   groupBy: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
   count: mock((_args: unknown): Promise<number> => Promise.resolve(0)),
 };
+const reviewComment = {
+  findMany: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
+  count: mock((_args: unknown): Promise<number> => Promise.resolve(0)),
+};
 const queryRaw = mock((_query: unknown): Promise<Array<{ count: bigint | number }>> =>
   Promise.resolve([{ count: 0 }])
 );
@@ -19,6 +23,7 @@ const generateReviewSummary = mock(() => Promise.resolve({ summary: "", fileTitl
 mock.module("../../db", () => ({
   prisma: {
     review,
+    reviewComment,
     $queryRaw: queryRaw,
   },
 }));
@@ -54,6 +59,8 @@ describe("review query routes", () => {
     review.findMany.mockReset();
     review.groupBy.mockReset();
     review.count.mockReset();
+    reviewComment.findMany.mockReset();
+    reviewComment.count.mockReset();
     queryRaw.mockReset();
     requireOrgAccess.mockReset();
     getAuthUser.mockReset();
@@ -237,5 +244,57 @@ describe("review query routes", () => {
         },
       })
     );
+  });
+  it("lists issues with a plain-text title from the comment's first line", async () => {
+    reviewComment.count.mockResolvedValue(1);
+    reviewComment.findMany.mockResolvedValue([
+      {
+        id: "comment-1",
+        body: "\n### **Null check** missing on `user`\n\nDetails follow.",
+        path: "src/app.ts",
+        line: 12,
+        fix: { status: "ACCEPTED" },
+        createdAt: new Date("2026-06-25T12:00:00.000Z"),
+        review: {
+          id: "review-2",
+          pullNumber: 124,
+          repositorySettings: { owner: "owner", repo: "repo" },
+        },
+      },
+    ]);
+
+    const response = await createApp().fetch(
+      new Request("http://localhost/api/review-issues", {
+        headers: { Authorization: "Bearer token", "X-Organization-Id": "org-1" },
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.issues[0]).toMatchObject({
+      id: "comment-1",
+      reviewId: "review-2",
+      title: "Null check missing on user",
+      path: "src/app.ts",
+      line: 12,
+      fixStatus: "ACCEPTED",
+      pullNumber: 124,
+    });
+    expect(body.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+  });
+  it("filters issues by text, file path or repository when searching", async () => {
+    reviewComment.count.mockResolvedValue(0);
+    reviewComment.findMany.mockResolvedValue([]);
+
+    await createApp().fetch(
+      new Request("http://localhost/api/review-issues?q=%20auth%20", {
+        headers: { Authorization: "Bearer token", "X-Organization-Id": "org-1" },
+      })
+    );
+
+    const where = (reviewComment.findMany.mock.calls[0]?.[0] as { where: { OR?: unknown[] } }).where;
+    expect(where.OR).toHaveLength(4);
+    expect(where.OR?.[0]).toEqual({ body: { contains: "auth", mode: "insensitive" } });
+    expect(reviewComment.count.mock.calls[0]?.[0]).toEqual({ where });
   });
 });

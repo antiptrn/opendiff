@@ -1,8 +1,11 @@
-import { PageTitle } from "components/components/console";
+import { TopBarSearch } from "components/components/console";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { formatDate, PaginatedTable, TableEmpty } from "@/components/paginated-table";
+import { ConsoleTopBarActions, ConsoleTopBarSearch } from "@/components/layout/console";
 import {
-  ActiveRepoCard,
   AddRepoDialog,
   ConfigRepoDialog,
+  RepoRowActions,
   RepoSettingsForm,
   getLastOpenedTimes,
 } from "@/features/pull-requests/components";
@@ -15,7 +18,6 @@ import {
   useRepositorySettings,
   useUpdateSettings,
 } from "@/features/repositories";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import {
@@ -25,8 +27,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "components/components/ui/dialog";
-import { SearchBar } from "components/components/ui/search-bar";
-import { Skeleton } from "components/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
+import type { DataTableColumn } from "components/components/ui/data-table";
 import { useDebounce } from "components/hooks";
 import { useMemo, useState } from "react";
 import { useAuth } from "shared/auth";
@@ -65,9 +67,6 @@ export function RepositoriesPage() {
       return bTime - aTime;
     });
   }, [activatedRepos]);
-
-  // Only show skeleton on initial load (no data yet), not during refetch
-  const showSkeleton = isLoadingActivated && activatedRepos.length === 0;
 
   const { data: repositories = [], isLoading: isLoadingRepos } = useRepositories(
     user?.access_token,
@@ -183,71 +182,105 @@ export function RepositoriesPage() {
       setSelectedRepo(null);
       setSearchQuery("");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add repository");
+      toast.error(error instanceof Error ? error.message : "Failed to connect repository");
     }
   };
+
+  const columns: DataTableColumn<OrgRepository>[] = [
+    {
+      key: "name",
+      header: "Repository",
+      cell: (repo) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <Avatar className="size-5 rounded-sm">
+            <AvatarImage src={repo.avatarUrl || undefined} alt="" />
+            <AvatarFallback className="rounded-sm text-[10px]">
+              {repo.owner.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 truncate">{repo.fullName || `${repo.owner}/${repo.repo}`}</span>
+        </span>
+      ),
+    },
+    { key: "reviews", header: "Reviews", cell: (repo) => (repo.effectiveEnabled ? "On" : "Off") },
+    { key: "autofix", header: "Auto-fix", cell: (repo) => (repo.autofixEnabled ? "On" : "Off") },
+    { key: "language", header: "Language", cell: (repo) => repo.language || "—" },
+    {
+      key: "pushed",
+      header: "Last pushed",
+      cell: (repo) => (repo.pushedAt ? formatDate(repo.pushedAt) : "—"),
+    },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      className: "w-20",
+      cell: (repo) => (
+        <RepoRowActions
+          repository={repo}
+          onEdit={() => handleEdit(repo)}
+          onDelete={() => handleDelete(repo)}
+        />
+      ),
+    },
+  ];
 
   const isRepoAlreadyActive =
     selectedRepo &&
     activatedRepos.some((r) => r.owner === selectedRepo.owner && r.repo === selectedRepo.name);
 
+  // With nothing connected the empty state offers its own connect button, so the top bar's isn't needed
+  const showsEmptyState =
+    !!user?.access_token && !isLoadingActivated && sortedRepos.length === 0 && !debouncedRepoSearch;
+
   return (
-    <div className="p-8">
-      <PageTitle
-        action={
-          <Button variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
-            Add Repository
+    <div className="flex flex-1 flex-col">
+      {!showsEmptyState && (
+        <ConsoleTopBarActions>
+          <Button size="sm" variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
+            Connect Repository
           </Button>
-        }
-      >
-        Repositories
-      </PageTitle>
+        </ConsoleTopBarActions>
+      )}
 
-      <div className="space-y-6">
-        {user?.access_token && (
-          <div>
-            <div className="flex gap-2 mb-4">
-              <SearchBar
-                containerClassName="max-w-120"
-                placeholder="Search repositories..."
-                value={repoSearchQuery}
-                onChange={(e) => setRepoSearchQuery(e.target.value)}
-              />
-            </div>
+      {user?.access_token && (
+        <>
+          <ConsoleTopBarSearch>
+            <TopBarSearch
+              shortcut="f"
+              placeholder="Search repositories"
+              value={repoSearchQuery}
+              onChange={(e) => setRepoSearchQuery(e.target.value)}
+            />
+          </ConsoleTopBarSearch>
 
-            {showSkeleton && (
-              <div>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="py-4">
-                    <Skeleton className="h-6 w-48 rounded-md" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!showSkeleton && sortedRepos.length === 0 && (
-              <p className="text-base text-foreground py-7 text-start">
-                {debouncedRepoSearch
-                  ? `No repositories matching "${debouncedRepoSearch}"`
-                  : 'No repositories configured yet. Click "New" to get started.'}
-              </p>
-            )}
-
-            {!showSkeleton && sortedRepos.length > 0 && (
-              <div className="my-6 group/repo-list">
-                {sortedRepos.map((repo) => (
-                  <ActiveRepoCard
-                    key={repo.fullName || `${repo.owner}/${repo.repo}`}
-                    settings={repo}
-                    onEdit={() => handleEdit(repo)}
-                    onDelete={() => handleDelete(repo)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          <PaginatedTable
+            label="Repositories"
+            rows={isLoadingActivated && activatedRepos.length === 0 ? undefined : sortedRepos}
+            columns={columns}
+            getKey={(repo) => repo.fullName || `${repo.owner}/${repo.repo}`}
+            isLoading={isLoadingActivated}
+            empty={
+              debouncedRepoSearch ? (
+                <TableEmpty
+                  title="No matching repositories"
+                  description={`Nothing matches "${debouncedRepoSearch}".`}
+                />
+              ) : (
+                <TableEmpty
+                  title="No repositories yet"
+                  description="Connect a repository to start reviewing its pull requests."
+                  action={
+                    <Button size="sm" onClick={() => setAddRepoDialogOpen(true)}>
+                      Connect repository
+                    </Button>
+                  }
+                />
+              )
+            }
+            onRowClick={handleEdit}
+          />
+        </>
+      )}
 
       <AddRepoDialog
         open={addRepoDialogOpen}

@@ -1,10 +1,11 @@
 import {
   BookOpenTextIcon,
+  Bug01Icon,
   ClipboardCheckIcon,
   CodeIcon,
   CreditCardIcon,
+  DashboardSpeed02Icon,
   FolderGitIcon,
-  LayoutGridIcon,
   LifebuoyIcon,
   PaintBoardIcon,
   Settings01Icon,
@@ -25,8 +26,9 @@ export function getConsoleNavGroups({
     {
       label: "Workspace",
       items: [
-        { label: "Dashboard", href: "/console", icon: LayoutGridIcon },
+        { label: "Dashboard", href: "/console", icon: DashboardSpeed02Icon },
         { label: "Pull Requests", href: "/console/pull-requests", icon: ClipboardCheckIcon },
+        { label: "Issues", href: "/console/issues", icon: Bug01Icon },
         { label: "Repositories", href: "/console/repositories", icon: FolderGitIcon },
       ],
     },

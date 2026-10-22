@@ -1,16 +1,9 @@
 import { Delete02Icon } from "@hugeicons/core-free-icons";
+import { TableEmpty } from "@/components/paginated-table";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
 import { SettingsSection } from "components/components/console";
-import { Skeleton } from "components/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "components/components/ui/table";
+import { DataTable } from "components/components/ui/data-table";
 import type { OrganizationRole } from "shared/auth";
 import { formatRoleName } from "shared/billing";
 
@@ -37,55 +30,55 @@ export function PendingInvitesCard({
   onRevokeInvite,
 }: PendingInvitesCardProps) {
   return (
-    <SettingsSection title="Pending invites" description="Invites that haven't been accepted yet">
+    <SettingsSection
+      title="Pending invites"
+      description="Invites that haven't been accepted yet"
+      fullBleed
+    >
       <div>
-        {isLoading ? (
-          <div>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 h-14 border-b last:border-0">
-                <Skeleton muted className="h-6 w-40 rounded-md" />
-                <Skeleton muted className="h-6 w-16 rounded-md" />
-                <Skeleton muted className="h-6 w-24 rounded-md" />
-                <Skeleton muted className="h-6 w-20 rounded-md" />
-                <Skeleton muted className="size-9 rounded-full ml-auto" />
-              </div>
-            ))}
-          </div>
-        ) : invites.length === 0 ? (
-          <p className="text-base text-muted-foreground">No pending invites</p>
+        {!isLoading && invites.length === 0 ? (
+          <TableEmpty
+            title="No pending invites"
+            description="Invites you send show up here until they're accepted."
+          />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[35%]">Invite</TableHead>
-                <TableHead className="w-[15%]">Role</TableHead>
-                <TableHead className="w-[20%]">Invited by</TableHead>
-                <TableHead className="w-[20%]">Expires</TableHead>
-                <TableHead className="w-[10%]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invites.map((invite) => (
-                <TableRow key={invite.id}>
-                  <TableCell>
-                    {invite.email || <span className="text-muted-foreground">Link invite</span>}
-                  </TableCell>
-                  <TableCell>
-                    <p className="text-foreground">{formatRoleName(invite.role)}</p>
-                  </TableCell>
-                  <TableCell className="text-foreground">{invite.invitedBy}</TableCell>
-                  <TableCell className="text-foreground">
-                    {new Date(invite.expiresAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="icon" onClick={() => onRevokeInvite(invite.id)}>
-                      <HugeiconsIcon icon={Delete02Icon} className="size-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable
+            loading={isLoading}
+            skeletonRows={3}
+            label="Pending invites"
+            rows={invites}
+            getKey={(invite) => invite.id}
+            columns={[
+              {
+                key: "invite",
+                header: "Invite",
+                cell: (invite) =>
+                  invite.email || <span className="text-muted-foreground">Link invite</span>,
+              },
+              { key: "role", header: "Role", cell: (invite) => formatRoleName(invite.role) },
+              { key: "invitedBy", header: "Invited by", cell: (invite) => invite.invitedBy },
+              {
+                key: "expires",
+                header: "Expires",
+                cell: (invite) => new Date(invite.expiresAt).toLocaleDateString(),
+              },
+              {
+                key: "revoke",
+                header: <span className="sr-only">Revoke</span>,
+                className: "w-12",
+                cell: (invite) => (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Revoke invite"
+                    onClick={() => onRevokeInvite(invite.id)}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} className="size-4 text-destructive" />
+                  </Button>
+                ),
+              },
+            ]}
+          />
         )}
       </div>
     </SettingsSection>

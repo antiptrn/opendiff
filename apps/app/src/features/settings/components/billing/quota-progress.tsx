@@ -12,7 +12,7 @@ export function QuotaProgress({ used, total }: QuotaProgressProps) {
   // No quota (no plan) — just show the token count
   if (total <= 0) {
     return (
-      <div className="pt-4 border-t">
+      <div>
         <p className="text-sm">{formatTokenQuota(used)} tokens used this cycle</p>
       </div>
     );
@@ -21,7 +21,7 @@ export function QuotaProgress({ used, total }: QuotaProgressProps) {
   const percentage = Math.min(100, (used / total) * 100);
 
   return (
-    <div className="pt-4 border-t">
+    <div>
       <p className="text-sm">
         {formatTokenQuota(used)} / {formatTokenQuota(total)} tokens used this cycle
       </p>

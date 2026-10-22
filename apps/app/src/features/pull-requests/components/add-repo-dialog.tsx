@@ -71,7 +71,7 @@ export function AddRepoDialog({
     >
       <DialogContent className={needsGithubLink ? "sm:max-w-sm" : "sm:max-w-xl"}>
         <DialogHeader>
-          <DialogTitle>Add Repository</DialogTitle>
+          <DialogTitle>Connect Repository</DialogTitle>
           <DialogDescription>{getDescription()}</DialogDescription>
         </DialogHeader>
 
@@ -88,7 +88,7 @@ export function AddRepoDialog({
           <div className="space-y-3">
             <SearchBar
               className="bg-background"
-              placeholder="Search repositories..."
+              placeholder="Search repositories"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
             />
@@ -119,11 +119,10 @@ export function AddRepoDialog({
                       type="button"
                       onClick={() => !isAlreadyAdded && onRepoSelect(repo.full_name)}
                       disabled={isAlreadyAdded}
-                      className={`w-full text-left px-5 py-2 transition-colors ${
-                        isAlreadyAdded
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-muted/50 cursor-pointer"
-                      }`}
+                      className={`w-full text-left px-5 py-2 transition-colors ${isAlreadyAdded
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:bg-muted/50 cursor-pointer"
+                        }`}
                     >
                       <RepoListItem name={repo.full_name}>
                         {isAlreadyAdded && (

@@ -1,4 +1,5 @@
 import { FeatureAscii, type FeatureShape } from "./feature-ascii";
+import { SectionHeading } from "./section-heading";
 
 const DOCS_URL = "https://docs.opendiff.dev";
 
@@ -66,13 +67,14 @@ export function FeaturesSection() {
   return (
     <section id="features" className="w-full pb-32">
       <div className="mx-auto w-full max-w-7xl px-8">
-        <div className="flex justify-between items-start justify-start w-full">
-          <h2 className="mb-18 w-full text-3xl md:text-5xl text-left">
-            Everything a reviewer does,
-            <br />
-            on every pull request
-          </h2>
-          <p>Every pull request gets a review that reads the whole diff and the code around it.</p>
+        <div className="mb-18">
+          <SectionHeading
+            index={1}
+            label="Features"
+            title="Everything a reviewer does"
+            subtitle="on every pull request"
+            description="Every pull request gets a review that reads the whole diff and the code around it."
+          />
         </div>
         <div className="-mx-8 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {FEATURES.map((feature) => (

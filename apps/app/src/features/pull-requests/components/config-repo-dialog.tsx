@@ -85,7 +85,7 @@ export function ConfigRepoDialog({
             }}
             onSave={onSave}
             isSaving={isSaving}
-            submitLabel="Add Repository"
+            submitLabel="Connect Repository"
             submittingLabel="Adding..."
           />
         )}

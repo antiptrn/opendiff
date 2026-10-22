@@ -12,7 +12,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
 import { SettingsSection } from "components/components/console";
 import { Skeleton } from "components/components/ui/skeleton";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "components/components/ui/table";
+import { DataTable, type DataTableColumn } from "components/components/ui/data-table";
 import { useMemo, useState } from "react";
 import type { OrganizationRole, useAuth } from "shared/auth";
 import { formatRoleName } from "shared/billing";
@@ -32,8 +32,9 @@ import {
   InviteDialog,
   InviteLinkDialog,
   type Member,
-  MemberRow,
+  MemberActions,
   PendingInvitesCard,
+  SeatBadge,
 } from "./organization";
 import { OrganizationCard } from "./organization-card";
 
@@ -225,6 +226,7 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
 
       {/* Team Members */}
       <SettingsSection
+        fullBleed
         title="Members"
         description={
           isLoadingMembers ? (
@@ -245,49 +247,66 @@ export function OrganizationTab({ user, orgId }: OrganizationTabProps) {
         }
       >
         <div>
-          {isLoadingMembers ? (
-            <div>
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 h-14 border-b last:border-0">
-                  <Skeleton muted className="size-6 rounded-full" />
-                  <Skeleton muted className="h-6 w-32 rounded-md" />
-                  <Skeleton muted className="h-6 w-16 rounded-md" />
-                  <Skeleton muted className="h-6 w-14 rounded-md" />
-                  <Skeleton muted className="h-6 w-20 rounded-md" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40%]">Member</TableHead>
-                  <TableHead className="w-[15%]">Role</TableHead>
-                  <TableHead className="w-[15%]">Seat</TableHead>
-                  <TableHead className="w-[20%]">Joined</TableHead>
-                  {(canManageMembers || canManageBilling) && <TableHead className="w-[10%]" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.map((member) => (
-                  <MemberRow
-                    key={member.userId}
-                    member={member}
-                    isSelf={member.userId === user?.visitorId}
-                    canManageMembers={canManageMembers}
-                    canManageBilling={canManageBilling}
-                    availableSeats={availableSeats}
-                    membersWithoutSeat={membersWithoutSeat}
-                    onAssignSeat={handleAssignSeat}
-                    onUnassignSeat={handleUnassignSeat}
-                    onReassignSeat={handleReassignSeat}
-                    onRoleChange={handleRoleChange}
-                    onRemoveMember={handleRemoveMember}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            loading={isLoadingMembers}
+            skeletonRows={3}
+            label="Members"
+            rows={members}
+            getKey={(member) => member.userId}
+            columns={[
+              {
+                key: "member",
+                header: "Member",
+                cell: (member) => (
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Avatar className="size-5">
+                      <AvatarImage src={member.avatarUrl || undefined} alt="" />
+                      <AvatarFallback className="text-[10px]">
+                        {member.login.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 truncate">
+                      {member.name || member.login}
+                      {member.userId === user?.visitorId && (
+                        <span className="ml-1 text-muted-foreground">(you)</span>
+                      )}
+                    </span>
+                  </span>
+                ),
+              },
+              { key: "role", header: "Role", cell: (member) => formatRoleName(member.role) },
+              { key: "seat", header: "Seat", cell: (member) => <SeatBadge hasSeat={member.hasSeat} /> },
+              {
+                key: "joined",
+                header: "Joined",
+                cell: (member) => new Date(member.joinedAt).toLocaleDateString(),
+              },
+              ...(canManageMembers || canManageBilling
+                ? [
+                    {
+                      key: "actions",
+                      header: <span className="sr-only">Actions</span>,
+                      className: "w-12",
+                      cell: (member: Member) => (
+                        <MemberActions
+                          member={member}
+                          isSelf={member.userId === user?.visitorId}
+                          canManageMembers={canManageMembers}
+                          canManageBilling={canManageBilling}
+                          availableSeats={availableSeats}
+                          membersWithoutSeat={membersWithoutSeat}
+                          onAssignSeat={handleAssignSeat}
+                          onUnassignSeat={handleUnassignSeat}
+                          onReassignSeat={handleReassignSeat}
+                          onRoleChange={handleRoleChange}
+                          onRemoveMember={handleRemoveMember}
+                        />
+                      ),
+                    } satisfies DataTableColumn<Member>,
+                  ]
+                : []),
+            ]}
+          />
 
           {canManageMembers && (
             <InviteLinkDialog

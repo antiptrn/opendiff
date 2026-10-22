@@ -5,56 +5,23 @@ import {
   getSettingsNavGroups,
   SETTINGS_HREF,
 } from "components/components/console";
-import { Icon } from "components/components";
-import { Button } from "components/components/ui/button";
 import { useThemeCookieSync } from "components/hooks";
-import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "components/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "components/components/ui/sidebar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon, Menu01Icon } from "@hugeicons/core-free-icons";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { NavigationScrollToTop } from "shared/navigation";
 import { useOrganization } from "shared/organizations";
 import { useSettingsTabs } from "@/features/settings";
+import { ConsoleTopBar, ConsoleTopBarProvider } from "./console-top-bar";
 import { FeedbackDialog } from "./feedback-dialog";
 import { NotificationPopover } from "./notification-popover";
 import { OrganizationMenu } from "./organization-menu";
 import { UserMenu } from "./user-menu";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-
-/**
- * Bar above the page while the sidebar is hidden: on mobile, the icon and a menu button that opens
- * the sidebar from the right; on desktop with the sidebar collapsed, a button to bring it back.
- */
-function CollapsedSidebarBar() {
-  const { isMobile, openMobile, state, toggleSidebar } = useSidebar();
-  if (isMobile) {
-    return (
-      <div className="flex h-16 shrink-0 items-center justify-between px-6">
-        <Link to="/console" aria-label="Dashboard" className="flex items-center">
-          <Icon />
-        </Link>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={openMobile ? "Close menu" : "Open menu"}
-          aria-expanded={openMobile}
-          onClick={toggleSidebar}
-        >
-          <HugeiconsIcon icon={Menu01Icon} />
-        </Button>
-      </div>
-    );
-  }
-  if (state === "expanded") return null;
-  return (
-    <div className="flex h-12 shrink-0 items-center px-2">
-      <SidebarTrigger />
-    </div>
-  );
-}
 
 export function ConsoleLayout() {
   const { user, accounts, isLoading, logout, switchAccount, refreshAccountToken, removeAccount } =
@@ -239,6 +206,7 @@ export function ConsoleLayout() {
 
   return (
     <SidebarProvider persistenceKey="console.sidebar" className="h-svh bg-background">
+      <ConsoleTopBarProvider>
       <NavigationScrollToTop getContainer={getMainElement} />
       <AppSidebar
         navGroups={navGroups}
@@ -265,9 +233,14 @@ export function ConsoleLayout() {
       />
 
       <SidebarInset className="h-svh">
-        <CollapsedSidebarBar />
+        <ConsoleTopBar
+          navGroups={navGroups}
+          settingsHref={SETTINGS_HREF}
+          pathname={location.pathname}
+        />
         <div ref={mainRef} className="flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-7xl">
+          {/* Fills the scroll area so a page can stretch its content, such as a centred empty state */}
+          <div className="flex min-h-full w-full flex-col">
             <Outlet />
           </div>
         </div>
@@ -278,6 +251,7 @@ export function ConsoleLayout() {
         onOpenChange={setFeedbackOpen}
         accessToken={user?.access_token}
       />
+      </ConsoleTopBarProvider>
     </SidebarProvider>
   );
 }

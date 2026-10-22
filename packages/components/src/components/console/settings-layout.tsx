@@ -3,14 +3,17 @@ import { cn } from "../../utils/cn";
 
 /**
  * A group of settings: a title (and optional description and action) above a bordered panel.
- * Each child of the panel (usually a SettingsRow, or a block such as a table) gets the same
- * padding, with a line between them. The danger variant tints the panel for destructive actions.
+ * Each child of the panel (usually a SettingsRow) gets the same padding, with a line between
+ * them. The danger variant tints the panel for destructive actions. `fullBleed` is for tables:
+ * the title stays in the settings column while the table runs side to side across the page,
+ * with lines above and below it instead of a rounded panel.
  */
 export function SettingsSection({
   title,
   description,
   action,
   variant = "default",
+  fullBleed = false,
   className,
   children,
 }: {
@@ -19,12 +22,13 @@ export function SettingsSection({
   /** Shown at the right of the title, such as an "Invite" button */
   action?: ReactNode;
   variant?: "default" | "danger";
+  fullBleed?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-end justify-between gap-6">
+    <section className={cn("flex flex-col gap-3", !fullBleed && "max-w-3xl px-4", className)}>
+      <div className={cn("flex items-end justify-between gap-6", fullBleed && "max-w-3xl px-4")}>
         <div className="min-w-0 space-y-1">
           <h2 className={cn("text-base", variant === "danger" && "text-destructive")}>{title}</h2>
           {description && <div className="text-sm text-muted-foreground">{description}</div>}
@@ -33,10 +37,13 @@ export function SettingsSection({
       </div>
       <div
         className={cn(
-          "flex flex-col divide-y rounded-xl border [&>*]:px-5 [&>*]:py-4",
-          variant === "danger"
-            ? "divide-destructive/20 border-destructive/30"
-            : "divide-border-solid border-border-solid"
+          fullBleed
+            ? "flex flex-col border-y border-border-solid"
+            : "flex flex-col divide-y rounded-xl border [&>*]:px-5 [&>*]:py-4",
+          !fullBleed &&
+            (variant === "danger"
+              ? "divide-destructive/20 border-destructive/30"
+              : "divide-border-solid border-border-solid")
         )}
       >
         {children}

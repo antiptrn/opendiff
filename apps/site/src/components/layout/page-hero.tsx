@@ -9,10 +9,19 @@ interface PageHeroProps {
   /** Shown below the title and subtitle, such as call-to-action buttons */
   children?: ReactNode;
   className?: string;
+  /** The title's heading level: h1 for the top of a page, h2 for a repeat lower down */
+  titleAs?: "h1" | "h2";
 }
 
 /** Centered page title block shared by the lander and the marketing pages, so titles sit alike */
-export function PageHero({ eyebrow, title, subtitle, children, className }: PageHeroProps) {
+export function PageHero({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+  className,
+  titleAs: Title = "h1",
+}: PageHeroProps) {
   return (
     <div
       className={cn(
@@ -23,7 +32,7 @@ export function PageHero({ eyebrow, title, subtitle, children, className }: Page
       {eyebrow ? (
         <p className="text-muted-foreground mb-6">{eyebrow}</p>
       ) : null}
-      <h1 className={cn("max-w-[800px] text-4xl leading-16 tracking-tight md:text-6xl", eyebrow ? "mt-3" : "mt-12")}>{title}</h1>
+      <Title className={cn("max-w-[800px] text-4xl leading-16 tracking-tight md:text-6xl", eyebrow ? "mt-3" : "mt-12")}>{title}</Title>
       {subtitle ? (
         <p className="mt-4 max-w-[609px] text-balance text-lg text-muted-foreground md:text-xl">
           {subtitle}

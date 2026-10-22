@@ -1,30 +1,13 @@
-import { PageTitle } from "components/components/console";
+import { TopBarSearch } from "components/components/console";
+import { ConsoleTopBarSearch } from "@/components/layout/console";
 import { type AuditLog, useAuditLogs } from "@/features/admin";
-import { ChevronLeftIcon, ChevronRightIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "components/components/ui/badge";
-import { Button } from "components/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "components/components/ui/card";
-import { SearchBar } from "components/components/ui/search-bar";
-import { Skeleton } from "components/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "components/components/ui/table";
+import type { DataTableColumn } from "components/components/ui/data-table";
 import { useDebounce } from "components/hooks";
 import { useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
+import { PaginatedTable, TableEmpty } from "@/components/paginated-table";
 
 /**
  * Maps action strings to human-readable labels and badge variants
@@ -85,179 +68,95 @@ function formatDate(dateString: string): string {
   });
 }
 
-/**
- * Renders a single audit log row
- */
-function AuditLogRow({ log }: { log: AuditLog }) {
-  const { label, variant } = formatAction(log.action);
-
-  return (
-    <TableRow>
-      <TableCell className="w-[140px]">
+const COLUMNS: DataTableColumn<AuditLog>[] = [
+  {
+    key: "action",
+    header: "Action",
+    cell: (log) => {
+      const { label, variant } = formatAction(log.action);
+      return (
         <Badge variant={variant} className="font-normal">
           {label}
         </Badge>
-      </TableCell>
-      <TableCell>
-        {log.user ? (
-          <div className="flex items-center gap-2">
-            {log.user.avatarUrl && (
-              <img src={log.user.avatarUrl} alt={log.user.login} className="size-5 rounded-full" />
-            )}
-            <span className="text-sm">{log.user.name || log.user.login}</span>
-          </div>
-        ) : (
-          <span className="text-muted-foreground text-sm">System</span>
-        )}
-      </TableCell>
-      <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
-        {log.target || "—"}
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm w-[100px]">
-        {formatDate(log.createdAt)}
-      </TableCell>
-    </TableRow>
-  );
-}
+      );
+    },
+  },
+  {
+    key: "user",
+    header: "User",
+    cell: (log) =>
+      log.user ? (
+        <span className="flex items-center gap-2">
+          {log.user.avatarUrl && (
+            <img src={log.user.avatarUrl} alt="" className="size-5 rounded-full" />
+          )}
+          {log.user.name || log.user.login}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">System</span>
+      ),
+  },
+  {
+    key: "target",
+    header: "Target",
+    cell: (log) => <span className="block max-w-80 truncate">{log.target || "—"}</span>,
+  },
+  { key: "time", header: "Time", cell: (log) => formatDate(log.createdAt) },
+];
 
-/**
- * Skeleton loader for audit log rows
- */
-function AuditLogSkeleton() {
-  return (
-    <TableRow>
-      <TableCell>
-        <Skeleton className="h-6 w-24 rounded-md" />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Skeleton className="size-5 rounded-full" />
-          <Skeleton className="h-5 w-24 rounded-md" />
-        </div>
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-32 rounded-md" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-16 rounded-md" />
-      </TableCell>
-    </TableRow>
-  );
-}
-
-/**
- * Props for the paginated log table component
- */
-interface PaginatedLogTableProps {
-  search: string;
-}
-
-/**
- * Paginated log table that resets page when search changes via key prop
- */
-function PaginatedLogTable({ search }: PaginatedLogTableProps) {
+/** Audit log table for one search; keyed by the search so its page resets when that changes */
+function AuditLogTable({ search }: { search: string }) {
   const { user } = useAuth();
   const { currentOrg } = useOrganization();
   const [page, setPage] = useState(1);
-
-  const { data, isLoading } = useAuditLogs(user?.access_token, currentOrg?.id, {
+  const { data, isLoading, error } = useAuditLogs(user?.access_token, currentOrg?.id, {
     page,
     search,
   });
 
-  const logs = data?.logs || [];
-  const pagination = data?.pagination;
-
   return (
-    <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[140px]">Action</TableHead>
-            <TableHead>User</TableHead>
-            <TableHead>Target</TableHead>
-            <TableHead className="w-[100px]">Time</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders don't reorder
-            Array.from({ length: 10 }).map((_, i) => <AuditLogSkeleton key={i} />)
-          ) : logs.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                {search ? "No results found" : "No audit logs yet"}
-              </TableCell>
-            </TableRow>
-          ) : (
-            logs.map((log) => <AuditLogRow key={log.id} log={log} />)
-          )}
-        </TableBody>
-      </Table>
-
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-muted-foreground">
-            Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
-            {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}{" "}
-            entries
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              <HugeiconsIcon icon={ChevronLeftIcon} className="size-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground px-2">
-              Page {pagination.page} of {pagination.totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-              disabled={page === pagination.totalPages}
-            >
-              <HugeiconsIcon icon={ChevronRightIcon} className="size-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-    </>
+    <PaginatedTable
+      label="Audit logs"
+      rows={data?.logs}
+      columns={COLUMNS}
+      getKey={(log) => log.id}
+      pagination={data?.pagination}
+      isLoading={isLoading}
+      error={error}
+      empty={
+        search ? (
+          <TableEmpty
+            title="No matching activity"
+            description={`Nothing in the audit log matches "${search}".`}
+          />
+        ) : (
+          <TableEmpty
+            title="No activity yet"
+            description="Changes to your organization, members, repositories and billing will show up here."
+          />
+        )
+      }
+      onPageChange={setPage}
+    />
   );
 }
 
-/**
- * Admin page component for viewing audit logs
- */
+/** Admin page: the organization's audit log, searchable and paginated */
 export function AdminPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedSearch = useDebounce(searchQuery.trim(), 300);
 
   return (
-    <div className="p-8">
-      <PageTitle>Admin</PageTitle>
-      <Card>
-        <CardHeader>
-          <CardTitle>Audit Logs</CardTitle>
-          <CardDescription>Track all actions performed in your organization</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6">
-            <SearchBar
-              className="bg-background"
-              placeholder="Search audit logs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Use key prop to reset pagination when search changes */}
-          <PaginatedLogTable key={debouncedSearch} search={debouncedSearch} />
-        </CardContent>
-      </Card>
+    <div>
+      <ConsoleTopBarSearch>
+        <TopBarSearch
+          shortcut="f"
+          placeholder="Search audit logs"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </ConsoleTopBarSearch>
+      <AuditLogTable key={debouncedSearch} search={debouncedSearch} />
     </div>
   );
 }

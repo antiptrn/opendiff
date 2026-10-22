@@ -1,8 +1,6 @@
-import { cn } from "components";
-import { Button, Logo } from "components/components";
+import { Logo } from "components/components";
 import type { MouseEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { STATUS_PAGE_URL, useSystemStatus } from "./use-system-status";
 
 type FooterLink = {
   label: string;
@@ -19,6 +17,13 @@ const footerSections: { title: string; links: FooterLink[] }[] = [
       { label: "Overview", href: "/#overview" },
       { label: "Pricing", href: "/pricing" },
       { label: "Changelog", href: "/changelog" },
+      { label: "For Cursor", href: "cursor:extension/opendiff.opendiff-local-review" },
+      {
+        label: "For VSCode",
+        href: "vscode:extension/opendiff.opendiff-local-review",
+        fallbackHref:
+          "https://marketplace.visualstudio.com/items?itemName=opendiff.opendiff-local-review",
+      },
     ],
   },
   {
@@ -26,6 +31,7 @@ const footerSections: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: "Careers", href: "https://careers.opendiff.dev" },
       { label: "Blog", href: "/blog" },
+      { label: "Press", href: "mailto:support@opendiff.dev?subject=Press%20inquiry" },
       { label: "GitHub", href: "https://github.com/antiptrn/opendiff" },
       { label: "Contact", href: "mailto:support@opendiff.dev" },
     ],
@@ -35,13 +41,7 @@ const footerSections: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: "Docs", href: "https://docs.opendiff.dev" },
       { label: "Comparisons", href: "/comparisons" },
-      { label: "For Cursor", href: "cursor:extension/opendiff.opendiff-local-review" },
-      {
-        label: "For VSCode",
-        href: "vscode:extension/opendiff.opendiff-local-review",
-        fallbackHref:
-          "https://marketplace.visualstudio.com/items?itemName=opendiff.opendiff-local-review",
-      },
+      { label: "Service Status", href: "https://status.opendiff.dev" },
     ],
   },
   {
@@ -95,7 +95,6 @@ function isExternalLink(href: string): boolean {
 
 export function Footer() {
   const location = useLocation();
-  const systemStatus = useSystemStatus();
 
   const onHashLinkClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     const [path, rawHash] = href.split("#");
@@ -122,10 +121,10 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative z-10 w-full border-t bg-background py-16 lg:mt-16 md:mt-16 mt-8">
+    <footer className="relative z-10 w-full border-t bg-background pt-16 lg:mt-16 md:mt-16 mt-8">
       <div className="max-w-7xl mx-auto px-4 lg:px-8">
         <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
-          <div className="flex w-full flex-col justify-between gap-6 lg:w-1/3 lg:items-start">
+          <div className="flex w-full flex-col justify-between gap-6 lg:w-1/4 lg:items-start">
             <div className="flex items-center gap-2 lg:justify-start">
               <Link to="/" aria-label="OpenDiff home">
                 <Logo />
@@ -133,7 +132,7 @@ export function Footer() {
             </div>
           </div>
 
-          <div className="grid w-full gap-6 md:grid-cols-4 lg:w-2/3 lg:gap-12">
+          <div className="grid w-full gap-6 md:grid-cols-4 lg:w-3/4 lg:gap-12">
             {footerSections.map((section) => (
               <div key={section.title}>
                 <p className="mb-4 text-base">{section.title}</p>
@@ -180,15 +179,23 @@ export function Footer() {
         </div>
 
         <div className="mt-16 flex flex-col justify-between gap-4 border-t pt-16 text-sm font-normal text-muted-foreground md:flex-row md:items-center md:text-left">
-          <p className="order-2 lg:order-1">
+          <p>
             &copy; {new Date().getFullYear()} Contrast by Orange Matter AB. All rights reserved.
           </p>
-          <Button asChild variant="secondary" size="sm" className="order-1 self-start md:order-2 md:self-auto">
-            <Link target="_blank" rel="noreferrer" to={STATUS_PAGE_URL}>
-              <span className={cn("size-1.5 rounded-full", systemStatus.dotClassName)} />
-              {systemStatus.label}
-            </Link>
-          </Button>
+        </div>
+      </div>
+
+      {/* Oversized logo that runs off the bottom edge, sized to the footer's content width so its
+          edges line up with the columns above */}
+      <div aria-hidden="true" className="mx-auto mt-16 max-w-7xl overflow-hidden px-4 lg:px-8">
+        <div className="@container w-full">
+          <div className="-mb-[0.32em] flex h-[1.08em] w-full items-center justify-between text-muted-foreground/25 [font-size:calc(100cqw/5)]">
+            <svg className="size-[0.9em] shrink-0" viewBox="0 0 1500 1500" fill="currentColor">
+              <rect width="1500" height="1500" />
+              <path className="fill-background" d="M750 0L1125 375L750 750L1125 1125L750 1500L0 750Z" />
+            </svg>
+            <span className="shrink-0 leading-none tracking-tight">Contrast</span>
+          </div>
         </div>
       </div>
     </footer>

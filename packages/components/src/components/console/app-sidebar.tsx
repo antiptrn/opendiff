@@ -132,7 +132,7 @@ export function AppSidebar({
     // On mobile the sidebar slides in from the right, next to the menu button; a sidebar rendered
     // in place (such as in a preview) stays on the left
     <Sidebar collapsible={collapsible} side={isMobile && collapsible !== "none" ? "right" : "left"}>
-      <SidebarHeader>
+      <SidebarHeader className="h-12 shrink-0 justify-center border-b border-border-solid py-0">
         <div className="flex min-w-0 items-center justify-between gap-0.5">
           {organizationName ? (
             <div className="min-w-0">
@@ -154,7 +154,7 @@ export function AppSidebar({
                           </AvatarFallback>
                         </Avatar>
                       </SidebarMenuIcon>
-                      <span className="min-w-0 truncate">{organizationName}</span>
+                      <span className="min-w-0 truncate leading-none">{organizationName}</span>
                       <span className="-ml-1.5 flex shrink-0 text-muted-foreground group-hover/menu-button:text-foreground">
                         <HugeiconsIcon icon={ArrowDown01Icon} />
                       </span>
@@ -175,7 +175,7 @@ export function AppSidebar({
 
       <SidebarContent>
         {backLink && (
-          <SidebarGroup spacing="settingsSection">
+          <SidebarGroup className="-mb-3 mt-1" spacing="settingsSection">
             <SidebarGroupContent>
               <SidebarMenu>
                 <NavLink
@@ -189,7 +189,7 @@ export function AppSidebar({
           </SidebarGroup>
         )}
         {navGroups.map((group, index) => (
-          <SidebarGroup key={group.label ?? index} spacing="settingsSection" className="py-0.5">
+          <SidebarGroup key={group.label ?? index} spacing="settingsSection" className="pb-0 pt-2">
             {group.label && <SidebarGroupLabel className="h-7">{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
@@ -208,7 +208,7 @@ export function AppSidebar({
         ))}
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="h-12 shrink-0 justify-center border-t border-border-solid py-0">
         <div className="flex items-center justify-between gap-0.5">
           <div className="min-w-0">
             <SidebarMenu>
@@ -229,7 +229,7 @@ export function AppSidebar({
                         </AvatarFallback>
                       </Avatar>
                     </SidebarMenuIcon>
-                    <span className="min-w-0 truncate">{userName}</span>
+                    <span className="min-w-0 truncate leading-none">{userName}</span>
                     <span className="-ml-1.5 flex shrink-0 text-muted-foreground group-hover/menu-button:text-foreground">
                       <HugeiconsIcon icon={MoreVerticalIcon} />
                     </span>

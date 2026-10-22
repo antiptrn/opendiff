@@ -1,3 +1,5 @@
+import { CheckCheckIcon, CircleDotIcon, ExternalLinkIcon, GitMergeIcon, GitPullRequestIcon, Loading03Icon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { TableEmpty } from "@/components/paginated-table";
 import {
   Accordion,
   AccordionContent,
@@ -9,17 +11,9 @@ import { Badge } from "components/components/ui/badge";
 import { Button } from "components/components/ui/button";
 import { Card, CardContent } from "components/components/ui/card";
 import { useAuth } from "shared/auth";
+import { useConsoleBreadcrumb } from "@/components/layout/console";
 import { useOrganization } from "shared/organizations";
 
-import {
-  CheckCheckIcon,
-  CircleDotIcon,
-  ExternalLinkIcon,
-  GitMergeIcon,
-  GitPullRequestIcon,
-  Loading03Icon,
-  SparklesIcon,
-} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Separator } from "components/components/ui/separator";
 import { Skeleton } from "components/components/ui/skeleton";
@@ -43,6 +37,7 @@ export function PullRequestDetailPage() {
   const { currentOrgId } = useOrganization();
 
   const { data, isLoading } = usePullRequestDetail(user?.access_token, currentOrgId, id);
+  useConsoleBreadcrumb(data?.review ? `#${data.review.pullNumber}` : undefined);
 
   const acceptFix = useAcceptFix(user?.access_token, currentOrgId);
   const rejectFix = useRejectFix(user?.access_token, currentOrgId);
@@ -129,7 +124,7 @@ export function PullRequestDetailPage() {
   const rejectingFixId = rejectFix.isPending ? (rejectFix.variables?.fixId ?? null) : null;
 
   return (
-    <div className="">
+    <div className="mx-auto w-full max-w-7xl">
       <div className="p-0">
         {/* Back link */}
         <Link
@@ -310,7 +305,10 @@ export function PullRequestDetailPage() {
 
               {/* File-grouped comments */}
               {totalComments === 0 ? (
-                <p className="text-muted-foreground py-6 text-center">No comments yet</p>
+                <TableEmpty
+                  title="No issues found"
+                  description="Contrast didn't flag anything in this pull request."
+                />
               ) : (
                 <div className="space-y-8 mb-8">
                   {fileGroups.map(({ path, comments }, index) => (

@@ -193,6 +193,83 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
   });
 });
 
+function parsePagination(c: { req: { query: (key: string) => string | undefined } }) {
+  const page = Math.max(1, Number.parseInt(c.req.query("page") || "1"));
+  const limit = Math.min(50, Math.max(1, Number.parseInt(c.req.query("limit") || "20")));
+  return { page, limit };
+}
+
+/** First line of a review comment, without markdown markers, to use as the issue's title */
+function issueTitle(body: string) {
+  const firstLine =
+    body
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  return firstLine.replace(/^[#>*\-\s]+/, "").replace(/[*_`]/g, "").slice(0, 200);
+}
+
+// Get paginated issues (review comments) for org, newest first. `q` matches the comment text,
+// file path or repository name.
+queryRoutes.get("/review-issues", requireAuth(), async (c) => {
+  const orgId = await requireOrgAccess(c);
+  if (!orgId) {
+    return c.json({ error: "Organization ID required" }, 400);
+  }
+
+  const { page, limit } = parsePagination(c);
+  const search = c.req.query("q")?.trim();
+  const where: Prisma.ReviewCommentWhereInput = {
+    review: { organizationId: orgId, repositorySettingsId: { not: null } },
+    ...(search
+      ? {
+          OR: [
+            { body: { contains: search, mode: "insensitive" } },
+            { path: { contains: search, mode: "insensitive" } },
+            { review: { repositorySettings: { repo: { contains: search, mode: "insensitive" } } } },
+            { review: { repositorySettings: { owner: { contains: search, mode: "insensitive" } } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [comments, total] = await Promise.all([
+    prisma.reviewComment.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+      include: {
+        fix: { select: { status: true } },
+        review: {
+          select: {
+            id: true,
+            pullNumber: true,
+            repositorySettings: { select: { owner: true, repo: true } },
+          },
+        },
+      },
+    }),
+    prisma.reviewComment.count({ where }),
+  ]);
+
+  return c.json({
+    issues: comments.map((comment) => ({
+      id: comment.id,
+      reviewId: comment.review.id,
+      title: issueTitle(comment.body),
+      path: comment.path,
+      line: comment.line,
+      owner: comment.review.repositorySettings?.owner ?? null,
+      repo: comment.review.repositorySettings?.repo ?? null,
+      pullNumber: comment.review.pullNumber,
+      fixStatus: comment.fix?.status ?? null,
+      createdAt: comment.createdAt,
+    })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
+});
+
 // Get single review with comments and fixes
 queryRoutes.get("/reviews/:id", requireAuth(), async (c) => {
   const orgId = await requireOrgAccess(c);

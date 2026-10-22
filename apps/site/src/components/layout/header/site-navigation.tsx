@@ -184,7 +184,7 @@ export function SiteNavigation({ onOpenChange }: { onOpenChange?: (open: boolean
       <div ref={navigationRef} className="relative flex items-center gap-1">
         <motion.span
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-0 rounded-full bg-muted"
+          className="pointer-events-none absolute top-0 left-0 rounded-md bg-muted"
           initial={false}
           animate={{
             opacity: activeItem && indicator ? 1 : 0,
@@ -215,7 +215,7 @@ export function SiteNavigation({ onOpenChange }: { onOpenChange?: (open: boolean
               type="button"
               variant="ghost"
               className={cn(
-                "relative z-10 gap-1 rounded-full text-foreground hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent",
+                "relative z-10 gap-1 text-foreground hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent",
                 // The chevron's box has empty space on both sides, so trim the padding after it
                 entry.menu && "pr-2.5"
               )}

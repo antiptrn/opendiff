@@ -8,9 +8,9 @@ import {
   AlertDialogTitle,
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
-import { SettingsRow, SettingsSection } from "components/components/console";
+import { SettingsSection } from "components/components/console";
+import { DataTable } from "components/components/ui/data-table";
 import { LoadingButton } from "components/components/ui/loading-button";
-import { Skeleton } from "components/components/ui/skeleton";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { formatDate, formatTokenQuota, getTierName } from "shared/billing";
@@ -62,76 +62,93 @@ export function SoloSubscriptionCard({
 
   return (
     <>
-      <SettingsSection title="Subscription">
-        {isLoading ? (
-          <SettingsRow
-            title={<Skeleton muted className="h-6 w-24 rounded-md" />}
-            description={<Skeleton muted className="h-5 w-48 rounded-md" />}
-          >
-            <Skeleton muted className="h-10 w-24 rounded-md" />
-          </SettingsRow>
-        ) : seat && hasSubscription ? (
-          <SettingsRow
-            title={getTierName(seat.tier)}
-            description={
-              <>
-                {seat.status !== "ACTIVE" ? (
-                  <span className="text-orange-600 dark:text-orange-400">{seat.status}</span>
+      <SettingsSection title="Subscription" fullBleed>
+        <DataTable
+          label="Subscription"
+          loading={isLoading}
+          skeletonRows={1}
+          rows={[seat && hasSubscription ? seat : null]}
+          getKey={() => "subscription"}
+          columns={[
+            {
+              key: "plan",
+              header: "Plan",
+              cell: (current) => (current ? getTierName(current.tier) : "Free"),
+            },
+            {
+              key: "status",
+              header: "Status",
+              cell: (current) =>
+                !current ? (
+                  <span className="text-muted-foreground">Not subscribed</span>
+                ) : current.status !== "ACTIVE" ? (
+                  <span className="text-orange-600 dark:text-orange-400">{current.status}</span>
                 ) : cancelAtPeriodEnd ? (
                   <span className="text-orange-600 dark:text-orange-400">Cancelling</span>
                 ) : (
                   <span className="text-green-600 dark:text-green-400">Active</span>
-                )}
-                {seat.expiresAt &&
-                  ` · ${cancelAtPeriodEnd ? "Access until" : "Renews"} ${formatDate(seat.expiresAt)}`}
-              </>
-            }
-          >
-            {cancelAtPeriodEnd ? (
-              <LoadingButton
-                variant="outline"
-                isLoading={isReactivating}
-                loadingText="Reactivating..."
-                onClick={onReactivate}
-              >
-                Reactivate
-              </LoadingButton>
-            ) : (
-              <Button variant="outline" onClick={() => setShowCancelDialog(true)}>
-                Cancel
-              </Button>
-            )}
-            <Button asChild>
-              <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Change plan</Link>
-            </Button>
-          </SettingsRow>
-        ) : (
-          <SettingsRow title="Free" description="You're not on a paid plan.">
-            <Button asChild>
-              <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>Upgrade</Link>
-            </Button>
-          </SettingsRow>
-        )}
-
-        {quotaPool && !quotaPool.hasUnlimited && !isLoading && (
-          <SettingsRow
-            title="Usage"
-            description={
-              quotaPool.total > 0
-                ? `${formatTokenQuota(quotaPool.used)} of ${formatTokenQuota(quotaPool.total)} tokens used this cycle`
-                : `${formatTokenQuota(quotaPool.used)} tokens used this cycle`
-            }
-          >
-            {quotaPool.total > 0 && (
-              <div className="h-2 w-40 rounded-full bg-muted">
-                <div
-                  className="h-2 rounded-full bg-yellow transition-all"
-                  style={{ width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%` }}
-                />
-              </div>
-            )}
-          </SettingsRow>
-        )}
+                ),
+            },
+            {
+              key: "renews",
+              header: cancelAtPeriodEnd ? "Access until" : "Renews",
+              cell: (current) => (current?.expiresAt ? formatDate(current.expiresAt) : "—"),
+            },
+            {
+              key: "usage",
+              header: "Usage this cycle",
+              cell: () =>
+                !quotaPool || quotaPool.hasUnlimited ? (
+                  quotaPool?.hasUnlimited ? "Unlimited" : "—"
+                ) : (
+                  <span className="flex items-center gap-3">
+                    {quotaPool.total > 0
+                      ? `${formatTokenQuota(quotaPool.used)} of ${formatTokenQuota(quotaPool.total)} tokens`
+                      : `${formatTokenQuota(quotaPool.used)} tokens`}
+                    {quotaPool.total > 0 && (
+                      <span className="h-1.5 w-24 rounded-full bg-muted">
+                        <span
+                          className="block h-1.5 rounded-full bg-yellow transition-all"
+                          style={{
+                            width: `${Math.min(100, (quotaPool.used / quotaPool.total) * 100)}%`,
+                          }}
+                        />
+                      </span>
+                    )}
+                  </span>
+                ),
+            },
+            {
+              key: "actions",
+              header: <span className="sr-only">Actions</span>,
+              cell: (current) => (
+                <span className="flex items-center justify-end gap-2">
+                  {current &&
+                    (cancelAtPeriodEnd ? (
+                      <LoadingButton
+                        size="sm"
+                        variant="outline"
+                        isLoading={isReactivating}
+                        loadingText="Reactivating..."
+                        onClick={onReactivate}
+                      >
+                        Reactivate
+                      </LoadingButton>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => setShowCancelDialog(true)}>
+                        Cancel
+                      </Button>
+                    ))}
+                  <Button asChild size="sm">
+                    <Link to={`${import.meta.env.VITE_WEBSITE_URL}/pricing`}>
+                      {current ? "Change plan" : "Upgrade"}
+                    </Link>
+                  </Button>
+                </span>
+              ),
+            },
+          ]}
+        />
       </SettingsSection>
 
       <AlertDialog

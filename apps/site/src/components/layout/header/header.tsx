@@ -42,7 +42,7 @@ export function Header() {
           <div className="flex items-center">
             <Button
               variant="ghost"
-              className="relative z-50 h-auto rounded-full px-2 lg:-mx-2 md:-mx-2 -mx-1.5 !bg-transparent"
+              className="relative z-50 h-auto px-2 lg:-mx-2 md:-mx-2 -mx-1.5 !bg-transparent"
               asChild
             >
               <Link to="/" aria-label="Home">
@@ -52,12 +52,12 @@ export function Header() {
             <SiteNavigation onOpenChange={setNavigationOpen} />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <Button variant="secondary" className="hidden md:inline-flex rounded-full" asChild>
+            <Button variant="secondary" className="hidden md:inline-flex" asChild>
               <a href={APP_URL} aria-keyshortcuts={LOGIN_SHORTCUT_KEY.toUpperCase()}>
                 Log in
               </a>
             </Button>
-            <Button className="hidden md:inline-flex rounded-full" asChild>
+            <Button className="hidden md:inline-flex" asChild>
               <a href={APP_URL} aria-keyshortcuts={LOGIN_SHORTCUT_KEY.toUpperCase()}>
                 Contact sales
               </a>
@@ -67,7 +67,7 @@ export function Header() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative z-50 rounded-full hover:bg-transparent md:hidden p-0 w-auto h-auto lg:-mr-0 md:-mr-0 -mr-2"
+            className="relative z-50 hover:bg-transparent md:hidden p-0 w-auto h-auto lg:-mr-0 md:-mr-0 -mr-2"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? "Close mobile menu" : "Open mobile menu"}
           >

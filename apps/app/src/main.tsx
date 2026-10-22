@@ -18,6 +18,7 @@ import {
   PullRequestsListPage,
   RepositoriesPage,
 } from "@/features/pull-requests";
+import { IssuesPage } from "@/features/issues";
 import { SettingsPage } from "@/features/settings";
 
 // Shared
@@ -63,6 +64,7 @@ const router = createBrowserRouter([
           { path: "repositories", element: <RepositoriesPage /> },
           { path: "pull-requests", element: <PullRequestsListPage /> },
           { path: "pull-requests/:id", element: <PullRequestDetailPage /> },
+          { path: "issues", element: <IssuesPage /> },
           { path: "settings", element: <SettingsPage /> },
           { path: "settings/:tab", element: <SettingsPage /> },
           { path: "admin", element: <AdminPage /> },

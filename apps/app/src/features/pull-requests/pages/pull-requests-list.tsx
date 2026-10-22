@@ -1,23 +1,46 @@
-import { PageTitle } from "components/components/console";
-import { SearchBar } from "components/components/ui/search-bar";
+import { TopBarSearch } from "components/components/console";
+import { ConsoleTopBarSearch } from "@/components/layout/console";
+import type { DataTableColumn } from "components/components/ui/data-table";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
-import { PullRequestsList } from "../components/pull-requests-list";
-import { usePullRequests } from "../hooks/use-pull-requests";
+import { formatDate, PaginatedTable, repoName, TableEmpty } from "@/components/paginated-table";
+import { type PullRequestSummary, usePullRequests } from "../hooks/use-pull-requests";
+
+const COLUMNS: DataTableColumn<PullRequestSummary>[] = [
+  {
+    key: "title",
+    header: "Pull request",
+    cell: (row) => (
+      <span className="block max-w-96 truncate">{row.pullTitle || `#${row.pullNumber}`}</span>
+    ),
+  },
+  { key: "repo", header: "Repository", cell: (row) => repoName(row.owner, row.repo) },
+  { key: "number", header: "Number", cell: (row) => `#${row.pullNumber}`, align: "end" },
+  { key: "author", header: "Author", cell: (row) => row.pullAuthor || "—" },
+  { key: "issues", header: "Issues", cell: (row) => row.commentCount, align: "end" },
+  { key: "fixes", header: "Fixes", cell: (row) => row.fixCount, align: "end" },
+  { key: "reviewed", header: "Last reviewed", cell: (row) => formatDate(row.createdAt) },
+];
 
 export function PullRequestsListPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { currentOrgId } = useOrganization();
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(searchParams.get("repo") || "");
 
   // If input looks like a repo filter (contains "/"), use it as server-side repo filter
   const repoFilter = search.includes("/") ? search : undefined;
 
-  const { data, isLoading } = usePullRequests(user?.access_token, currentOrgId, page, repoFilter);
+  const { data, isLoading, error } = usePullRequests(
+    user?.access_token,
+    currentOrgId,
+    page,
+    repoFilter
+  );
 
   const filteredPullRequests = useMemo(() => {
     const pullRequests = data?.reviews || [];
@@ -34,32 +57,42 @@ export function PullRequestsListPage() {
   }, [data?.reviews, search, repoFilter]);
 
   return (
-    <div className="p-8">
-      <PageTitle>Pull Requests</PageTitle>
-
-      <div className="flex gap-2 mb-4">
-        <SearchBar
-          containerClassName="min-w-120"
-          placeholder="Search pull requests..."
+    <div className="flex flex-1 flex-col">
+      <ConsoleTopBarSearch>
+        <TopBarSearch
+          shortcut="f"
+          placeholder="Search pull requests"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
             setPage(1);
           }}
         />
-      </div>
+      </ConsoleTopBarSearch>
 
-      <PullRequestsList
-        pullRequests={filteredPullRequests}
+      <PaginatedTable
+        label="Pull requests"
+        rows={data ? filteredPullRequests : undefined}
+        columns={COLUMNS}
+        getKey={(row) => row.id}
         pagination={search && !repoFilter ? undefined : data?.pagination}
-        page={page}
-        onPageChange={setPage}
         isLoading={isLoading}
-        emptyMessage={
-          search
-            ? `No pull requests matching "${search}"`
-            : "No pull requests yet. Reviews will appear here after a PR is reviewed."
+        error={error}
+        empty={
+          search ? (
+            <TableEmpty
+              title="No matching pull requests"
+              description={`Nothing matches "${search}". Try a title, author or repository.`}
+            />
+          ) : (
+            <TableEmpty
+              title="No pull requests yet"
+              description="Pull requests show up here once Contrast reviews them."
+            />
+          )
         }
+        onPageChange={setPage}
+        onRowClick={(row) => navigate(`/console/pull-requests/${row.id}`)}
       />
     </div>
   );

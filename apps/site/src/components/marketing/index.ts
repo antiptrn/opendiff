@@ -7,3 +7,5 @@ export { ServicesSection } from "./services-section";
 export { TestimonialsSection } from "./testimonials-section";
 export { CTASection } from "./cta-section";
 export { ProcessSection } from "./process-section";
+export { FaqSection } from "./faq-section";
+export { ClosingCtaSection } from "./closing-cta-section";

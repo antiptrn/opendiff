@@ -1,7 +1,8 @@
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { TableEmpty } from "@/components/paginated-table";
 import { Popover, PopoverContent, PopoverTrigger } from "components/components";
 import { NotificationButton } from "components/components/console";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "shared/auth";
@@ -135,7 +136,10 @@ export function NotificationPopover() {
       <PopoverContent side="top" align="end" className="w-80 p-0 min-h-24">
         <div className="max-h-80 overflow-y-auto h-full">
           {notifications.length === 0 ? (
-            <div className="px-4 py-12 text-center text-base text-foreground">No notifications</div>
+            <TableEmpty
+              title="No notifications"
+              description="Reviews, fixes and team updates show up here."
+            />
           ) : (
             <>
               {notifications.map((n) => (

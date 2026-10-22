@@ -13,6 +13,8 @@ export const queryKeys = {
   notifications: (orgId?: string | null) => ["notifications", orgId] as const,
   reviews: (orgId?: string | null, page?: number, repo?: string) =>
     ["reviews", orgId, page, repo] as const,
+  reviewIssues: (orgId?: string | null, page?: number, search?: string) =>
+    ["reviewIssues", orgId, page, search] as const,
   reviewDetail: (orgId?: string | null, reviewId?: string) =>
     ["reviewDetail", orgId, reviewId] as const,
   skills: () => ["skills"] as const,

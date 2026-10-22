@@ -1,6 +1,6 @@
-import { Button } from "components";
 import { PageHero } from "@/components/layout/page-hero";
 import { ConsoleMockup } from "./console-mockup";
+import { HeroActions } from "./hero-actions";
 // import { HeroBlinds } from "./hero-blinds";
 import { HeroShader } from "./hero-shader";
 import { RotatingWord } from "./rotating-word";
@@ -16,7 +16,7 @@ export function HeroSection() {
         className="pb-18"
         title={
           <>
-            Ship pull requests faster,
+            Ship new features faster,
             <br />
             without the{" "}
             {/* On phones the rotating word gets its own line, so the headline height never changes */}
@@ -25,14 +25,10 @@ export function HeroSection() {
           </>
         }
       >
-        <div className="flex items-center justify-center gap-2.5">
-          <Button size="lg" variant="secondary" className="rounded-full">
-            Sign up
-          </Button>
-          <Button size="lg" className="rounded-full">
-            Contact sales
-          </Button>
-        </div>
+        <HeroActions />
+        <p className="mt-12 text-muted-foreground">
+          OpenDiff is now <span className="text-foreground">Contrast</span>
+        </p>
       </PageHero>
       <div className="relative mx-auto w-full max-w-7xl px-8 pb-32">
         <div className="relative">

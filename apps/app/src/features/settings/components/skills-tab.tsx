@@ -1,3 +1,5 @@
+import { TopBarSearch } from "components/components/console";
+import { ConsoleTopBarSearch } from "@/components/layout/console";
 import {
   type Skill,
   useCreateSkill,
@@ -17,7 +19,6 @@ import {
 } from "components/components/ui/alert-dialog";
 import { Button } from "components/components/ui/button";
 import { SettingsSection } from "components/components/console";
-import { SearchBar } from "components/components/ui/search-bar";
 import { useEffect, useRef, useState } from "react";
 import type { useAuth } from "shared/auth";
 import { toast } from "sonner";
@@ -179,6 +180,7 @@ export function SkillsTab({ user }: SkillsTabProps) {
   return (
     <div className="space-y-10">
       <SettingsSection
+        fullBleed
         title="Your skills"
         description="The review agent follows the ones relevant to each change."
         action={
@@ -202,13 +204,15 @@ export function SkillsTab({ user }: SkillsTabProps) {
           </>
         }
       >
-        <div className="space-y-6">
-          <SearchBar
-            variant="muted"
-            placeholder="Search skills..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div>
+          <ConsoleTopBarSearch>
+            <TopBarSearch
+              shortcut="f"
+              placeholder="Search skills"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </ConsoleTopBarSearch>
           <div className="max-h-80 overflow-y-auto">
             <SkillsList
               skills={skills}

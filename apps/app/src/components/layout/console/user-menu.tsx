@@ -1,11 +1,4 @@
-import {
-  ArrowLeftRightIcon,
-  LifebuoyIcon,
-  Loading03Icon,
-  LogOutIcon,
-  MessageSquareIcon,
-  UserPlusIcon,
-} from "@hugeicons/core-free-icons";
+import { ArrowLeftRightIcon, Loading03Icon, LogOutIcon, MessageSquareIcon, UserPlusIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
 import {
@@ -25,7 +18,7 @@ import type { useAuth } from "shared/auth";
 type AuthUser = NonNullable<ReturnType<typeof useAuth>["user"]>;
 type AuthAccount = ReturnType<typeof useAuth>["accounts"][number];
 
-/** Dropdown menu with account switching, feedback, support and sign-out, opened from `trigger`. */
+/** Dropdown menu with account switching, feedback and sign-out, opened from `trigger`. */
 export function UserMenu({
   user,
   accounts,
@@ -106,12 +99,6 @@ export function UserMenu({
         <DropdownMenuItem onClick={onFeedbackClick} className="cursor-pointer">
           <HugeiconsIcon icon={MessageSquareIcon} className="size-4" />
           Leave feedback
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="cursor-pointer">
-          <a href="mailto:support@opendiff.dev?subject=Support%20Request">
-            <HugeiconsIcon icon={LifebuoyIcon} className="size-4" />
-            Support
-          </a>
         </DropdownMenuItem>
         {/* Sign out - in main dropdown */}
         <DropdownMenuItem onClick={onLogout} className="cursor-pointer">

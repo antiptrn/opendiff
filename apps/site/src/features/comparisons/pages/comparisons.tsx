@@ -38,7 +38,7 @@ export function ComparisonsPage() {
       <PageContainer>
         <SearchBar
           containerClassName="mx-auto mt-9 max-w-150"
-          placeholder="Search comparisons..."
+          placeholder="Search comparisons"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
         />
