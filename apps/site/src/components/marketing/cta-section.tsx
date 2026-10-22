@@ -8,7 +8,7 @@ import { Calendar03Icon, Mail01Icon, MessageSquareIcon } from "@hugeicons/core-f
 
 export function CTASection() {
   return (
-    <section id="contact" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
+    <section id="contact" className="pb-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
       <div className="max-w-[1200px] mx-auto">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
           <div>

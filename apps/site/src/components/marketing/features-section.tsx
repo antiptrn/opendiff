@@ -71,8 +71,7 @@ export function FeaturesSection() {
           <SectionHeading
             index={1}
             label="Features"
-            title="Everything a reviewer does"
-            subtitle="on every pull request"
+            title="Everything a reviewer does on every pull request"
             description="Every pull request gets a review that reads the whole diff and the code around it."
           />
         </div>

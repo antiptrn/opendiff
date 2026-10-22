@@ -14,3 +14,31 @@
   from { transform: none; opacity: 1; filter: blur(0); }
   to { transform: translateY(-0.24em); opacity: 0; filter: blur(4px); }
 }
+
+/* Shimmering text: a bright band sweeps across muted letters, then pauses before the next pass */
+@keyframes text-shimmer {
+  from { background-position: 150% 0; }
+  60%, to { background-position: -50% 0; }
+}
+
+@utility text-shimmer {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 40%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 60%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: text-shimmer 3s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    color: var(--muted-foreground);
+    background-image: none;
+  }
+}

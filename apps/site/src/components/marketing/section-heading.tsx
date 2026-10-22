@@ -3,9 +3,9 @@ import { CornerPlus } from "./corner-plus";
 
 /**
  * Heading above a landing page section: its number and name on the left; on the right a two-part
- * headline (the second part muted) and a line of description below it. Rules run along the top
- * and bottom, with plus marks at their starts and where the columns split, and a line runs down
- * between the columns, like the FAQ's frame.
+ * headline (the second part muted) and a line of description below it. A rule runs along the
+ * top, with plus marks at its start and where the columns split, and a line runs down between the
+ * columns, like the FAQ's frame.
  */
 export function SectionHeading({
   index,
@@ -22,13 +22,11 @@ export function SectionHeading({
   description?: ReactNode;
 }) {
   return (
-    <div className="relative grid gap-6 border-y border-border-solid lg:grid-cols-2 lg:gap-0">
+    <div className="relative grid gap-6 border-t border-border-solid lg:grid-cols-2 lg:gap-0">
       <CornerPlus className="-top-1.5 -left-1.5" />
       <CornerPlus className="-top-1.5 left-1/2 hidden -translate-x-1/2 lg:block" />
-      <CornerPlus className="-bottom-1.5 -left-1.5" />
-      <CornerPlus className="-bottom-1.5 left-1/2 hidden -translate-x-1/2 lg:block" />
-      <p className="flex gap-4 pt-12 text-3xl md:text-4xl lg:pr-12">
-        <span className="text-muted-foreground">{String(index).padStart(2, "0")}</span>
+      <p className="flex gap-4 pt-12 text-4xl md:text-5xl lg:pr-12">
+        <span className="text-yellow">{String(index).padStart(2, "0")}</span>
         <span>{label}</span>
       </p>
       <div className="border-border-solid pb-12 lg:border-l lg:pt-12 lg:pl-12">

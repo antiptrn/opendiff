@@ -32,7 +32,7 @@ export function PageHero({
       {eyebrow ? (
         <p className="text-muted-foreground mb-6">{eyebrow}</p>
       ) : null}
-      <Title className={cn("max-w-[800px] text-4xl leading-16 tracking-tight md:text-6xl", eyebrow ? "mt-3" : "mt-12")}>{title}</Title>
+      <Title className={cn("max-w-[800px] text-4xl leading-16 tracking-tight md:text-6xl", eyebrow ? "mt-8" : "mt-0")}>{title}</Title>
       {subtitle ? (
         <p className="mt-4 max-w-[609px] text-balance text-lg text-muted-foreground md:text-xl">
           {subtitle}

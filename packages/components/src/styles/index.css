@@ -158,7 +158,7 @@
 	--syntax-title: oklch(0.8 0.09 225);
 	--syntax-variable: oklch(0.8 0.1 50);
 	--orange: oklch(0.908 0.088 86.385);
-	--yellow: oklch(1 0 0);
+	--yellow: oklch(0.936716 0.224753 121.0029);
 	--yellow-foreground: oklch(0.205 0 0);
 	--ring: oklch(0.3446 0 0);
 	--chart-grid: var(--border);
@@ -246,6 +246,10 @@
 	}
 	body {
 		@apply font-sans bg-background text-foreground;
+	}
+	/* Highlighted text: translucent yellow, so the text keeps its own colour on top */
+	::selection {
+		background-color: color-mix(in oklch, var(--yellow) 40%, transparent);
 	}
 	h1, h2, h3 {
 		@apply font-display font-normal;

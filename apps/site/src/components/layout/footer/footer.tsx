@@ -121,7 +121,7 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative z-10 w-full border-t bg-background pt-16 lg:mt-16 md:mt-16 mt-8">
+    <footer className="relative z-10 w-full bg-background pt-16">
       <div className="max-w-7xl mx-auto px-4 lg:px-8">
         <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
           <div className="flex w-full flex-col justify-between gap-6 lg:w-1/4 lg:items-start">

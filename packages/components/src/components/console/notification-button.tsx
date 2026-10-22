@@ -19,7 +19,7 @@ export function NotificationButton({
       <span className="flex text-muted-foreground group-hover/menu-button:text-foreground [&>svg]:size-4">
         <HugeiconsIcon icon={BellIcon} />
       </span>
-      {hasUnread && <div className="absolute top-1 right-1 size-1.5 rounded-full bg-blue-400" />}
+      {hasUnread && <div className="absolute top-1 right-1 size-1.5 rounded-full bg-yellow" />}
     </SidebarMenuButton>
   );
 }

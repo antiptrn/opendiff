@@ -30,7 +30,9 @@ const previewLink = (href: string) => <a href={href} onClick={(event) => event.p
  */
 export function AppPreview() {
   return (
-    <SidebarProvider keyboardShortcut={null} className="h-full min-h-0 overflow-hidden">
+    // Always open: otherwise it picks up a collapsed state saved from the console and the top bar
+    // shows the button that brings the sidebar back
+    <SidebarProvider open keyboardShortcut={null} className="h-full min-h-0 overflow-hidden">
       <AppSidebar
         collapsible="none"
         navGroups={NAV_GROUPS}

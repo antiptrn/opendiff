@@ -26,9 +26,7 @@ export function HeroSection() {
         }
       >
         <HeroActions />
-        <p className="mt-12 text-muted-foreground">
-          OpenDiff is now <span className="text-foreground">Contrast</span>
-        </p>
+        <p className="mt-12 text-shimmer">OpenDiff is now Contrast</p>
       </PageHero>
       <div className="relative mx-auto w-full max-w-7xl px-8 pb-32">
         <div className="relative">

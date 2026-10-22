@@ -67,7 +67,7 @@ function NotificationItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5">
           <span className="text-base truncate">{notification.title}</span>
-          {!notification.readAt && <span className="size-1.5 rounded-full bg-blue-500 shrink-0" />}
+          {!notification.readAt && <span className="size-1.5 rounded-full bg-yellow shrink-0" />}
         </div>
         <p className="text-sm text-foreground truncate mt-1">{notification.body}</p>
         <p className="text-sm text-muted-foreground mt-1">

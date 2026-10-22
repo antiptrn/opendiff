@@ -28,7 +28,8 @@ export function ComparisonTable({
 }) {
   return (
     <div className="relative z-10 mt-16 md:flex hidden">
-      <table className="isolate w-full table-fixed border-collapse">
+      {/* Separate borders so the popular column can have rounded corners like the pricing cards */}
+      <table className="isolate w-full table-fixed border-separate border-spacing-0">
         <colgroup>
           <col className="w-[25%]" />
           <col className="w-[25%]" />
@@ -51,7 +52,7 @@ export function ComparisonTable({
             {plans.map((plan) => (
               <th
                 key={plan.tier}
-                className={`text-left text-lg font-normal ${plan.popular ? "bg-card" : "bg-background"}`}
+                className={`text-left text-lg font-normal ${plan.popular ? "rounded-t-xl bg-card" : "bg-background"}`}
               >
                 <div className="px-6 pb-3 pt-6 flex items-center gap-3">
                   <h4>{plan.name}</h4>
@@ -95,7 +96,7 @@ export function ComparisonTable({
             ))}
           </tr>
         </thead>
-        <tbody className="[&>tr:nth-child(n+2)]:border-t [&>tr:nth-child(n+2)]:border-border">
+        <tbody className="[&>tr:nth-child(n+2)>*]:border-t [&>tr:nth-child(n+2)>*]:border-border">
           {comparisonRows.map((row, rowIndex) => (
             <tr key={row.feature}>
               <th className="text-left">
@@ -109,7 +110,7 @@ export function ComparisonTable({
                 return (
                   <td
                     key={plans[i]?.tier}
-                    className={`text-sm ${isPopular ? "bg-card" : ""}`}
+                    className={`text-sm ${isPopular ? `bg-card ${isLastRow ? "rounded-b-xl" : ""}` : ""}`}
                   >
                     <div
                       className={`flex items-center px-6 ${isPopular && isLastRow ? "pt-3 pb-6" : ""}`}
