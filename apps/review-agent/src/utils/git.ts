@@ -334,15 +334,22 @@ async function cleanupWorkspace(dir: string, config: GitCacheConfig): Promise<vo
 
   try {
     const rawMeta = await readFile(join(dir, WORKTREE_META_FILE), "utf8");
-    const meta = JSON.parse(rawMeta) as { mirrorDir?: unknown; worktreeBranchRef?: unknown };
-    if (typeof meta.mirrorDir !== "string") {
-      throw new Error("Worktree metadata is missing mirrorDir");
+    const meta = JSON.parse(rawMeta) as {
+      repoId?: unknown;
+      mirrorDir?: unknown;
+      worktreeBranchRef?: unknown;
+    };
+    if (typeof meta.repoId !== "string" || typeof meta.mirrorDir !== "string") {
+      throw new Error("Worktree metadata is missing repoId or mirrorDir");
     }
-    const git = simpleGit(meta.mirrorDir);
-    await removeWorktreeFromMirror(git, dir);
-    if (typeof meta.worktreeBranchRef === "string") {
-      await deleteRefIfExists(git, meta.worktreeBranchRef);
-    }
+    const { mirrorDir, repoId, worktreeBranchRef } = meta;
+    await withRepoLock(config, repoId, async () => {
+      const git = simpleGit(mirrorDir);
+      await removeWorktreeFromMirror(git, dir);
+      if (typeof worktreeBranchRef === "string") {
+        await deleteRefIfExists(git, worktreeBranchRef);
+      }
+    });
   } catch {
     try {
       await rm(dir, { recursive: true, force: true });
