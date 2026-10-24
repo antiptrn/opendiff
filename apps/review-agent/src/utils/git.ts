@@ -304,20 +304,29 @@ async function prepareFreshClone(
   const repoUrl = getRepoUrl(opts.owner, opts.repo);
   const git = simpleGit(tempDir).env(await getGitAuthEnv(config, token));
 
-  await mkdir(tempDir, { recursive: true });
-  await withRetry(
-    () =>
-      git.clone(repoUrl, ".", {
-        "--branch": opts.branch,
-        "--depth": String(config.fetchDepth),
-        "--single-branch": null,
-      }),
-    "git clone"
-  );
+  try {
+    await mkdir(tempDir, { recursive: true });
+    await withRetry(
+      () =>
+        git.clone(repoUrl, ".", {
+          "--branch": opts.branch,
+          "--depth": String(config.fetchDepth),
+          "--single-branch": null,
+        }),
+      "git clone"
+    );
 
-  await validateCommitSha(git, "HEAD", opts);
+    await validateCommitSha(git, "HEAD", opts);
 
-  return { dir: tempDir, git };
+    return { dir: tempDir, git };
+  } catch (error) {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {
+      console.warn(`Failed to cleanup temp directory after clone failure: ${tempDir}`);
+    }
+    throw error;
+  }
 }
 
 async function cleanupWorkspace(dir: string, config: GitCacheConfig): Promise<void> {
