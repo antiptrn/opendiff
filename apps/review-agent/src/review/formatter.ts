@@ -544,7 +544,11 @@ export class ReviewFormatter {
     return TYPE_LABELS[type].replace(/\s+/g, "&nbsp;");
   }
 
-  private formatIssueSentence(value: string): string {
+  private formatIssueSentence(value: unknown): string {
+    if (typeof value !== "string") {
+      return "";
+    }
+
     const trimmed = value.trim();
     if (!trimmed) {
       return trimmed;
