@@ -543,15 +543,6 @@ export async function handleMergeConflictAutofix(
           return;
         }
 
-        const postFixStatus = await git.status();
-        if (postFixStatus.conflicted.length > 0) {
-          result.skippedIssues.push({
-            issue,
-            reason: `Autofix left unresolved merge conflicts in ${postFixStatus.conflicted.join(", ")}.`,
-          });
-          return;
-        }
-
         const filesWithMarkers = await findConflictMarkerFiles(
           git,
           conflictDetails.conflictedFiles
@@ -565,6 +556,15 @@ export async function handleMergeConflictAutofix(
         }
 
         await git.add(".");
+        const postFixStatus = await git.status();
+        if (postFixStatus.conflicted.length > 0) {
+          result.skippedIssues.push({
+            issue,
+            reason: `Autofix left unresolved merge conflicts in ${postFixStatus.conflicted.join(", ")}.`,
+          });
+          return;
+        }
+
         const stagedFiles = (await git.diff(["--cached", "--name-only", "--no-renames"]))
           .split("\n")
           .map((file) => file.trim())
