@@ -61,8 +61,9 @@ function NotificationItem({
       ref={ref}
       type="button"
       onClick={() => onClick(notification)}
-      className={`w-full flex items-start gap-3 px-5 py-4 text-left transition-colors ${!notification.readAt ? "bg-accent/20" : ""
-        }`}
+      className={`w-full flex items-start gap-3 px-5 py-4 text-left transition-colors ${
+        !notification.readAt ? "bg-accent/20" : ""
+      }`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5">
@@ -101,8 +102,8 @@ function ScrollSentinel({ onVisible }: { onVisible: () => void }) {
 export function NotificationPopover() {
   const { user } = useAuth();
   const { currentOrg } = useOrganization();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   const token = user?.access_token;
   const orgId = currentOrg?.id;
@@ -113,14 +114,14 @@ export function NotificationPopover() {
   const notifications = data?.pages.flatMap((p) => p.notifications) ?? [];
   const unreadCount = data?.pages[0]?.unreadCount ?? 0;
 
-  const handleVisible = useCallback((id: string) => markRead.mutate(id), [markRead]);
-
   const handleClick = (notification: Notification) => {
     if (notification.reviewId) {
       setOpen(false);
       navigate(`/console/pull-requests/${notification.reviewId}`);
     }
   };
+
+  const handleVisible = useCallback((id: string) => markRead.mutate(id), [markRead]);
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -133,10 +134,11 @@ export function NotificationPopover() {
       <PopoverTrigger asChild>
         <NotificationButton hasUnread={unreadCount > 0} />
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" className="w-80 p-0 min-h-24">
+      <PopoverContent side="top" align="end" className="w-80 min-h-24 bg-background p-0">
         <div className="max-h-80 overflow-y-auto h-full">
           {notifications.length === 0 ? (
             <TableEmpty
+              variant="plain"
               title="No notifications"
               description="Reviews, fixes and team updates show up here."
             />
@@ -153,7 +155,10 @@ export function NotificationPopover() {
               {hasNextPage && <ScrollSentinel onVisible={loadMore} />}
               {isFetchingNextPage && (
                 <div className="py-3 flex justify-center">
-                  <HugeiconsIcon icon={Loading03Icon} className="size-4 animate-spin text-muted-foreground" />
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    className="size-4 animate-spin text-muted-foreground"
+                  />
                 </div>
               )}
             </>

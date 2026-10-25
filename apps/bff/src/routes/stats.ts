@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../db";
 import { getAuthToken, getAuthUser, requireAuth, requireOrgAccess } from "../middleware/auth";
+import { getOrgQuotaPool } from "../middleware/organization";
 import { fetchGitHubRepos } from "../utils/github-repos";
 
 const statsRoutes = new Hono();
@@ -189,6 +190,28 @@ statsRoutes.get("/", requireAuth(), async (c) => {
 });
 
 // Get review time series data
+// Review token usage this billing cycle and the plan, without any other billing details, so an
+// agent can tell whether there's room for more reviews
+statsRoutes.get("/usage", requireAuth(), async (c) => {
+  const orgId = await requireOrgAccess(c);
+  if (!orgId) return c.json({ error: "Organization ID required" }, 400);
+
+  const [quota, org] = await Promise.all([
+    getOrgQuotaPool(orgId),
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { subscriptionTier: true, subscriptionStatus: true },
+    }),
+  ]);
+  return c.json({
+    plan: org?.subscriptionTier ?? null,
+    planStatus: org?.subscriptionStatus ?? null,
+    tokensUsed: quota.used,
+    tokenLimit: quota.hasUnlimited ? null : quota.total,
+    tokensRemaining: quota.hasUnlimited ? null : Math.max(0, quota.total - quota.used),
+  });
+});
+
 statsRoutes.get("/reviews-over-time", requireAuth(), async (c) => {
   const orgId = await requireOrgAccess(c);
   const interval = c.req.query("interval") || "day"; // hour, day, week, month, year

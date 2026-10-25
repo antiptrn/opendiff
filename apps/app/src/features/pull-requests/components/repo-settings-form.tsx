@@ -3,7 +3,7 @@ import { Label } from "components/components/ui/label";
 import { LoadingButton } from "components/components/ui/loading-button";
 import { Slider } from "components/components/ui/slider";
 import { Textarea } from "components/components/ui/textarea";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 interface RepoSettingsFormProps {
   initialSettings: {
@@ -31,6 +31,8 @@ interface RepoSettingsFormProps {
   isSaving: boolean;
   submitLabel?: string;
   submittingLabel?: string;
+  /** Extra fields just above the submit button, given the settings as currently edited */
+  beforeSubmit?: (settings: RepoSettingsFormProps["initialSettings"]) => ReactNode;
 }
 
 /**
@@ -43,6 +45,7 @@ export function RepoSettingsForm({
   isSaving,
   submitLabel = "Save Settings",
   submittingLabel = "Saving...",
+  beforeSubmit,
 }: RepoSettingsFormProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [isDirty, setIsDirty] = useState(false);
@@ -233,11 +236,13 @@ export function RepoSettingsForm({
             value={settings.customReviewRules}
             onChange={(e) => updateSetting("customReviewRules", e.target.value)}
             placeholder="# Rules&#10;- Always check for proper error handling&#10;- Flag any hardcoded credentials&#10;- Ensure functions have proper TypeScript types&#10;- Check for accessibility issues in React components"
-            variant="background"
+            variant="muted"
             minHeight="md"
           />
         </div>
       </div>
+
+      {beforeSubmit?.(settings)}
 
       <LoadingButton
         onClick={handleSubmit}

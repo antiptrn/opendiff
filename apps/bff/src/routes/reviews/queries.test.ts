@@ -10,8 +10,8 @@ const reviewComment = {
   findMany: mock((_args: unknown): Promise<unknown[]> => Promise.resolve([])),
   count: mock((_args: unknown): Promise<number> => Promise.resolve(0)),
 };
-const queryRaw = mock((_query: unknown): Promise<Array<{ count: bigint | number }>> =>
-  Promise.resolve([{ count: 0 }])
+const queryRaw = mock(
+  (_query: unknown): Promise<Array<{ count: bigint | number }>> => Promise.resolve([{ count: 0 }])
 );
 const requireOrgAccess = mock(() => Promise.resolve("org-1"));
 const getAuthUser = mock(() => ({ id: "user-1", githubAccessToken: "ghp_linked" }));
@@ -131,8 +131,106 @@ describe("review query routes", () => {
     });
     expect(fetchPRMetadataBatch).toHaveBeenCalledWith(
       [{ owner: "owner", repo: "repo", pullNumber: 124 }],
-      "ghp_linked"
+      "ghp_linked",
+      { cache: true }
     );
+  });
+
+  describe("state, filters and sorting", () => {
+    const listRequest = (query = "") =>
+      createApp().fetch(
+        new Request(`http://localhost/api/reviews${query}`, {
+          headers: { Authorization: "Bearer token", "X-Organization-Id": "org-1" },
+        })
+      );
+
+    const meta = (overrides: Record<string, unknown>) => ({
+      state: "open",
+      merged: false,
+      draft: false,
+      title: "PR",
+      htmlUrl: "https://github.com/owner/repo/pull/1",
+      author: "octocat",
+      authorAvatarUrl: null,
+      labelDetails: [],
+      commentCount: 0,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      review.groupBy.mockResolvedValue(
+        [1, 2, 3].map((pullNumber, index) => ({
+          repositorySettingsId: "repo-settings-1",
+          pullNumber,
+          _max: { createdAt: new Date(`2026-06-2${4 - index}T12:00:00.000Z`) },
+        }))
+      );
+      review.findMany.mockResolvedValue(
+        [1, 2, 3].map((pullNumber, index) => ({
+          id: `review-${pullNumber}`,
+          repositorySettingsId: "repo-settings-1",
+          repositorySettings: { owner: "owner", repo: "repo" },
+          pullNumber,
+          pullTitle: `PR ${pullNumber}`,
+          pullAuthor: null,
+          reviewType: "initial",
+          comments: [],
+          createdAt: new Date(`2026-06-2${4 - index}T12:00:00.000Z`),
+        }))
+      );
+      fetchPRMetadataBatch.mockResolvedValue(
+        new Map([
+          ["owner/repo#1", meta({ author: "ada", createdAt: "2026-06-03T00:00:00.000Z" })],
+          [
+            "owner/repo#2",
+            meta({
+              state: "closed",
+              merged: true,
+              author: "linus",
+              createdAt: "2026-06-02T00:00:00.000Z",
+            }),
+          ],
+          [
+            "owner/repo#3",
+            meta({ state: "closed", author: "ada", createdAt: "2026-06-01T00:00:00.000Z" }),
+          ],
+        ])
+      );
+    });
+
+    it("lists open pull requests by default, with Open and Closed counts", async () => {
+      const body = await (await listRequest()).json();
+
+      expect(body.reviews.map((r: { pullNumber: number }) => r.pullNumber)).toEqual([1]);
+      expect(body.counts).toEqual({ open: 1, closed: 2 });
+      expect(body.pagination.total).toBe(1);
+    });
+
+    it("lists closed and merged pull requests together, marking which were merged", async () => {
+      const body = await (await listRequest("?state=closed")).json();
+
+      expect(
+        body.reviews.map((r: { pullNumber: number; state: string }) => [r.pullNumber, r.state])
+      ).toEqual([
+        [2, "merged"],
+        [3, "closed"],
+      ]);
+    });
+
+    it("filters by author for both the list and the counts", async () => {
+      const body = await (await listRequest("?state=all&author=ada")).json();
+
+      expect(body.reviews.map((r: { pullNumber: number }) => r.pullNumber)).toEqual([1, 3]);
+      expect(body.counts).toEqual({ open: 1, closed: 1 });
+      expect(body.facets.authors).toEqual(["ada", "linus"]);
+    });
+
+    it("sorts oldest first by when the pull request was opened", async () => {
+      const body = await (await listRequest("?state=all&sort=oldest")).json();
+
+      expect(body.reviews.map((r: { pullNumber: number }) => r.pullNumber)).toEqual([3, 2, 1]);
+    });
   });
 
   it("returns only the newest review for each pull request in the review list", async () => {
@@ -292,7 +390,8 @@ describe("review query routes", () => {
       })
     );
 
-    const where = (reviewComment.findMany.mock.calls[0]?.[0] as { where: { OR?: unknown[] } }).where;
+    const where = (reviewComment.findMany.mock.calls[0]?.[0] as { where: { OR?: unknown[] } })
+      .where;
     expect(where.OR).toHaveLength(4);
     expect(where.OR?.[0]).toEqual({ body: { contains: "auth", mode: "insensitive" } });
     expect(reviewComment.count.mock.calls[0]?.[0]).toEqual({ where });

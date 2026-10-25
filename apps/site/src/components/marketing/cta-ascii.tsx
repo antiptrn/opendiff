@@ -1,12 +1,12 @@
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import { GLYPHS, VERTEX_SHADER, compile, createGlyphAtlas, readInk } from "./ascii-gl";
+import { GLYPHS, VERTEX_SHADER, compile, createGlyphAtlas } from "./ascii-gl";
 
 /** Grid cell size in CSS pixels */
 const CELL_PX = 10;
 const MAX_DPR = 1.5;
 
-// Rising plumes of ASCII light, using the same glyph atlas and ink as the hero.
+// Rising plumes of ASCII light, using the same glyph atlas and prismatic ink as the hero.
 const FRAGMENT_SHADER = `
 precision highp float;
 uniform vec2 uResolution;
@@ -16,7 +16,6 @@ uniform float uPointerStrength;
 uniform float uCell;
 uniform sampler2D uGlyphs;
 uniform float uGlyphCount;
-uniform vec3 uInk;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -66,8 +65,12 @@ void main() {
   // Fainter light gets lighter ink as well as a sparser glyph, so beams fade out at their edges
   float alpha = texture2D(uGlyphs, glyphUv).a * mix(0.45, 1.0, gray);
 
-  // Ink in the page's text color, premultiplied
-  gl_FragColor = vec4(uInk * alpha, alpha);
+  // Prismatic ink, like holographic foil: pastel hues that shift across the section and along
+  // each plume, whitening where the fire burns brightest. Premultiplied.
+  float hue = uv.x * 0.9 + uv.y * 0.55 + gray * 0.35 + uTime * 0.04;
+  vec3 prism = vec3(0.7, 0.66, 0.8) + vec3(0.3, 0.34, 0.24) * cos(6.2831853 * (hue + vec3(0.0, 0.33, 0.67)));
+  vec3 ink = mix(prism, vec3(1.0), gray * gray * 0.35);
+  gl_FragColor = vec4(ink * alpha, alpha);
 }
 `;
 
@@ -133,7 +136,6 @@ export function CtaAscii() {
       pointer: gl.getUniformLocation(program, "uPointer"),
       pointerStrength: gl.getUniformLocation(program, "uPointerStrength"),
       cell: gl.getUniformLocation(program, "uCell"),
-      ink: gl.getUniformLocation(program, "uInk"),
     };
 
     let dpr = 1;
@@ -161,8 +163,6 @@ export function CtaAscii() {
       gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
       gl.uniform1f(uniforms.pointerStrength, pointer.strength);
       gl.uniform1f(uniforms.cell, CELL_PX * dpr);
-      const [r, g, b] = readInk(canvas);
-      gl.uniform3f(uniforms.ink, r, g, b);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -179,12 +179,6 @@ export function CtaAscii() {
     resize();
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
-
-    const themeObserver = new MutationObserver(() => draw(reduceMotion ? 4 : elapsed));
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-    });
 
     let frame = 0;
     const start = performance.now();
@@ -206,7 +200,6 @@ export function CtaAscii() {
       cancelAnimationFrame(frame);
       intersectionObserver.disconnect();
       resizeObserver.disconnect();
-      themeObserver.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
       gl.deleteBuffer(buffer);
       gl.deleteTexture(texture);

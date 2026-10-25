@@ -70,7 +70,7 @@ export function FeaturesSection() {
         <div className="mb-18">
           <SectionHeading
             index={1}
-            label="Features"
+            label="What Contrast does"
             title="Everything a reviewer does on every pull request"
             description="Every pull request gets a review that reads the whole diff and the code around it."
           />

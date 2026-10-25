@@ -7,6 +7,7 @@ import {
   DashboardSpeed02Icon,
   FolderGitIcon,
   LifebuoyIcon,
+  Key01Icon,
   PaintBoardIcon,
   Settings01Icon,
   Shield01Icon,
@@ -35,6 +36,7 @@ export function getConsoleNavGroups({
     {
       label: "Organization",
       items: [
+        { label: "API keys", href: "/console/api-keys", icon: Key01Icon },
         { label: "Settings", href: SETTINGS_HREF, icon: Settings01Icon },
         ...(showAdmin ? [{ label: "Admin", href: "/console/admin", icon: Shield01Icon }] : []),
       ],

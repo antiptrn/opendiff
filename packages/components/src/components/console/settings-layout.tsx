@@ -5,8 +5,7 @@ import { cn } from "../../utils/cn";
  * A group of settings: a title (and optional description and action) above a bordered panel.
  * Each child of the panel (usually a SettingsRow) gets the same padding, with a line between
  * them. The danger variant tints the panel for destructive actions. `fullBleed` is for tables:
- * the title stays in the settings column while the table runs side to side across the page,
- * with lines above and below it instead of a rounded panel.
+ * the table fills the panel edge to edge, with no padding of its own.
  */
 export function SettingsSection({
   title,
@@ -27,8 +26,8 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className={cn("flex flex-col gap-3", !fullBleed && "max-w-3xl px-4", className)}>
-      <div className={cn("flex items-end justify-between gap-6", fullBleed && "max-w-3xl px-4")}>
+    <section className={cn("flex max-w-3xl flex-col gap-3 px-4", className)}>
+      <div className="flex items-end justify-between gap-6">
         <div className="min-w-0 space-y-1">
           <h2 className={cn("text-base", variant === "danger" && "text-destructive")}>{title}</h2>
           {description && <div className="text-sm text-muted-foreground">{description}</div>}
@@ -38,7 +37,8 @@ export function SettingsSection({
       <div
         className={cn(
           fullBleed
-            ? "flex flex-col border-y border-border-solid"
+            ? // Shrinks to a table's width, so its grid doesn't trail off into empty panel
+              "flex max-w-full flex-col overflow-hidden rounded-lg border border-border-solid has-[table]:w-fit"
             : "flex flex-col divide-y rounded-xl border [&>*]:px-5 [&>*]:py-4",
           !fullBleed &&
             (variant === "danger"

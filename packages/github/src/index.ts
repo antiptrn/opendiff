@@ -23,6 +23,7 @@ export interface PRMeta {
   body: string | null;
   state: "open" | "closed";
   merged: boolean;
+  draft: boolean;
   author: string | null;
   authorAvatarUrl: string | null;
   headBranch: string;
@@ -30,6 +31,10 @@ export interface PRMeta {
   htmlUrl: string;
   assignees: string[];
   labels: string[];
+  /** Labels with their GitHub colour (hex without the #), for showing them as GitHub does */
+  labelDetails: Array<{ name: string; color: string }>;
+  /** Conversation comments plus inline review comments, as GitHub counts them on the PR list */
+  commentCount: number;
   reviewers: string[];
   createdAt: string;
   updatedAt: string;

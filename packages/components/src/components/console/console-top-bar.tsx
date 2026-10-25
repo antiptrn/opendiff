@@ -1,4 +1,4 @@
-import { Menu01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Fragment, type ReactElement, type ReactNode, type Ref } from "react";
 import { Icon } from "../icon";
@@ -13,7 +13,16 @@ import {
 import { Button } from "../ui/button";
 import { SidebarTrigger, useSidebar } from "../ui/sidebar";
 import { TopBar } from "../ui/top-bar";
+import { cn } from "../../utils/cn";
 import type { AppSidebarNavGroup } from "./app-sidebar";
+
+/** Where the browser's back and forward buttons would go, and how to go there */
+export interface ConsoleHistory {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
+}
 
 export interface ConsoleCrumb {
   label: string;
@@ -61,6 +70,7 @@ export function ConsoleTopBar({
   actionsRef,
   search,
   searchRef,
+  history,
 }: {
   crumbs: ConsoleCrumb[];
   renderLink: (href: string) => ReactElement;
@@ -72,9 +82,13 @@ export function ConsoleTopBar({
   search?: ReactNode;
   /** Receives the element that holds the search, so pages can render their search into it */
   searchRef?: Ref<HTMLDivElement>;
+  /** Back and forward buttons before the breadcrumb (not on mobile) */
+  history?: ConsoleHistory;
 }) {
   const { isMobile, openMobile, state, toggleSidebar } = useSidebar();
 
+  // The 28px buttons at the edges sit 10px in, the same as the space above and below them (the
+  // "sidebar" inset's right padding, and the left buttons pulled in from the bar's 16px to match)
   return (
     <TopBar inset="sidebar">
       <div className="flex w-full items-center justify-between gap-4">
@@ -88,8 +102,33 @@ export function ConsoleTopBar({
               <Icon />
             </BreadcrumbLink>
           ) : state === "collapsed" ? (
-            <SidebarTrigger />
+            <SidebarTrigger className="-ml-1.5" />
           ) : null}
+          {history && !isMobile && (
+            // Shaped like the sidebar button; pulled to the edge like it when it isn't there
+            <div className={cn("flex items-center", state !== "collapsed" && "-ml-1.5")}>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Back"
+                disabled={!history.canGoBack}
+                className="!rounded-sm text-muted-foreground hover:text-foreground"
+                onClick={history.onBack}
+              >
+                <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Forward"
+                disabled={!history.canGoForward}
+                className="!rounded-sm text-muted-foreground hover:text-foreground"
+                onClick={history.onForward}
+              >
+                <HugeiconsIcon icon={ArrowRight01Icon} className="size-4" />
+              </Button>
+            </div>
+          )}
           <Breadcrumb className="min-w-0">
             <BreadcrumbList>
               {crumbs.map((crumb, index) => {

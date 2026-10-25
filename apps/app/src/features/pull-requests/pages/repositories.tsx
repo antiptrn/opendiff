@@ -1,52 +1,80 @@
-import { TopBarSearch } from "components/components/console";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { formatDate, PaginatedTable, TableEmpty } from "@/components/paginated-table";
-import { ConsoleTopBarActions, ConsoleTopBarSearch } from "@/components/layout/console";
+import { TableEmpty } from "@/components/paginated-table";
 import {
   AddRepoDialog,
   ConfigRepoDialog,
-  RepoRowActions,
   RepoSettingsForm,
-  getLastOpenedTimes,
+  RepoTable,
 } from "@/features/pull-requests/components";
+import { ConsoleTopBarSearch } from "@/components/layout/console";
+import { RepositoryIcon } from "@hugeicons/core-free-icons";
+import {
+  FilterPopover,
+  ListHeader,
+  ListTab,
+  SortMenu,
+  TopBarSearch,
+} from "components/components/console";
 import {
   type OrgRepository,
   type Repository,
   useDeleteRepoSettings,
   useOrgRepos,
+  useReviewOpenPulls,
   useRepositories,
   useRepositorySettings,
   useUpdateSettings,
 } from "@/features/repositories";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "components/components/ui/button";
+import { Checkbox } from "components/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "components/components/ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "components/components/ui/avatar";
-import type { DataTableColumn } from "components/components/ui/data-table";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "components/components/ui/sheet";
 import { useDebounce } from "components/hooks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
+import { queryKeys } from "shared/services";
 import { toast } from "sonner";
+
+type RepoTypeFilter = "all" | "public" | "private";
+type RepoSort = "pushed" | "name";
+
+const SORT_OPTIONS: { value: RepoSort; label: string }[] = [
+  { value: "pushed", label: "Last pushed" },
+  { value: "name", label: "Name" },
+];
+
+const repoFullName = (repo: OrgRepository) => repo.fullName || `${repo.owner}/${repo.repo}`;
 
 export function RepositoriesPage() {
   const { user, logout } = useAuth();
   const { currentOrgId } = useOrganization();
   const [searchQuery, setSearchQuery] = useState("");
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const [repoType, setRepoType] = useState<RepoTypeFilter>("all");
+  const [repoLanguages, setRepoLanguages] = useState<string[]>([]);
+  const [repoSort, setRepoSort] = useState<RepoSort>("pushed");
+  const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set());
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const [addRepoDialogOpen, setAddRepoDialogOpen] = useState(false);
   const [configRepoDialogOpen, setConfigRepoDialogOpen] = useState(false);
   const [editingRepo, setEditingRepo] = useState<{ owner: string; repo: string } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  const debouncedQuery = useDebounce(searchQuery, 300);
+  const typedQuery = useDebounce(searchQuery, 300);
+  const queryClient = useQueryClient();
+  // A query we already have results for (such as clearing back to an empty search) runs straight
+  // away from the cache; only new queries wait for typing to pause
+  const hasCachedResults =
+    queryClient.getQueryData(queryKeys.repos(currentOrgId, searchQuery)) !== undefined;
+  const debouncedQuery = hasCachedResults ? searchQuery : typedQuery;
   const debouncedRepoSearch = useDebounce(repoSearchQuery, 300);
 
   // Use org repos from database - works for all org members regardless of GitHub access
@@ -56,23 +84,50 @@ export function RepositoriesPage() {
     debouncedRepoSearch
   );
 
-  // Sort repos by last opened time (most recent first)
-  const sortedRepos = useMemo(() => {
-    const lastOpenedTimes = getLastOpenedTimes();
-    return [...activatedRepos].sort((a, b) => {
-      const aFullName = a.fullName || `${a.owner}/${a.repo}`;
-      const bFullName = b.fullName || `${b.owner}/${b.repo}`;
-      const aTime = lastOpenedTimes[aFullName] || 0;
-      const bTime = lastOpenedTimes[bFullName] || 0;
-      return bTime - aTime;
-    });
-  }, [activatedRepos]);
-
-  const { data: repositories = [], isLoading: isLoadingRepos } = useRepositories(
-    user?.access_token,
-    currentOrgId,
-    debouncedQuery
+  // The languages the connected repositories use, for the Language menu
+  const languageOptions = useMemo(
+    () =>
+      [
+        ...new Set(activatedRepos.map((repo) => repo.language).filter((name) => name !== null)),
+      ].sort(),
+    [activatedRepos]
   );
+
+  // Narrowed by the Language menu (which the tab counts follow too), then by the tab, then ordered
+  // by the Sort menu (last pushed by default)
+  const languageFiltered = useMemo(
+    () =>
+      activatedRepos.filter(
+        (repo) =>
+          repoLanguages.length === 0 || (!!repo.language && repoLanguages.includes(repo.language))
+      ),
+    [activatedRepos, repoLanguages]
+  );
+  const typeCounts = {
+    all: languageFiltered.length,
+    public: languageFiltered.filter((repo) => !repo.isPrivate).length,
+    private: languageFiltered.filter((repo) => repo.isPrivate).length,
+  };
+  const sortedRepos = useMemo(() => {
+    const nameOf = (repo: OrgRepository) => repo.fullName || `${repo.owner}/${repo.repo}`;
+    return languageFiltered
+      .filter((repo) => repoType === "all" || repo.isPrivate === (repoType === "private"))
+      .sort((a, b) => {
+        if (repoSort === "name") return nameOf(a).localeCompare(nameOf(b));
+        return (
+          (b.pushedAt ? Date.parse(b.pushedAt) : 0) - (a.pushedAt ? Date.parse(a.pushedAt) : 0)
+        );
+      });
+  }, [languageFiltered, repoType, repoSort]);
+  // Only rows still shown count as selected, so changing a filter can't leave hidden ones ticked
+  const selectedShown = sortedRepos.filter((repo) => selectedRepos.has(repoFullName(repo))).length;
+  const isFiltered = !!debouncedRepoSearch || repoType !== "all" || repoLanguages.length > 0;
+
+  const {
+    data: repositories = [],
+    isLoading: isLoadingRepos,
+    isFetching: isFetchingRepos,
+  } = useRepositories(user?.access_token, currentOrgId, debouncedQuery);
 
   const { data: settings, isLoading: isLoadingSettings } = useRepositorySettings(
     selectedRepo?.owner || "",
@@ -90,6 +145,7 @@ export function RepositoriesPage() {
 
   const updateSettings = useUpdateSettings(user?.access_token, currentOrgId);
   const deleteSettings = useDeleteRepoSettings(user?.access_token, currentOrgId);
+  const reviewOpenPullsMutation = useReviewOpenPulls(user?.access_token, currentOrgId);
 
   const handleEdit = (repo: OrgRepository) => {
     setEditingRepo({ owner: repo.owner, repo: repo.repo });
@@ -149,17 +205,20 @@ export function RepositoriesPage() {
     }
   };
 
-  const saveSettings = async (localSettings: {
-    enabled: boolean;
-    approveEnabled: boolean;
-    reviewIncludedDirs: string;
-    reviewIgnoredDirs: string;
-    autofixEnabled: boolean;
-    autofixIncludedDirs: string;
-    autofixIgnoredDirs: string;
-    sensitivity: number;
-    customReviewRules: string;
-  }) => {
+  const saveSettings = async (
+    localSettings: {
+      enabled: boolean;
+      approveEnabled: boolean;
+      reviewIncludedDirs: string;
+      reviewIgnoredDirs: string;
+      autofixEnabled: boolean;
+      autofixIncludedDirs: string;
+      autofixIgnoredDirs: string;
+      sensitivity: number;
+      customReviewRules: string;
+    },
+    { reviewOpenPulls }: { reviewOpenPulls: boolean }
+  ) => {
     if (!selectedRepo) return;
 
     try {
@@ -178,6 +237,25 @@ export function RepositoriesPage() {
         githubRepoId: selectedRepo.id,
       });
       toast.success("Repository added");
+      if (reviewOpenPulls && localSettings.enabled) {
+        // The repository is connected either way; this only reports how the backlog went
+        reviewOpenPullsMutation
+          .mutateAsync({ owner: selectedRepo.owner, repo: selectedRepo.name })
+          .then(({ queued }) =>
+            toast.success(
+              queued === 0
+                ? "No open pull requests to review"
+                : `Reviewing ${queued} open pull request${queued === 1 ? "" : "s"}`
+            )
+          )
+          .catch((error) =>
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Couldn't start reviews for open pull requests"
+            )
+          );
+      }
       setConfigRepoDialogOpen(false);
       setSelectedRepo(null);
       setSearchQuery("");
@@ -186,62 +264,16 @@ export function RepositoriesPage() {
     }
   };
 
-  const columns: DataTableColumn<OrgRepository>[] = [
-    {
-      key: "name",
-      header: "Repository",
-      cell: (repo) => (
-        <span className="flex min-w-0 items-center gap-2">
-          <Avatar className="size-5 rounded-sm">
-            <AvatarImage src={repo.avatarUrl || undefined} alt="" />
-            <AvatarFallback className="rounded-sm text-[10px]">
-              {repo.owner.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <span className="min-w-0 truncate">{repo.fullName || `${repo.owner}/${repo.repo}`}</span>
-        </span>
-      ),
-    },
-    { key: "reviews", header: "Reviews", cell: (repo) => (repo.effectiveEnabled ? "On" : "Off") },
-    { key: "autofix", header: "Auto-fix", cell: (repo) => (repo.autofixEnabled ? "On" : "Off") },
-    { key: "language", header: "Language", cell: (repo) => repo.language || "—" },
-    {
-      key: "pushed",
-      header: "Last pushed",
-      cell: (repo) => (repo.pushedAt ? formatDate(repo.pushedAt) : "—"),
-    },
-    {
-      key: "actions",
-      header: <span className="sr-only">Actions</span>,
-      className: "w-20",
-      cell: (repo) => (
-        <RepoRowActions
-          repository={repo}
-          onEdit={() => handleEdit(repo)}
-          onDelete={() => handleDelete(repo)}
-        />
-      ),
-    },
-  ];
-
   const isRepoAlreadyActive =
     selectedRepo &&
     activatedRepos.some((r) => r.owner === selectedRepo.owner && r.repo === selectedRepo.name);
 
   // With nothing connected the empty state offers its own connect button, so the top bar's isn't needed
   const showsEmptyState =
-    !!user?.access_token && !isLoadingActivated && sortedRepos.length === 0 && !debouncedRepoSearch;
+    !!user?.access_token && !isLoadingActivated && activatedRepos.length === 0 && !isFiltered;
 
   return (
     <div className="flex flex-1 flex-col">
-      {!showsEmptyState && (
-        <ConsoleTopBarActions>
-          <Button size="sm" variant="secondary" onClick={() => setAddRepoDialogOpen(true)}>
-            Connect Repository
-          </Button>
-        </ConsoleTopBarActions>
-      )}
-
       {user?.access_token && (
         <>
           <ConsoleTopBarSearch>
@@ -249,36 +281,141 @@ export function RepositoriesPage() {
               shortcut="f"
               placeholder="Search repositories"
               value={repoSearchQuery}
-              onChange={(e) => setRepoSearchQuery(e.target.value)}
+              onChange={(event) => setRepoSearchQuery(event.target.value)}
             />
           </ConsoleTopBarSearch>
 
-          <PaginatedTable
-            label="Repositories"
-            rows={isLoadingActivated && activatedRepos.length === 0 ? undefined : sortedRepos}
-            columns={columns}
-            getKey={(repo) => repo.fullName || `${repo.owner}/${repo.repo}`}
-            isLoading={isLoadingActivated}
-            empty={
-              debouncedRepoSearch ? (
-                <TableEmpty
-                  title="No matching repositories"
-                  description={`Nothing matches "${debouncedRepoSearch}".`}
+          <div className="flex w-full flex-1 flex-col p-4">
+            {isLoadingActivated && activatedRepos.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center py-12" role="status">
+                <HugeiconsIcon
+                  icon={Loading03Icon}
+                  className="size-6 animate-spin text-muted-foreground"
                 />
-              ) : (
-                <TableEmpty
-                  title="No repositories yet"
-                  description="Connect a repository to start reviewing its pull requests."
-                  action={
-                    <Button size="sm" onClick={() => setAddRepoDialogOpen(true)}>
-                      Connect repository
+                <span className="sr-only">Loading repositories…</span>
+              </div>
+            ) : showsEmptyState ? (
+              <TableEmpty
+                title="No repositories yet"
+                description="Connect a repository to start reviewing its pull requests."
+                action={
+                  <Button size="sm" onClick={() => setAddRepoDialogOpen(true)}>
+                    Connect repository
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-border-solid">
+                {/* Header: visibility tabs, then the language filter and sort menus */}
+                <ListHeader>
+                  <Checkbox
+                    aria-label="Select all repositories"
+                    className="mr-1"
+                    disabled={sortedRepos.length === 0}
+                    checked={
+                      selectedShown === sortedRepos.length && sortedRepos.length > 0
+                        ? true
+                        : selectedShown > 0
+                          ? "indeterminate"
+                          : false
+                    }
+                    onCheckedChange={() =>
+                      setSelectedRepos(
+                        selectedShown === sortedRepos.length
+                          ? new Set()
+                          : new Set(sortedRepos.map(repoFullName))
+                      )
+                    }
+                  />
+                  {selectedShown > 0 ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span>{selectedShown} selected</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => setSelectedRepos(new Set())}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      <ListTab
+                        label="All"
+                        count={typeCounts.all}
+                        active={repoType === "all"}
+                        onClick={() => setRepoType("all")}
+                      />
+                      <ListTab
+                        label="Public"
+                        count={typeCounts.public}
+                        active={repoType === "public"}
+                        onClick={() => setRepoType("public")}
+                      />
+                      <ListTab
+                        label="Private"
+                        count={typeCounts.private}
+                        active={repoType === "private"}
+                        onClick={() => setRepoType("private")}
+                      />
+                    </div>
+                  )}
+                  <div className="ml-auto flex flex-wrap items-center">
+                    <FilterPopover
+                      label="Language"
+                      title="Filter by language"
+                      options={languageOptions}
+                      selected={repoLanguages}
+                      onChange={setRepoLanguages}
+                    />
+                    <SortMenu value={repoSort} options={SORT_OPTIONS} onChange={setRepoSort} />
+                    {/* Extra space before it: the menus beside it have no fill, so they look further apart */}
+                    <Button
+                      size="sm"
+                      className="ml-2"
+                      aria-label="Connect a repository"
+                      onClick={() => setAddRepoDialogOpen(true)}
+                    >
+                      <HugeiconsIcon
+                        icon={RepositoryIcon}
+                        data-icon="inline-start"
+                        className="size-3.5"
+                      />
+                      New
                     </Button>
-                  }
-                />
-              )
-            }
-            onRowClick={handleEdit}
-          />
+                  </div>
+                </ListHeader>
+
+                {sortedRepos.length === 0 ? (
+                  <TableEmpty
+                    variant="plain"
+                    title="No matching repositories"
+                    description={
+                      debouncedRepoSearch
+                        ? `Nothing matches "${debouncedRepoSearch}".`
+                        : "No repositories match these filters."
+                    }
+                  />
+                ) : (
+                  <RepoTable
+                    repos={sortedRepos}
+                    selected={selectedRepos}
+                    onSelectedChange={(fullName, isSelected) =>
+                      setSelectedRepos((previous) => {
+                        const next = new Set(previous);
+                        if (isSelected) next.add(fullName);
+                        else next.delete(fullName);
+                        return next;
+                      })
+                    }
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -299,7 +436,11 @@ export function RepositoriesPage() {
         onSearchChange={setSearchQuery}
         repositories={repositories}
         activatedRepos={activatedRepos}
-        isLoading={isLoadingRepos}
+        // Previous results stay up while a new search loads, so also count the fetch and the
+        // debounce wait as searching; a query with cached results shows them without a spinner
+        isLoading={
+          !hasCachedResults && (isLoadingRepos || isFetchingRepos || searchQuery !== debouncedQuery)
+        }
         debouncedQuery={debouncedQuery}
         onRepoSelect={handleRepoSelect}
       />
@@ -315,52 +456,55 @@ export function RepositoriesPage() {
         isSaving={updateSettings.isPending}
       />
 
-      <Dialog
+      {/* A repository's settings open in a side sheet, so the list stays in view */}
+      <Sheet
         open={editDialogOpen}
         onOpenChange={(open) => {
           setEditDialogOpen(open);
           if (!open) setEditingRepo(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Repository</DialogTitle>
-            <DialogDescription>
-              Update settings for {editingRepo?.owner}/{editingRepo?.repo}.
-            </DialogDescription>
-          </DialogHeader>
+        <SheetContent className="gap-0 bg-background data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
+          <SheetHeader className="border-b border-border-solid pr-12">
+            <SheetTitle>
+              {editingRepo?.owner}/{editingRepo?.repo}
+            </SheetTitle>
+            <SheetDescription>Review and auto-fix settings for this repository.</SheetDescription>
+          </SheetHeader>
 
-          {isLoadingEditSettings && (
-            <div className="flex items-center justify-center py-6">
-              <HugeiconsIcon
-                icon={Loading03Icon}
-                className="size-6 animate-spin text-muted-foreground"
+          <div className="flex-1 overflow-y-auto p-4">
+            {isLoadingEditSettings && (
+              <div className="flex items-center justify-center py-6">
+                <HugeiconsIcon
+                  icon={Loading03Icon}
+                  className="size-6 animate-spin text-muted-foreground"
+                />
+              </div>
+            )}
+
+            {editingRepo && editSettings && !isLoadingEditSettings && (
+              <RepoSettingsForm
+                key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.approveEnabled}-${editSettings.reviewIncludedDirs || ""}-${editSettings.reviewIgnoredDirs || ""}-${editSettings.autofixEnabled}-${editSettings.autofixIncludedDirs || ""}-${editSettings.autofixIgnoredDirs || ""}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
+                initialSettings={{
+                  enabled: editSettings.enabled,
+                  approveEnabled: editSettings.approveEnabled ?? false,
+                  reviewIncludedDirs: editSettings.reviewIncludedDirs || "",
+                  reviewIgnoredDirs: editSettings.reviewIgnoredDirs || "",
+                  autofixEnabled: editSettings.autofixEnabled ?? true,
+                  autofixIncludedDirs: editSettings.autofixIncludedDirs || "",
+                  autofixIgnoredDirs: editSettings.autofixIgnoredDirs || "",
+                  sensitivity: editSettings.sensitivity ?? 50,
+                  customReviewRules: editSettings.customReviewRules || "",
+                }}
+                onSave={saveEditSettings}
+                isSaving={updateSettings.isPending}
+                submitLabel="Save Settings"
+                submittingLabel="Saving..."
               />
-            </div>
-          )}
-
-          {editingRepo && editSettings && !isLoadingEditSettings && (
-            <RepoSettingsForm
-              key={`${editingRepo.owner}/${editingRepo.repo}-${editSettings.enabled}-${editSettings.approveEnabled}-${editSettings.reviewIncludedDirs || ""}-${editSettings.reviewIgnoredDirs || ""}-${editSettings.autofixEnabled}-${editSettings.autofixIncludedDirs || ""}-${editSettings.autofixIgnoredDirs || ""}-${editSettings.sensitivity}-${editSettings.customReviewRules || ""}`}
-              initialSettings={{
-                enabled: editSettings.enabled,
-                approveEnabled: editSettings.approveEnabled ?? false,
-                reviewIncludedDirs: editSettings.reviewIncludedDirs || "",
-                reviewIgnoredDirs: editSettings.reviewIgnoredDirs || "",
-                autofixEnabled: editSettings.autofixEnabled ?? true,
-                autofixIncludedDirs: editSettings.autofixIncludedDirs || "",
-                autofixIgnoredDirs: editSettings.autofixIgnoredDirs || "",
-                sensitivity: editSettings.sensitivity ?? 50,
-                customReviewRules: editSettings.customReviewRules || "",
-              }}
-              onSave={saveEditSettings}
-              isSaving={updateSettings.isPending}
-              submitLabel="Save Settings"
-              submittingLabel="Saving..."
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

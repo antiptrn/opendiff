@@ -58,7 +58,6 @@ export function FaqSection() {
           <div className="pt-12 pb-12 lg:pb-0 lg:pr-24">
             {/* Numbered like the section headings above it */}
             <h2 className="flex gap-4 text-4xl md:text-5xl">
-              <span className="text-yellow">02</span>
               <span>FAQ</span>
             </h2>
             <p className="mt-8">

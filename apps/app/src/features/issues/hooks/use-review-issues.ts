@@ -17,14 +17,25 @@ export interface ReviewIssue {
   createdAt: string;
 }
 
+/** Open issues have no fix yet or one still in progress; closed ones had their fix accepted or rejected */
+export type ReviewIssueStatus = "open" | "closed";
+
 /** Fetches one page of issues found in reviews for the current organization, newest first,
- * optionally matching `search` against the issue text, file path or repository */
-export function useReviewIssues(token?: string, orgId?: string | null, page = 1, search = "") {
+ * optionally only open or closed ones, and matching `search` against the issue text, file path
+ * or repository */
+export function useReviewIssues(
+  token?: string,
+  orgId?: string | null,
+  page = 1,
+  search = "",
+  status?: ReviewIssueStatus
+) {
   return useQuery<{ issues: ReviewIssue[]; pagination: TablePagination }>({
-    queryKey: queryKeys.reviewIssues(orgId, page, search),
+    queryKey: queryKeys.reviewIssues(orgId, page, search, status),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page) });
       if (search) params.set("q", search);
+      if (status) params.set("status", status);
       return fetchWithAuth(`${API_URL}/api/review-issues?${params}`, token, orgId);
     },
     enabled: !!token && !!orgId,

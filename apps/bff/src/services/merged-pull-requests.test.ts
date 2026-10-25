@@ -107,6 +107,7 @@ describe("merged pull requests", () => {
     const fixStatuses: string[] = ["ACCEPTED", "PENDING", "ACCEPTED"];
     const statsDb = {
       reviewComment: { count: async () => 5 },
+      user: { count: async () => 12 },
       reviewFix: {
         count: async ({ where }: { where: { status: string } }) =>
           fixStatuses.filter((status) => status === where.status).length,
@@ -119,6 +120,6 @@ describe("merged pull requests", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(await res.json()).toEqual({ prsMerged: 1, issuesFound: 5, fixesCommitted: 2 });
+    expect(await res.json()).toEqual({ prsMerged: 1, issuesFound: 5, fixesCommitted: 2, members: 12 });
   });
 });

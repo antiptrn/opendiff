@@ -5,6 +5,8 @@ import { rateLimit } from "./middleware/rate-limit";
 // Import shared modules (db import triggers BigInt serialization side-effect)
 import "./db";
 
+import { createMcpRoutes } from "./mcp";
+import { accessTokenRoutes } from "./routes/access-tokens";
 import { accountRoutes } from "./routes/account";
 // Route modules
 import { authRoutes } from "./routes/auth";
@@ -115,6 +117,13 @@ app.route("/api", skillsRoutes);
 app.route("/api", subscriptionRoutes);
 app.route("/api", reviewRoutes);
 app.route("/api", notificationRoutes);
+app.route("/api", accessTokenRoutes);
+
+// The MCP server for AI agents; its tools call the API above with the agent's access token
+app.route(
+  "/",
+  createMcpRoutes((request) => app.fetch(request))
+);
 
 const port = Number(process.env.PORT) || 3000;
 console.log(`Server running on http://localhost:${port}`);

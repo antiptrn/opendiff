@@ -6,5 +6,6 @@ export {
   useRepositorySettings,
   useUpdateSettings,
   useDeleteRepoSettings,
+  useReviewOpenPulls,
   useFetchDocs,
 } from "./use-repositories";

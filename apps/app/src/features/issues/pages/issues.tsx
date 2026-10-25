@@ -1,8 +1,9 @@
 import { TopBarSearch } from "components/components/console";
 import { ConsoleTopBarSearch } from "@/components/layout/console";
+import { Badge } from "components/components/ui/badge";
 import type { DataTableColumn } from "components/components/ui/data-table";
 import { useDebounce } from "components/hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "shared/auth";
 import { useOrganization } from "shared/organizations";
@@ -14,6 +15,11 @@ function formatFixStatus(status: ReviewIssue["fixStatus"]) {
   return status.charAt(0) + status.slice(1).toLowerCase().replaceAll("_", " ");
 }
 
+/** The last part of a path: the file and the folder it's in, such as "/utils/git.ts" */
+function shortPath(path: string) {
+  return `/${path.split("/").filter(Boolean).slice(-2).join("/")}`;
+}
+
 const COLUMNS: DataTableColumn<ReviewIssue>[] = [
   {
     key: "title",
@@ -23,11 +29,18 @@ const COLUMNS: DataTableColumn<ReviewIssue>[] = [
   {
     key: "file",
     header: "File",
-    cell: (row) => (
-      <span className="block max-w-64 truncate font-mono text-xs">
-        {row.path ? `${row.path}${row.line ? `:${row.line}` : ""}` : "—"}
-      </span>
-    ),
+    cell: (row) =>
+      row.path ? (
+        // The file and its folder, such as "/utils/git.ts:341"; hover for the full path
+        <Badge variant="secondary" title={row.path} className="max-w-64">
+          <span className="truncate">
+            {shortPath(row.path)}
+            {row.line ? `:${row.line}` : ""}
+          </span>
+        </Badge>
+      ) : (
+        "—"
+      ),
   },
   { key: "repo", header: "Repository", cell: (row) => repoName(row.owner, row.repo) },
   { key: "number", header: "Pull request", cell: (row) => `#${row.pullNumber}`, align: "end" },
@@ -50,6 +63,10 @@ export function IssuesPage() {
     debouncedSearch
   );
 
+  // A new search starts from the first page
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resets whenever the search changes
+  useEffect(() => setPage(1), [debouncedSearch]);
+
   return (
     <div className="flex flex-1 flex-col">
       <ConsoleTopBarSearch>
@@ -57,14 +74,13 @@ export function IssuesPage() {
           shortcut="f"
           placeholder="Search issues"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
+          onChange={(e) => setSearch(e.target.value)}
         />
       </ConsoleTopBarSearch>
       <PaginatedTable
         label="Issues"
+        storageKey="issues"
+        fullWidth
         rows={data?.issues}
         columns={COLUMNS}
         getKey={(row) => row.id}

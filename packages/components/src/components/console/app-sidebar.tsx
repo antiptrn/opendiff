@@ -18,6 +18,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
+import { cn } from "../../utils";
 
 export interface AppSidebarNavItem {
   label: string;
@@ -132,7 +133,7 @@ export function AppSidebar({
     // On mobile the sidebar slides in from the right, next to the menu button; a sidebar rendered
     // in place (such as in a preview) stays on the left
     <Sidebar collapsible={collapsible} side={isMobile && collapsible !== "none" ? "right" : "left"}>
-      <SidebarHeader className="h-12 shrink-0 justify-center border-b border-border-solid py-0">
+      <SidebarHeader className="h-12 shrink-0 justify-center py-0">
         <div className="flex min-w-0 items-center justify-between gap-0.5">
           {organizationName ? (
             <div className="min-w-0">
@@ -175,7 +176,7 @@ export function AppSidebar({
 
       <SidebarContent>
         {backLink && (
-          <SidebarGroup className="-mb-3 mt-1" spacing="settingsSection">
+          <SidebarGroup className="-mt-1.5 -mb-1 pb-0" spacing="settingsSection">
             <SidebarGroupContent>
               <SidebarMenu>
                 <NavLink
@@ -189,7 +190,11 @@ export function AppSidebar({
           </SidebarGroup>
         )}
         {navGroups.map((group, index) => (
-          <SidebarGroup key={group.label ?? index} spacing="settingsSection" className="pb-0 pt-2">
+          <SidebarGroup key={group.label ?? index} spacing="settingsSection" className={cn(
+              "pb-0 pt-2",
+              // Pulled up under the header, unless a back link already sits there
+              index === 0 && !backLink && "-mt-3"
+            )}>
             {group.label && <SidebarGroupLabel className="h-7">{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
@@ -208,7 +213,7 @@ export function AppSidebar({
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="h-12 shrink-0 justify-center border-t border-border-solid py-0">
+      <SidebarFooter className="h-12 shrink-0 justify-center py-0">
         <div className="flex items-center justify-between gap-0.5">
           <div className="min-w-0">
             <SidebarMenu>

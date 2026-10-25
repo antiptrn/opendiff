@@ -58,7 +58,7 @@ export default function LoginPage() {
         <Link to={websiteUrl} aria-label="Home">
           <Icon size="lg" />
         </Link>
-        <h4 className="mt-6 mb-6 text-2xl font-medium text-foreground">Sign in or create your account</h4>
+        <p className="mt-6 mb-6 text-xl font-medium tracking-tight text-foreground">Sign in or create your account</p>
         {error && (
           <div className="mb-4 text-center text-destructive">
             {errorMessage || `Authentication error: ${error.replace(/_/g, " ")}`}

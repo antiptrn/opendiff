@@ -1,11 +1,12 @@
 import {
   type AppSidebarNavGroup,
   buildConsoleCrumbs,
+  type ConsoleHistory,
   ConsoleTopBar as SharedConsoleTopBar,
 } from "components/components/console";
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
 interface TopBarState {
   trail?: string;
@@ -53,6 +54,53 @@ export function ConsoleTopBarActions({ children }: { children: ReactNode }) {
   return node ? createPortal(children, node) : null;
 }
 
+const FURTHEST_KEY = "console-history-furthest";
+
+/** The tab's history position: React Router numbers each entry in history.state.idx */
+function historyIndex() {
+  const index = (window.history.state as { idx?: unknown } | null)?.idx;
+  return typeof index === "number" ? index : 0;
+}
+
+/**
+ * Whether the browser can go back or forward, for the top bar's buttons. Back is any entry before
+ * this one. Forward isn't exposed by the browser, so this remembers the furthest entry reached
+ * (kept for the tab, so a reload doesn't lose it), and a new navigation drops everything after it.
+ */
+function useConsoleHistory(): ConsoleHistory {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const navigate = useNavigate();
+  const index = historyIndex();
+  const [furthest, setFurthest] = useState(() => {
+    try {
+      return Math.max(Number(sessionStorage.getItem(FURTHEST_KEY)) || 0, index);
+    } catch {
+      return index;
+    }
+  });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per history entry
+  useEffect(() => {
+    setFurthest((previous) => {
+      const next = navigationType === "PUSH" ? index : Math.max(previous, index);
+      try {
+        sessionStorage.setItem(FURTHEST_KEY, String(next));
+      } catch {
+        // Storage can be unavailable (such as in private windows); the buttons still work
+      }
+      return next;
+    });
+  }, [location.key]);
+
+  return {
+    canGoBack: index > 0,
+    canGoForward: index < furthest,
+    onBack: () => navigate(-1),
+    onForward: () => navigate(1),
+  };
+}
+
 /** The shared console top bar, with the breadcrumb for the current route and the pages' actions */
 export function ConsoleTopBar({
   navGroups,
@@ -64,6 +112,7 @@ export function ConsoleTopBar({
   pathname: string;
 }) {
   const context = useContext(TopBarContext);
+  const history = useConsoleHistory();
   const trail = context?.trail;
   const crumbs = useMemo(
     () => buildConsoleCrumbs(pathname, navGroups, settingsHref, trail),
@@ -76,6 +125,7 @@ export function ConsoleTopBar({
       renderLink={(href) => <Link to={href} />}
       actionsRef={context?.setActionsNode}
       searchRef={context?.setSearchNode}
+      history={history}
     />
   );
 }

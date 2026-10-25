@@ -12,6 +12,8 @@ interface SearchBarProps extends Omit<React.ComponentProps<typeof Input>, "type"
   size?: "default" | "sm";
   /** A letter that focuses the search with ⌘ (Ctrl off Mac), shown in a badge at the right */
   shortcut?: string;
+  /** Show the shortcut badge; turn off to keep the shortcut but hide its hint */
+  showShortcut?: boolean;
 }
 
 function isMacPlatform() {
@@ -24,6 +26,7 @@ export function SearchBar({
   className,
   size = "default",
   shortcut,
+  showShortcut = true,
   ...props
 }: SearchBarProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -54,20 +57,21 @@ export function SearchBar({
           iconClassName
         )}
       />
-      {/* Button height (h-10) rather than the taller form input; "sm" fits the top bar */}
+      {/* Button heights rather than the taller form input: h-10 like a default Button, and "sm"
+          34px like a small one, so it lines up with them in the top bar and toolbars */}
       <Input
         ref={inputRef}
         type="text"
         aria-keyshortcuts={shortcut ? `${isMac ? "Meta" : "Control"}+${shortcut.toUpperCase()}` : undefined}
         className={cn(
           "text-sm placeholder:text-sm",
-          size === "sm" ? "h-8 rounded-md pl-9" : "h-10 rounded-full pl-10",
-          shortcut && "pr-14",
+          size === "sm" ? "h-8.5 rounded-md pr-3 pl-9" : "h-10 rounded-full pl-10",
+          shortcut && showShortcut && "pr-14",
           className
         )}
         {...props}
       />
-      {shortcut && (
+      {shortcut && showShortcut && (
         <Badge
           variant="secondary"
           aria-hidden="true"

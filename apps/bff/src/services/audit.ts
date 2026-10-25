@@ -32,7 +32,9 @@ export type AuditAction =
   | "seat.reassigned"
   | "api_key.updated"
   | "api_key.deleted"
-  | "review_rules.updated";
+  | "review_rules.updated"
+  | "access_token.created"
+  | "access_token.revoked";
 
 interface AuditLogParams {
   organizationId?: string;
