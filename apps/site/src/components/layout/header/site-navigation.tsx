@@ -184,7 +184,7 @@ export function SiteNavigation({ onOpenChange }: { onOpenChange?: (open: boolean
       <div ref={navigationRef} className="relative flex items-center gap-1">
         <motion.span
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-0 rounded-md bg-muted"
+          className="pointer-events-none absolute top-0 left-0 rounded-full bg-muted"
           initial={false}
           animate={{
             opacity: activeItem && indicator ? 1 : 0,

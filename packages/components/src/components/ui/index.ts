@@ -36,3 +36,4 @@ export * from "./textarea";
 export * from "./theme-toggle";
 export * from "./tooltip";
 export * from "./use-combobox-anchor";
+export * from "./scroll-area";

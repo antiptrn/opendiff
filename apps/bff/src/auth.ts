@@ -92,6 +92,11 @@ export async function findDbUser(providerUser: ProviderUser) {
 
 // Convenience: resolve an OAuth token directly to a database user
 export async function findDbUserFromToken(token: string) {
+  // Access tokens are resolved by the auth middleware, which also limits what they can do
+  if (token.startsWith("cpat_")) {
+    return null;
+  }
+
   if (isSessionToken(token)) {
     return findUserBySessionToken(token);
   }

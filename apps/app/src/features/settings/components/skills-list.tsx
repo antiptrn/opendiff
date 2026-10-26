@@ -53,11 +53,13 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
   return (
     searchQuery ? (
       <TableEmpty
+        variant="plain"
         title="No matching skills"
         description={`Nothing matches "${searchQuery}".`}
       />
     ) : (
       <TableEmpty
+        variant="plain"
         title="No skills yet"
         description="Create one to customize how the agent reviews your code."
       />

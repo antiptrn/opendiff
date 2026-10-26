@@ -38,6 +38,15 @@ export interface PullRequestSummary {
   pullTitle: string | null;
   pullUrl: string | null;
   pullAuthor: string | null;
+  authorAvatarUrl: string | null;
+  /** From GitHub; null when it couldn't be asked */
+  state: "open" | "closed" | "merged" | null;
+  draft: boolean;
+  labels: Array<{ name: string; color: string }>;
+  /** Conversation and inline comments on GitHub; null when GitHub couldn't be asked */
+  githubCommentCount: number | null;
+  /** When the pull request was opened on GitHub */
+  openedAt: string | null;
   reviewType: string;
   commentCount: number;
   fixCount: number;
@@ -56,6 +65,23 @@ export interface PullRequestListResponse {
     total: number;
     totalPages: number;
   };
+  /** Open and closed pull requests matching the author, repository and text filters */
+  counts: { open: number; closed: number };
+  /** Every author and repository in the list, for the filter menus */
+  facets: { authors: string[]; repos: string[] };
+}
+
+export type PullRequestStateFilter = "open" | "closed" | "all";
+export type PullRequestSort = "reviewed" | "newest" | "oldest" | "issues" | "comments";
+
+/** What the pull request list is narrowed and ordered by */
+export interface PullRequestFilters {
+  page?: number;
+  state?: PullRequestStateFilter;
+  authors?: string[];
+  repos?: string[];
+  q?: string;
+  sort?: PullRequestSort;
 }
 
 /** Full pull request detail including PR metadata, summary, and all comments. */
@@ -86,16 +112,26 @@ export interface PullRequestDetailResponse {
 }
 
 /** Fetches a paginated list of pull requests for the current organization, optionally filtered by repo. */
-export function usePullRequests(token?: string, orgId?: string | null, page = 1, repo?: string) {
+export function usePullRequests(
+  token?: string,
+  orgId?: string | null,
+  filters: PullRequestFilters = {}
+) {
+  const params = new URLSearchParams({ page: String(filters.page ?? 1) });
+  if (filters.state) params.set("state", filters.state);
+  if (filters.authors?.length) params.set("author", filters.authors.join(","));
+  if (filters.repos?.length) params.set("repos", filters.repos.join(","));
+  if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
+  const query = params.toString();
+
   return useQuery<PullRequestListResponse>({
-    queryKey: queryKeys.reviews(orgId, page, repo),
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page) });
-      if (repo) params.set("repo", repo);
-      return fetchWithAuth(`${API_URL}/api/reviews?${params}`, token, orgId);
-    },
+    queryKey: queryKeys.reviews(orgId, query),
+    queryFn: () => fetchWithAuth(`${API_URL}/api/reviews?${query}`, token, orgId),
     enabled: !!token && !!orgId,
     staleTime: 30 * 1000,
+    // Keep the current list up while a new filter loads, so the header and rows don't jump
+    placeholderData: (previous) => previous,
   });
 }
 

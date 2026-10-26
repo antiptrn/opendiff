@@ -5,6 +5,7 @@ import { logAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
 import { fetchRepoMetadata } from "../utils/github-metadata";
 import { fetchGitHubRepoByFullName, fetchGitHubRepos } from "../utils/github-repos";
+import { postToReviewAgent, ReviewAgentError } from "../utils/review-agent-client";
 
 // Helper function to fetch a file from GitHub
 async function fetchGitHubFile(
@@ -328,6 +329,44 @@ reposRoutes.put("/settings/:owner/:repo", requireAuth(), async (c) => {
 
 // Get all enabled repos for an organization
 // Fetches GitHub metadata on-demand with caching
+// Asks the review agent to review every open pull request in a connected repository, such as
+// right after connecting it. Only for repositories this organization has connected with reviews on.
+reposRoutes.post("/settings/:owner/:repo/review-open-pulls", requireAuth(), async (c) => {
+  const { owner, repo } = c.req.param();
+  const orgId = await requireOrgAccess(c);
+
+  const settings = await prisma.repositorySettings.findUnique({
+    where: { owner_repo: { owner, repo } },
+  });
+  if (!settings || (orgId && settings.organizationId !== orgId)) {
+    return c.json({ error: "Repository not found" }, 404);
+  }
+  if (!settings.enabled) {
+    return c.json({ error: "Reviews are off for this repository" }, 400);
+  }
+
+  try {
+    const result = await postToReviewAgent<{
+      queued: number;
+      skippedDrafts: number;
+      rejected: number;
+    }>("/internal/review-open-pulls", { owner, repo });
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof ReviewAgentError && error.status === 404) {
+      return c.json(
+        {
+          error: `Install the Contrast GitHub App on ${owner}/${repo} so it can review its pull requests.`,
+          code: "app_not_installed",
+        },
+        409
+      );
+    }
+    console.error(`Failed to queue open PR reviews for ${owner}/${repo}:`, error);
+    return c.json({ error: "Couldn't start reviews for open pull requests" }, 502);
+  }
+});
+
 reposRoutes.get("/org/repos", requireAuth(), async (c) => {
   const user = getAuthUser(c);
   const orgId = c.req.header("X-Organization-Id");

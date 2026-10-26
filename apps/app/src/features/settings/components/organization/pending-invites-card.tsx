@@ -38,6 +38,7 @@ export function PendingInvitesCard({
       <div>
         {!isLoading && invites.length === 0 ? (
           <TableEmpty
+            variant="plain"
             title="No pending invites"
             description="Invites you send show up here until they're accepted."
           />

@@ -20,6 +20,7 @@ export async function getOrgAiRuntimeConfig(orgId: string): Promise<AiRuntimeCon
       anthropicApiKey: true,
       subscriptionTier: true,
       subscriptionStatus: true,
+      grantedTokens: true,
     },
   });
 
@@ -31,7 +32,8 @@ export async function getOrgAiRuntimeConfig(orgId: string): Promise<AiRuntimeCon
   const hasOpenDiffPaidTier =
     (org.subscriptionTier === "PRO" || org.subscriptionTier === "ULTRA") && hasActiveSubscription;
 
-  if (hasOpenDiffPaidTier) {
+  // Granted tokens run on OpenDiff's own AI too, with or without a plan
+  if (hasOpenDiffPaidTier || Number(org.grantedTokens) > 0) {
     return null;
   }
 

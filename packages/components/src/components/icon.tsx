@@ -13,7 +13,8 @@ export function Icon({ size = "default" }: Props) {
       aria-hidden="true"
     >
       <rect width="1500" height="1500" />
-      <path className="fill-black" d="M750 0L1125 375L750 750L1125 1125L750 1500L0 750Z" />
+      {/* The mark inverts against the square: white on the dark light-mode square, black on white in dark */}
+      <path className="fill-white dark:fill-black" d="M750 0L1125 375L750 750L1125 1125L750 1500L0 750Z" />
     </svg>
   );
 }

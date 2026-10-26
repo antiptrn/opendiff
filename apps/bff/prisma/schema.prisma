@@ -104,6 +104,7 @@ model User {
   feedback    Feedback[]
   skills      Skill[]
   sessions    Session[]
+  accessTokens AccessToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -144,6 +145,7 @@ model Organization {
 
   // Relations
   members            OrganizationMember[]
+  accessTokens       AccessToken[]
   invites            OrganizationInvite[]
   repositorySettings RepositorySettings[]
   reviews            Review[]
@@ -423,4 +425,23 @@ model MergedPullRequest {
   createdAt  DateTime @default(now())
 
   @@unique([owner, repo, pullNumber])
+}
+
+// Personal access token for connecting an AI agent (the MCP server) to one organization.
+// Stored only as a SHA-256 hash; the raw token is shown once when it's created.
+model AccessToken {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  tokenHash      String       @unique
+  // The first characters of the token, so people can tell their tokens apart
+  tokenPrefix    String
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([userId])
+  @@index([organizationId])
 }

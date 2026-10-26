@@ -9,6 +9,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "components/components/ui/empty";
+import { cn } from "components/utils";
 import type { ReactNode } from "react";
 
 /** Page position returned by the paginated list endpoints */
@@ -34,21 +35,24 @@ export function repoName(owner: string | null, repo: string | null) {
 }
 
 /**
- * A full-width table (as on qargo's list pages) with a centred spinner while loading, error and
- * empty states, and pagination at the bottom
+ * A table in a bordered box inset from the page edges, with a centred spinner while loading,
+ * error and empty states, and pagination at the bottom
  */
 /** Empty state for a table or list: the empty-list illustration, a title, a line of description and an optional action, such as a button to add the first item */
 export function TableEmpty({
   title,
   description,
   action,
+  variant = "default",
 }: {
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
+  /** "plain" drops the border, for places that already have one such as a popover */
+  variant?: "default" | "plain";
 }) {
   return (
-    <Empty className="p-12">
+    <Empty variant={variant} className="p-12">
       <EmptyHeader>
         <EmptyMedia variant="icon" />
         <EmptyTitle>{title}</EmptyTitle>
@@ -70,8 +74,14 @@ export function PaginatedTable<T>({
   empty,
   onPageChange,
   onRowClick,
+  storageKey,
+  fullWidth = false,
 }: {
   label: string;
+  /** Stretch the table across the page instead of fitting its columns */
+  fullWidth?: boolean;
+  /** Where the table remembers dragged column widths; defaults to the label */
+  storageKey?: string;
   rows?: readonly T[];
   columns: readonly DataTableColumn<T>[];
   getKey: (row: T) => string;
@@ -104,23 +114,40 @@ export function PaginatedTable<T>({
         columns={columns}
         getKey={getKey}
         onRowClick={onRowClick}
+        storageKey={storageKey}
+        fullWidth={fullWidth}
       />
     );
   }
 
+  const showsTable = !!rows && rows.length > 0 && !error;
+
   return (
-    <div className="flex flex-1 flex-col">
-      {body}
-      {pagination && pagination.total > 0 && onPageChange && (
-        <div className="border-t border-border-solid">
-          <DataTablePagination
-            label={`${label} pages`}
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            onPageChange={onPageChange}
-          />
+    <div className={cn("flex w-full flex-1 flex-col p-4", !fullWidth && "max-w-6xl")}>
+      {showsTable ? (
+        // The table and its page buttons sit in a bordered box inset from the page edges, as wide as
+        // the table's columns
+        <div
+          className={cn(
+            "max-w-full overflow-hidden rounded-lg border border-border-solid",
+            !fullWidth && "w-fit"
+          )}
+        >
+          {body}
+          {pagination && pagination.total > 0 && onPageChange && (
+            <div className="border-t border-border-solid">
+              <DataTablePagination
+                label={`${label} pages`}
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                total={pagination.total}
+                onPageChange={onPageChange}
+              />
+            </div>
+          )}
         </div>
+      ) : (
+        body
       )}
     </div>
   );

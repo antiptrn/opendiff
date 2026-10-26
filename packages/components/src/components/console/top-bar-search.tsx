@@ -2,14 +2,14 @@ import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEventHandler, useEffect, useState } from "react";
 import { SearchBar } from "../ui/search-bar";
-import { SidebarMenuButton } from "../ui/sidebar";
+import { Button } from "../ui/button";
 
 function isMacPlatform() {
   return typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.userAgent);
 }
 
 /**
- * Search for the console top bar: an icon button, the same as the sidebar's collapse button,
+ * Search for the console top bar: a round icon button, the same size as the bar's other buttons,
  * that opens into a search field. ⌘ (Ctrl off Mac) + `shortcut` opens it too. It closes again on
  * Escape, or when it loses focus while empty.
  */
@@ -44,16 +44,17 @@ export function TopBarSearch({
 
   if (!open) {
     return (
-      <SidebarMenuButton
+      // The same size and shape as the bar's back and forward buttons
+      <Button
         type="button"
-        variant="sidebarAction"
+        size="icon-sm"
+        variant="ghost"
         aria-label={placeholder}
+        className="!rounded-sm text-muted-foreground hover:text-foreground"
         onClick={() => setOpen(true)}
       >
-        <span className="flex text-muted-foreground group-hover/menu-button:text-foreground [&>svg]:size-4">
-          <HugeiconsIcon icon={Search01Icon} />
-        </span>
-      </SidebarMenuButton>
+        <HugeiconsIcon icon={Search01Icon} className="size-4" />
+      </Button>
     );
   }
 
@@ -61,6 +62,7 @@ export function TopBarSearch({
     <SearchBar
       size="sm"
       autoFocus
+      className="rounded-full"
       containerClassName="w-56"
       placeholder={placeholder}
       value={value}

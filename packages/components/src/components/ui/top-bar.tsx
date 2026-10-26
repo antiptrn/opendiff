@@ -54,7 +54,7 @@ function TopBar({
       data-bottom-border={bottomBorder}
       data-inset={inset}
       data-scroll-fade={scrollFade}
-      className="relative flex h-12 shrink-0 items-center border-b border-border-solid bg-background px-4 data-[bottom-border=false]:border-b-0 data-[inset=session-panel]:h-auto data-[inset=session-panel]:bg-sidebar data-[inset=session-panel]:py-2.5 data-[inset=session-panel]:pr-[78px] data-[inset=session-panel]:pl-2.5 data-[inset=sidebar]:pr-2"
+      className="relative flex h-12 shrink-0 items-center border-b border-border-solid bg-background px-4 data-[bottom-border=false]:border-b-0 data-[inset=session-panel]:h-auto data-[inset=session-panel]:bg-sidebar data-[inset=session-panel]:py-2.5 data-[inset=session-panel]:pr-[78px] data-[inset=session-panel]:pl-2.5 data-[inset=sidebar]:pr-2.5"
       {...props}
     >
       {children}

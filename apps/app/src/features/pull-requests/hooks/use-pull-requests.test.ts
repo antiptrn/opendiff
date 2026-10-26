@@ -12,8 +12,7 @@ vi.mock("shared/services", () => ({
   fetchWithAuth: vi.fn(),
   API_URL: "http://localhost:3001",
   queryKeys: {
-    reviews: (orgId?: string | null, page?: number, repo?: string) =>
-      ["reviews", orgId, page, repo] as const,
+    reviews: (orgId?: string | null, query?: string) => ["reviews", orgId, query] as const,
     reviewDetail: (orgId?: string | null, reviewId?: string) =>
       ["reviewDetail", orgId, reviewId] as const,
   },

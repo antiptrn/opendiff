@@ -45,6 +45,7 @@ export function BillingHistoryCard({ user, orgId, isSoloUser }: BillingHistoryCa
       <div>
         {!isLoading && orders.length === 0 ? (
           <TableEmpty
+            variant="plain"
             title="No billing history yet"
             description="Invoices for your plan show up here after your first payment."
           />

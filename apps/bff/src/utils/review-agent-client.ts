@@ -8,6 +8,16 @@ function getReviewAgentBaseUrl(): string | null {
   return REVIEW_AGENT_WEBHOOK_URL.replace(/\/?$/, "").replace(/\/webhook$/, "");
 }
 
+/** A non-2xx answer from the review agent, keeping its status so callers can tell failures apart */
+export class ReviewAgentError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string
+  ) {
+    super(`Review agent request failed (${status}): ${body}`);
+  }
+}
+
 export async function postToReviewAgent<TResponse>(
   path: string,
   payload: unknown
@@ -32,7 +42,7 @@ export async function postToReviewAgent<TResponse>(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`Review agent request failed (${response.status}): ${body}`);
+    throw new ReviewAgentError(response.status, body);
   }
 
   return (await response.json()) as TResponse;

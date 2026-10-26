@@ -98,7 +98,8 @@ export function FeedbackDialog({ open, onOpenChange, accessToken }: FeedbackDial
               placeholder="What's on your mind?"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="min-h-32 bg-background"
+              variant="muted"
+              className="min-h-32"
               disabled={isSubmitting}
             />
             {error && <p className="text-sm text-destructive">{error}</p>}

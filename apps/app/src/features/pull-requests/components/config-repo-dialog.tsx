@@ -8,6 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "components/components/ui/dialog";
+import { Checkbox } from "components/components/ui/checkbox";
+import { Label } from "components/components/ui/label";
+import { useEffect, useState } from "react";
 import { RepoSettingsForm } from "./repo-settings-form";
 
 interface ConfigRepoDialogProps {
@@ -17,17 +20,20 @@ interface ConfigRepoDialogProps {
   settings: RepositorySettings | undefined;
   isLoadingSettings: boolean;
   isRepoAlreadyActive: boolean;
-  onSave: (settings: {
-    enabled: boolean;
-    approveEnabled: boolean;
-    reviewIncludedDirs: string;
-    reviewIgnoredDirs: string;
-    autofixEnabled: boolean;
-    autofixIncludedDirs: string;
-    autofixIgnoredDirs: string;
-    sensitivity: number;
-    customReviewRules: string;
-  }) => Promise<void>;
+  onSave: (
+    settings: {
+      enabled: boolean;
+      approveEnabled: boolean;
+      reviewIncludedDirs: string;
+      reviewIgnoredDirs: string;
+      autofixEnabled: boolean;
+      autofixIncludedDirs: string;
+      autofixIgnoredDirs: string;
+      sensitivity: number;
+      customReviewRules: string;
+    },
+    options: { reviewOpenPulls: boolean }
+  ) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -44,6 +50,12 @@ export function ConfigRepoDialog({
   onSave,
   isSaving,
 }: ConfigRepoDialogProps) {
+  // Off by default: reviewing a backlog of pull requests can use a lot of review tokens
+  const [reviewOpenPulls, setReviewOpenPulls] = useState(false);
+  useEffect(() => {
+    if (open) setReviewOpenPulls(false);
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -83,8 +95,30 @@ export function ConfigRepoDialog({
               sensitivity: settings.sensitivity ?? 50,
               customReviewRules: settings.customReviewRules || "",
             }}
-            onSave={onSave}
+            onSave={(newSettings) => onSave(newSettings, { reviewOpenPulls })}
             isSaving={isSaving}
+            beforeSubmit={(current) =>
+              current.enabled && (
+                <div className="flex items-start gap-3">
+                  <div className="mt-[3px]">
+                    <Checkbox
+                      id="review-open-pulls"
+                      checked={reviewOpenPulls}
+                      onCheckedChange={(checked) => setReviewOpenPulls(checked === true)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="review-open-pulls" size="base" interactive>
+                      Review open pull requests
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Review every pull request that's already open, not just new ones. Drafts are
+                      skipped.
+                    </p>
+                  </div>
+                </div>
+              )
+            }
             submitLabel="Connect Repository"
             submittingLabel="Adding..."
           />

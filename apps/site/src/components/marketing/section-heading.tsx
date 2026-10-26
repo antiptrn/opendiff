@@ -25,8 +25,7 @@ export function SectionHeading({
     <div className="relative grid gap-6 border-t border-border-solid lg:grid-cols-2 lg:gap-0">
       <CornerPlus className="-top-1.5 -left-1.5" />
       <CornerPlus className="-top-1.5 left-1/2 hidden -translate-x-1/2 lg:block" />
-      <p className="flex gap-4 pt-12 text-4xl md:text-5xl lg:pr-12">
-        <span className="text-yellow">{String(index).padStart(2, "0")}</span>
+      <p className="font-display flex gap-4 pt-12 text-4xl md:text-5xl lg:pr-12">
         <span>{label}</span>
       </p>
       <div className="border-border-solid pb-12 lg:border-l lg:pt-12 lg:pl-12">

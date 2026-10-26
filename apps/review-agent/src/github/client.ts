@@ -22,6 +22,24 @@ export class GitHubClient {
     return data as PullRequest;
   }
 
+  /** Every open pull request in the repository, with what's needed to queue a review for it */
+  async listOpenPullRequests(
+    owner: string,
+    repo: string
+  ): Promise<Array<{ number: number; draft: boolean; repoId: number }>> {
+    const pulls = await this.octokit.paginate(this.octokit.rest.pulls.list, {
+      owner,
+      repo,
+      state: "open",
+      per_page: 100,
+    });
+    return pulls.map((pull) => ({
+      number: pull.number,
+      draft: pull.draft ?? false,
+      repoId: pull.base.repo.id,
+    }));
+  }
+
   async getPullRequestFiles(
     owner: string,
     repo: string,
