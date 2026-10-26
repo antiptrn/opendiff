@@ -14,5 +14,6 @@ export {
   useRepositorySettings,
   useUpdateSettings,
   useDeleteRepoSettings,
+  useReviewOpenPulls,
   useFetchDocs,
 } from "./hooks";

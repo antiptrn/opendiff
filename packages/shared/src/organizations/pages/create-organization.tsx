@@ -133,8 +133,8 @@ export default function CreateOrganizationPage() {
             <div className="space-y-2">
               <Label htmlFor="name">Organization name</Label>
               <Input
+                variant="muted"
                 id="name"
-                className="bg-background"
                 placeholder="Acme Inc."
                 value={name}
                 onChange={(e) => setName(e.target.value)}

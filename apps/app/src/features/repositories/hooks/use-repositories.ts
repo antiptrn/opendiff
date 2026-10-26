@@ -151,6 +151,16 @@ export function useUpdateSettings(token?: string, orgId?: string | null) {
   });
 }
 
+/** Mutation hook that queues a review of every open pull request in a connected repository */
+export function useReviewOpenPulls(token?: string, orgId?: string | null) {
+  return useMutation({
+    mutationFn: ({ owner, repo }: { owner: string; repo: string }) =>
+      fetchWithAuth(`${API_URL}/api/settings/${owner}/${repo}/review-open-pulls`, token, orgId, {
+        method: "POST",
+      }) as Promise<{ queued: number; skippedDrafts: number; rejected: number }>,
+  });
+}
+
 /** Mutation hook for deleting a repository's settings and disconnecting it. */
 export function useDeleteRepoSettings(token?: string, orgId?: string | null) {
   const queryClient = useQueryClient();

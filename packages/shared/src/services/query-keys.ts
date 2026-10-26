@@ -11,10 +11,10 @@ export const queryKeys = {
   auditLogs: (orgId?: string | null, page?: number, search?: string, action?: string) =>
     ["auditLogs", orgId, page, search, action] as const,
   notifications: (orgId?: string | null) => ["notifications", orgId] as const,
-  reviews: (orgId?: string | null, page?: number, repo?: string) =>
-    ["reviews", orgId, page, repo] as const,
-  reviewIssues: (orgId?: string | null, page?: number, search?: string) =>
-    ["reviewIssues", orgId, page, search] as const,
+  /** `query` is the list's search parameters (page, state, filters and sort) */
+  reviews: (orgId?: string | null, query?: string) => ["reviews", orgId, query] as const,
+  reviewIssues: (orgId?: string | null, page?: number, search?: string, status?: string) =>
+    ["reviewIssues", orgId, page, search, status] as const,
   reviewDetail: (orgId?: string | null, reviewId?: string) =>
     ["reviewDetail", orgId, reviewId] as const,
   skills: () => ["skills"] as const,

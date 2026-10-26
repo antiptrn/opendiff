@@ -7,6 +7,7 @@ export interface PublicStats {
   prsMerged: number;
   issuesFound: number;
   fixesCommitted: number;
+  members: number;
 }
 
 async function fetchPublicStats(): Promise<PublicStats> {

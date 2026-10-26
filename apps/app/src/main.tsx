@@ -12,13 +12,14 @@ import { AdminPage } from "@/features/admin";
 import { CheckoutPage } from "@/features/billing/pages/checkout";
 import { SubscriptionSuccessPage } from "@/features/billing/pages/subscription-success";
 // Features (app-local)
+import { ConnectAgentPage } from "@/features/agent";
 import { ConsolePage } from "@/features/dashboard";
+import { IssuesPage } from "@/features/issues";
 import {
   PullRequestDetailPage,
   PullRequestsListPage,
   RepositoriesPage,
 } from "@/features/pull-requests";
-import { IssuesPage } from "@/features/issues";
 import { SettingsPage } from "@/features/settings";
 
 // Shared
@@ -61,10 +62,13 @@ const router = createBrowserRouter([
         element: <ConsoleLayout />,
         children: [
           { index: true, element: <ConsolePage /> },
-          { path: "repositories", element: <RepositoriesPage /> },
           { path: "pull-requests", element: <PullRequestsListPage /> },
           { path: "pull-requests/:id", element: <PullRequestDetailPage /> },
           { path: "issues", element: <IssuesPage /> },
+          { path: "repositories", element: <RepositoriesPage /> },
+          // Access tokens for connecting an AI agent to Contrast's MCP server
+          { path: "api-keys", element: <ConnectAgentPage /> },
+          { path: "install", element: <Navigate to="/console/api-keys" replace /> },
           { path: "settings", element: <SettingsPage /> },
           { path: "settings/:tab", element: <SettingsPage /> },
           { path: "admin", element: <AdminPage /> },
@@ -82,7 +86,7 @@ const router = createBrowserRouter([
   },
 ]);
 
-/** Signed-out pages always render dark so they match the marketing site */
+/** Signed-out pages always render light so they match the marketing site */
 const SIGNED_OUT_PATH_PREFIXES = ["/login", "/auth/callback", "/invite/"];
 
 function isSignedOutPath(pathname: string) {
@@ -92,7 +96,7 @@ function isSignedOutPath(pathname: string) {
 function useForcedTheme() {
   const [pathname, setPathname] = useState(router.state.location.pathname);
   useEffect(() => router.subscribe((state) => setPathname(state.location.pathname)), []);
-  return isSignedOutPath(pathname) ? "dark" : undefined;
+  return isSignedOutPath(pathname) ? "light" : undefined;
 }
 
 function App() {

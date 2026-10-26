@@ -147,7 +147,7 @@ export function AvatarUpload({
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isUploading}
           aria-label="Upload avatar"
-          className="cursor-pointer absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity disabled:cursor-not-allowed"
+          className="cursor-pointer absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity disabled:cursor-not-allowed"
         >
           {isUploading ? (
             <HugeiconsIcon icon={Loading03Icon} className="size-4 text-white animate-spin" />

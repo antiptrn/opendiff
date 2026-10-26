@@ -12,9 +12,9 @@
     <script>
       (function() {
         var theme = localStorage.getItem('theme');
-        // Signed-out pages are always dark (see SIGNED_OUT_PATH_PREFIXES in src/main.tsx)
+        // Signed-out pages are always light (see SIGNED_OUT_PATH_PREFIXES in src/main.tsx)
         var signedOut = /^\/(login|auth\/callback|invite\/)/.test(window.location.pathname);
-        if (signedOut || theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        if (!signedOut && (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches))) {
           document.documentElement.classList.add('dark');
         }
       })();

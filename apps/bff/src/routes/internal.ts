@@ -316,9 +316,12 @@ internalRoutes.get("/ai-config/:owner/:repo", async (c) => {
   const hasByokTier = org.subscriptionTier === "SELF_SUFFICIENT" && hasActiveSubscription;
   const hasOpenDiffPaidTier =
     (org.subscriptionTier === "PRO" || org.subscriptionTier === "ULTRA") && hasActiveSubscription;
+  // Tokens granted to the org run on OpenDiff's own AI, plan or not; running out is caught by the
+  // quota check in the settings endpoint
+  const hasGrantedTokens = Number(org.grantedTokens) > 0;
 
   if (!hasByokTier) {
-    if (hasOpenDiffPaidTier) {
+    if (hasOpenDiffPaidTier || hasGrantedTokens) {
       return c.json({ useDefault: true });
     }
 

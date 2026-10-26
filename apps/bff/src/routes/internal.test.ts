@@ -314,6 +314,44 @@ describe("internal settings routes", () => {
     expect(body).toEqual({ useDefault: true });
   });
 
+  it("uses OpenDiff default credentials for organizations with granted tokens and no plan", async () => {
+    mockResolvedRepositorySettings({
+      id: "repo-settings-1",
+      owner: "owner",
+      repo: "repo",
+      organization: {
+        subscriptionTier: null,
+        subscriptionStatus: null,
+        grantedTokens: BigInt(500_000),
+      },
+    });
+
+    const app = createApp();
+    const response = await app.fetch(authRequest("/api/internal/ai-config/owner/repo"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ useDefault: true });
+  });
+
+  it("refuses organizations with neither a plan nor granted tokens", async () => {
+    mockResolvedRepositorySettings({
+      id: "repo-settings-1",
+      owner: "owner",
+      repo: "repo",
+      organization: {
+        subscriptionTier: null,
+        subscriptionStatus: null,
+        grantedTokens: BigInt(0),
+      },
+    });
+
+    const app = createApp();
+    const response = await app.fetch(authRequest("/api/internal/ai-config/owner/repo"));
+
+    expect(response.status).toBe(403);
+  });
+
   it("returns BYOK API key config for active Self-sufficient organizations", async () => {
     mockResolvedRepositorySettings({
       id: "repo-settings-1",

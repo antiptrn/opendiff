@@ -1,13 +1,26 @@
-import { Button } from "components";
+import { Button, cn } from "components";
 
-/** The lander's two calls to action, shared by the hero and the closing call to action */
-export function HeroActions() {
+const APP_URL = import.meta.env.VITE_APP_URL || "";
+
+/** The lander's two calls to action. `align` lines them up with a centred or left-aligned title. */
+export function HeroActions({ align = "center" }: { align?: "center" | "start" }) {
   return (
-    <div className="flex items-center justify-center gap-2.5">
-      <Button size="lg" variant="secondary">
-        Sign up
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2.5",
+        align === "center" ? "mt-2 justify-center" : "justify-start"
+      )}
+    >
+      <Button variant="secondary" asChild size="lg">
+        <a href={`${APP_URL}/login`}>
+          Sign up
+        </a>
       </Button>
-      <Button size="lg">Contact sales</Button>
+      <Button asChild size="lg">
+        <a href={`${APP_URL}/login`}>
+          Contact sales
+        </a>
+      </Button>
     </div>
   );
 }

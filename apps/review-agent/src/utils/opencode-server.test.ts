@@ -98,6 +98,47 @@ describe.skipIf(process.platform === "win32")("managed OpenCode server", () => {
     }
   });
 
+  it("authenticates managed server requests and still waits for shutdown", async () => {
+    await withFakeServer(
+      `
+      const expectedAuth = "Basic " + Buffer.from(process.env.OPENCODE_SERVER_USERNAME + ":" + process.env.OPENCODE_SERVER_PASSWORD).toString("base64");
+      const server = Bun.serve({port: 0, fetch(request) {
+        if (request.headers.get("authorization") !== expectedAuth) {
+          return new Response("Unauthorized", {status: 401});
+        }
+        if (new URL(request.url).pathname === "/session") {
+          return Response.json({id: "authenticated-session"});
+        }
+        return Response.json({info: {}, parts: [{type: "text", text: "authenticated"}]});
+      }});
+      console.log("opencode server listening on http://127.0.0.1:" + server.port);
+      `,
+      async (pidFile) => {
+        const previousPassword = process.env.OPENCODE_SERVER_PASSWORD;
+        const previousUsername = process.env.OPENCODE_SERVER_USERNAME;
+        process.env.OPENCODE_SERVER_PASSWORD = "test-password";
+        process.env.OPENCODE_SERVER_USERNAME = "test-user";
+        try {
+          const result = await runOpencodePrompt({
+            cwd: tmpdir(),
+            mode: "no_tools",
+            prompt: "respond",
+          });
+          expect(result.text).toBe("authenticated");
+          expectExited(pidFile);
+        } finally {
+          for (const [key, value] of [
+            ["OPENCODE_SERVER_PASSWORD", previousPassword],
+            ["OPENCODE_SERVER_USERNAME", previousUsername],
+          ] as const) {
+            if (value === undefined) Reflect.deleteProperty(process.env, key);
+            else process.env[key] = value;
+          }
+        }
+      }
+    );
+  });
+
   it("keeps the next prompt queued until a timed-out server has actually exited", async () => {
     await withFakeServer(
       `

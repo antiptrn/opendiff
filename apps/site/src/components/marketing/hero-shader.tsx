@@ -1,12 +1,12 @@
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import { compile, createGlyphAtlas, GLYPHS, readInk, VERTEX_SHADER } from "./ascii-gl";
+import { compile, createGlyphAtlas, GLYPHS, VERTEX_SHADER } from "./ascii-gl";
 
 /** Grid cell size in CSS pixels */
 const CELL_PX = 10;
 const MAX_DPR = 1.5;
 
-// Renders a procedural light source (beams fanning out from above the hero down both sides, with
+// Renders a procedural light source (beams fanning out from above the hero down the right side, with
 // pulses streaming along them) as ASCII: each grid cell samples the source once and draws the
 // glyph for that brightness. The pointer bends the beams away from it.
 const FRAGMENT_SHADER = `
@@ -18,7 +18,6 @@ uniform float uPointerStrength;
 uniform float uCell;
 uniform sampler2D uGlyphs;
 uniform float uGlyphCount;
-uniform vec3 uInk;
 
 float hash(float n) {
   return fract(sin(n * 127.1) * 43758.5453);
@@ -56,8 +55,9 @@ float beams(vec2 uv, float t) {
     rays(angle - wobble * 0.5, radius, 8.0, t * 0.8, 50.0) * 0.9
   );
 
-  // Keep the middle clear for the copy, and start the beams below the top of the hero
-  float sides = smoothstep(0.1, 0.32, abs(uv.x - 0.5));
+  // Only the right-hand fan, fading in right around the middle so the left-aligned copy stays
+  // clear, and start the beams below the top of the hero
+  float sides = smoothstep(-0.02, 0.14, uv.x - 0.5);
   float top = smoothstep(0.15, 0.35, uv.y);
   return light * 1.35 * sides * top;
 }
@@ -81,8 +81,12 @@ void main() {
   // Fainter light gets lighter ink as well as a sparser glyph, so beams fade out at their edges
   float alpha = texture2D(uGlyphs, glyphUv).a * mix(0.45, 1.0, gray);
 
-  // Ink in the page's text color, premultiplied
-  gl_FragColor = vec4(uInk * alpha, alpha);
+  // Prismatic ink, like holographic foil: pastel hues that shift across the hero and along each
+  // beam and drift slowly over time, with the brightest cores washing toward white
+  float hue = uv.x * 0.9 + uv.y * 0.55 + gray * 0.35 + uTime * 0.04;
+  vec3 prism = vec3(0.7, 0.66, 0.8) + vec3(0.3, 0.34, 0.24) * cos(6.2831853 * (hue + vec3(0.0, 0.33, 0.67)));
+  vec3 ink = mix(prism, vec3(1.0), gray * gray * 0.35);
+  gl_FragColor = vec4(ink * alpha, alpha);
 }
 `;
 
@@ -136,7 +140,6 @@ export function HeroShader() {
       pointer: gl.getUniformLocation(program, "uPointer"),
       pointerStrength: gl.getUniformLocation(program, "uPointerStrength"),
       cell: gl.getUniformLocation(program, "uCell"),
-      ink: gl.getUniformLocation(program, "uInk"),
     };
 
     let dpr = 1;
@@ -170,8 +173,6 @@ export function HeroShader() {
       gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
       gl.uniform1f(uniforms.pointerStrength, pointer.strength);
       gl.uniform1f(uniforms.cell, CELL_PX * dpr);
-      const [r, g, b] = readInk(canvas);
-      gl.uniform3f(uniforms.ink, r, g, b);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -208,7 +209,7 @@ export function HeroShader() {
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none absolute inset-x-0 top-0 h-[900px] w-full opacity-40"
+      className="pointer-events-none absolute inset-x-0 top-0 h-[900px] w-full opacity-70"
       style={{
         maskImage:
           "linear-gradient(to bottom, transparent 0%, black 25%, black 80%, transparent 100%)",

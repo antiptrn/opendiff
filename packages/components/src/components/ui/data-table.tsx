@@ -1,8 +1,14 @@
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft01Icon,
+  ArrowLeftDoubleIcon,
+  ArrowRight01Icon,
+  ArrowRightDoubleIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../utils/cn";
 import { Button } from "./button";
+import { ScrollArea } from "./scroll-area";
 import { Skeleton } from "./skeleton";
 
 export interface DataTableColumn<T> {
@@ -15,13 +21,131 @@ export interface DataTableColumn<T> {
 }
 
 const cellBase =
-  "border-b border-r border-border-solid px-3 text-left align-middle whitespace-nowrap";
+  "border-b border-r border-border-solid px-4 text-left align-middle whitespace-nowrap last:border-r-0";
+
+const MIN_COLUMN_WIDTH = 64;
+const KEYBOARD_STEP = 16;
+
+function storageKeyFor(key: string) {
+  return `data-table-widths:${key}`;
+}
+
+/** Column widths someone has dragged, kept in this browser; empty when storage is unavailable */
+function readSavedWidths(key: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKeyFor(key)) ?? "{}");
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
- * Spreadsheet-like record table (after qargo's): hairline grid and a filler column to the right
- * edge. The last row has no bottom line, so the table sits flush in a bordered container. The
+ * Resizable columns. Each column starts at its natural width, measured once from the header; from
+ * then on the table uses fixed widths, and any a person drags are saved under `storageKey` so the
+ * table reopens the same way.
+ */
+function useColumnWidths(storageKey: string, columnKeys: readonly string[]) {
+  const [saved, setSaved] = useState(() => readSavedWidths(storageKey));
+  const [measured, setMeasured] = useState<Record<string, number>>({});
+  const headers = useRef(new Map<string, HTMLTableCellElement>());
+
+  const widthOf = (key: string) => saved[key] ?? measured[key];
+  const ready = columnKeys.every((key) => widthOf(key) !== undefined);
+
+  // While any width is unknown the table lays out naturally; measure it then
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures whenever widths go missing
+  useLayoutEffect(() => {
+    if (ready) return;
+    const next: Record<string, number> = {};
+    for (const key of columnKeys) {
+      const header = headers.current.get(key);
+      // Rounded up, plus the column's border, so the text that fitted still fits
+      if (header) next[key] = Math.ceil(header.getBoundingClientRect().width) + 1;
+    }
+    setMeasured(next);
+  }, [ready, columnKeys.join("|")]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKeyFor(storageKey), JSON.stringify(saved));
+    } catch {
+      // Storage can be unavailable (such as in private windows); widths still work for the visit
+    }
+  }, [saved, storageKey]);
+
+  const setWidth = (key: string, width: number) =>
+    setSaved((previous) => ({ ...previous, [key]: Math.max(MIN_COLUMN_WIDTH, Math.round(width)) }));
+
+  /** Back to the column's natural width (the table measures every column again) */
+  const resetWidth = (key: string) => {
+    setSaved(({ [key]: _removed, ...rest }) => rest);
+    setMeasured({});
+  };
+
+  return { widthOf, ready, setWidth, resetWidth, headers };
+}
+
+/** The drag handle on a column's right border */
+function ResizeHandle({
+  label,
+  width,
+  onResize,
+  onReset,
+}: {
+  label: string;
+  width: number;
+  onResize: (width: number) => void;
+  onReset: () => void;
+}) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a draggable column border, not a visual divider
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label}`}
+      aria-valuenow={width}
+      tabIndex={0}
+      className={cn(
+        // Inside the column (cells clip what overflows), with the highlight on its border
+        "absolute inset-y-0 right-0 z-10 w-2 cursor-col-resize touch-none outline-none",
+        "after:absolute after:inset-y-0 after:right-0 after:w-0.5 after:transition-colors hover:after:bg-primary/60 focus-visible:after:bg-primary"
+      )}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") onResize(width - KEYBOARD_STEP);
+        else if (event.key === "ArrowRight") onResize(width + KEYBOARD_STEP);
+        else return;
+        event.preventDefault();
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const startX = event.clientX;
+        const move = (moveEvent: PointerEvent) => onResize(width + moveEvent.clientX - startX);
+        const stop = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", stop);
+          document.body.style.removeProperty("cursor");
+          document.body.style.removeProperty("user-select");
+        };
+        // Keep the resize cursor, and stop text selecting, while dragging past the handle
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", stop);
+      }}
+    />
+  );
+}
+
+/**
+ * Spreadsheet-like record table (after qargo's): a hairline grid as wide as its columns, scrolling
+ * sideways when they don't fit. The last row and column have no outer line, so the table sits flush
+ * in a bordered container. The
  * first cell of each row should hold the row's link or button. While `loading`, the header shows
- * with rows of skeleton cells in place of the data.
+ * with rows of skeleton cells in place of the data. Columns resize by dragging their right border
+ * (double-click it to reset), and keep their widths per `storageKey`.
  */
 export function DataTable<T>({
   label,
@@ -31,8 +155,14 @@ export function DataTable<T>({
   onRowClick,
   loading = false,
   skeletonRows = 5,
+  storageKey,
+  fullWidth = false,
 }: {
   label: string;
+  /** Fill the container: the last column takes whatever room the others leave */
+  fullWidth?: boolean;
+  /** Where dragged column widths are remembered; tables sharing a key share widths. Defaults to the label */
+  storageKey?: string;
   rows: readonly T[];
   columns: readonly DataTableColumn<T>[];
   getKey: (row: T) => string;
@@ -41,31 +171,74 @@ export function DataTable<T>({
   /** How many skeleton rows to show while loading */
   skeletonRows?: number;
 }) {
+  const { widthOf, ready, setWidth, resetWidth, headers } = useColumnWidths(
+    storageKey ?? label,
+    columns.map((column) => column.key)
+  );
+  const totalWidth = ready
+    ? columns.reduce((sum, column) => sum + (widthOf(column.key) ?? 0), 0)
+    : undefined;
+
   return (
-    <div className="min-w-0 overflow-x-auto">
+    // Scrolls sideways on its own thin scrollbar when the columns don't fit
+    <ScrollArea orientation="horizontal" className="max-w-full min-w-0">
       <table
         aria-label={label}
         aria-busy={loading || undefined}
-        className="w-full border-separate border-spacing-0 text-sm"
+        className="w-max border-separate border-spacing-0 text-sm"
+        // Once every width is known the table keeps to them, cutting off what doesn't fit
+        style={
+          ready
+            ? { tableLayout: "fixed", width: fullWidth ? `max(${totalWidth}px, 100%)` : totalWidth }
+            : fullWidth
+              ? { width: "100%" }
+              : undefined
+        }
       >
+        {ready && (
+          <colgroup>
+            {columns.map((column, index) => (
+              <col
+                key={column.key}
+                // A full-width table's last column has no set width, so it takes up the rest
+                style={
+                  fullWidth && index === columns.length - 1
+                    ? undefined
+                    : { width: widthOf(column.key) }
+                }
+              />
+            ))}
+          </colgroup>
+        )}
         <thead>
           <tr>
             {columns.map((column, index) => (
               <th
                 key={column.key}
+                ref={(element) => {
+                  if (element) headers.current.set(column.key, element);
+                  else headers.current.delete(column.key);
+                }}
                 scope="col"
                 className={cn(
                   cellBase,
-                  "h-11 font-medium text-foreground",
-                  index === 0 && "w-72 min-w-56 pl-4",
+                  "relative h-11 font-normal text-foreground",
+                  ready ? "overflow-hidden text-ellipsis" : index === 0 && "w-72 min-w-56",
                   column.align === "end" && "text-right",
-                  column.className
+                  !ready && column.className
                 )}
               >
                 {column.header}
+                {ready && !(fullWidth && index === columns.length - 1) && (
+                  <ResizeHandle
+                    label={typeof column.header === "string" ? column.header : column.key}
+                    width={widthOf(column.key) ?? 0}
+                    onResize={(width) => setWidth(column.key, width)}
+                    onReset={() => resetWidth(column.key)}
+                  />
+                )}
               </th>
             ))}
-            <th aria-hidden="true" className="w-full border-b border-border-solid" />
           </tr>
         </thead>
         <tbody>
@@ -78,9 +251,8 @@ export function DataTable<T>({
                     key={column.key}
                     className={cn(
                       cellBase,
-                      "h-10 group-last/row:border-b-0",
-                      index === 0 && "pl-4",
-                      column.className
+                      "h-12 group-last/row:border-b-0",
+                      ready ? "overflow-hidden" : column.className
                     )}
                   >
                     <Skeleton
@@ -93,42 +265,69 @@ export function DataTable<T>({
                     />
                   </td>
                 ))}
-                <td aria-hidden="true" className="border-b border-border-solid group-last/row:border-b-0" />
               </tr>
             ))}
-          {!loading && rows.map((row) => (
-            <tr
-              key={getKey(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cn(
-                "group/row transition-colors hover:bg-muted/60",
-                onRowClick && "cursor-pointer"
-              )}
-            >
-              {columns.map((column, index) => (
-                <td
-                  key={column.key}
-                  className={cn(
-                    cellBase,
-                    "h-10 text-foreground group-last/row:border-b-0",
-                    index === 0 && "pl-4 font-medium",
-                    column.align === "end" && "text-right tabular-nums",
-                    column.className
-                  )}
-                >
-                  {column.cell(row)}
-                </td>
-              ))}
-              <td aria-hidden="true" className="border-b border-border-solid group-last/row:border-b-0" />
-            </tr>
-          ))}
+          {!loading &&
+            rows.map((row) => (
+              <tr
+                key={getKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cn(
+                  "group/row transition-colors hover:bg-muted/60",
+                  onRowClick && "cursor-pointer"
+                )}
+              >
+                {columns.map((column) => (
+                  <td
+                    key={column.key}
+                    className={cn(
+                      cellBase,
+                      "h-12 text-foreground group-last/row:border-b-0",
+                      ready && "overflow-hidden text-ellipsis",
+                      column.align === "end" && "text-right tabular-nums",
+                      !ready && column.className
+                    )}
+                  >
+                    {column.cell(row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
-    </div>
+    </ScrollArea>
   );
 }
 
-/** Previous and next page buttons with the current position, shown below a data table */
+// First, previous, next and last, as icon buttons shaped like the console's other small icon buttons
+const PAGE_BUTTONS = [
+  {
+    label: "First page",
+    icon: ArrowLeftDoubleIcon,
+    target: () => 1,
+    isDisabled: (page: number) => page <= 1,
+  },
+  {
+    label: "Previous page",
+    icon: ArrowLeft01Icon,
+    target: (page: number) => page - 1,
+    isDisabled: (page: number) => page <= 1,
+  },
+  {
+    label: "Next page",
+    icon: ArrowRight01Icon,
+    target: (page: number) => page + 1,
+    isDisabled: (page: number, totalPages: number) => page >= totalPages,
+  },
+  {
+    label: "Last page",
+    icon: ArrowRightDoubleIcon,
+    target: (_page: number, totalPages: number) => totalPages,
+    isDisabled: (page: number, totalPages: number) => page >= totalPages,
+  },
+];
+
+/** First, previous, next and last page buttons with the current position, shown below a data table */
 export function DataTablePagination({
   label,
   page,
@@ -147,25 +346,20 @@ export function DataTablePagination({
       <p className="text-sm text-muted-foreground">
         {total.toLocaleString("en-US")} total · Page {page} of {Math.max(totalPages, 1)}
       </p>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden="true" />
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Next
-          <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden="true" />
-        </Button>
+      <div className="flex items-center gap-1">
+        {PAGE_BUTTONS.map(({ label: buttonLabel, icon, target, isDisabled }) => (
+          <Button
+            key={buttonLabel}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={buttonLabel}
+            disabled={isDisabled(page, totalPages)}
+            className="!rounded-sm text-muted-foreground hover:text-foreground"
+            onClick={() => onPageChange(target(page, totalPages))}
+          >
+            <HugeiconsIcon icon={icon} aria-hidden="true" className="size-4" />
+          </Button>
+        ))}
       </div>
     </nav>
   );

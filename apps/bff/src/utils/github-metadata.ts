@@ -75,9 +75,12 @@ export async function fetchPRMetadata(
   owner: string,
   repo: string,
   pullNumber: number,
-  githubToken?: string | null
+  githubToken?: string | null,
+  options: { cache?: boolean } = {}
 ): Promise<PRMeta | null> {
-  const shouldUseCache = !githubToken;
+  // Lookups with the user's own token skip the cache so edits show at once, unless the caller
+  // opts in (the pull request list loads many at a time and can live with a minute's delay)
+  const shouldUseCache = options.cache ?? !githubToken;
   const cacheKey = `${owner}/${repo}#${pullNumber}`;
   if (shouldUseCache) {
     const cached = prCache.get(cacheKey);
@@ -112,12 +115,15 @@ export async function fetchPRMetadata(
       body: string | null;
       state: "open" | "closed";
       merged: boolean;
+      draft?: boolean;
+      comments?: number;
+      review_comments?: number;
       user: { login: string; avatar_url: string } | null;
       head: { ref: string };
       base: { ref: string };
       html_url: string;
       assignees: Array<{ login: string }>;
-      labels: Array<{ name: string }>;
+      labels: Array<{ name: string; color?: string }>;
       requested_reviewers: Array<{ login: string }>;
       created_at: string;
       updated_at: string;
@@ -129,6 +135,7 @@ export async function fetchPRMetadata(
       body: pr.body,
       state: pr.state,
       merged: pr.merged,
+      draft: pr.draft ?? false,
       author: pr.user?.login ?? null,
       authorAvatarUrl: pr.user?.avatar_url ?? null,
       headBranch: pr.head.ref,
@@ -136,6 +143,8 @@ export async function fetchPRMetadata(
       htmlUrl: pr.html_url,
       assignees: pr.assignees.map((a) => a.login),
       labels: pr.labels.map((l) => l.name),
+      labelDetails: pr.labels.map((l) => ({ name: l.name, color: l.color ?? "808080" })),
+      commentCount: (pr.comments ?? 0) + (pr.review_comments ?? 0),
       reviewers: pr.requested_reviewers.map((r) => r.login),
       createdAt: pr.created_at,
       updatedAt: pr.updated_at,
@@ -153,7 +162,8 @@ export async function fetchPRMetadata(
 // Batch fetch PR metadata for multiple reviews
 export async function fetchPRMetadataBatch(
   reviews: Array<{ owner: string; repo: string; pullNumber: number }>,
-  githubToken?: string | null
+  githubToken?: string | null,
+  options: { cache?: boolean } = {}
 ): Promise<Map<string, PRMeta | null>> {
   const results = new Map<string, PRMeta | null>();
 
@@ -163,7 +173,7 @@ export async function fetchPRMetadataBatch(
     const batch = reviews.slice(i, i + BATCH_SIZE);
     const promises = batch.map(async (r) => {
       const key = `${r.owner}/${r.repo}#${r.pullNumber}`;
-      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber, githubToken);
+      const meta = await fetchPRMetadata(r.owner, r.repo, r.pullNumber, githubToken, options);
       results.set(key, meta);
     });
     await Promise.all(promises);

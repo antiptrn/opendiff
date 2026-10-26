@@ -205,7 +205,7 @@ export function ConsoleLayout() {
     : getConsoleNavGroups({ showAdmin });
 
   return (
-    <SidebarProvider persistenceKey="console.sidebar" className="h-svh bg-background">
+    <SidebarProvider persistenceKey="console.sidebar" className="h-svh bg-sidebar">
       <ConsoleTopBarProvider>
       <NavigationScrollToTop getContainer={getMainElement} />
       <AppSidebar
@@ -232,7 +232,8 @@ export function ConsoleLayout() {
         )}
       />
 
-      <SidebarInset className="h-svh">
+      {/* On desktop the page sits in a rounded, bordered panel inset from the edges (as in qargo) */}
+      <SidebarInset className="h-svh min-w-0 overflow-hidden md:m-2 md:h-[calc(100svh-1rem)] md:rounded-xl md:border md:border-border-solid md:shadow-[0_1px_2px_rgb(16_24_40/0.04),0_4px_12px_-4px_rgb(16_24_40/0.06)] dark:md:shadow-none">
         <ConsoleTopBar
           navGroups={navGroups}
           settingsHref={SETTINGS_HREF}

@@ -41,7 +41,8 @@ function AccordionTrigger({
   indicator?: "chevron" | "plus";
 }) {
   return (
-    <AccordionPrimitive.Header className="flex">
+    // The header is an h3, which would otherwise get the heading font
+    <AccordionPrimitive.Header className="flex font-sans">
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createOpencodeClient } from "@opencode-ai/sdk";
 import {
   type OpencodeOauthCredentials,
   loadOpencodeOauthCredentials,
@@ -9,6 +10,27 @@ import {
 import { createManagedOpencode } from "./opencode-server";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
+
+type OpencodeInstance = Awaited<ReturnType<typeof createManagedOpencode>>;
+
+/**
+ * With OPENCODE_SERVER_PASSWORD set, the OpenCode server we start (which inherits our environment)
+ * requires HTTP basic auth, but the SDK's own client doesn't send it, so every call fails. This
+ * swaps in a client that does.
+ */
+function withServerAuth(opencode: OpencodeInstance): OpencodeInstance {
+  const password = process.env.OPENCODE_SERVER_PASSWORD;
+  if (!password) return opencode;
+  const username = process.env.OPENCODE_SERVER_USERNAME || "opencode";
+  const credentials = Buffer.from(`${username}:${password}`).toString("base64");
+  return {
+    ...opencode,
+    client: createOpencodeClient({
+      baseUrl: opencode.server.url,
+      headers: { Authorization: `Basic ${credentials}` },
+    }),
+  };
+}
 type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type SupportedProvider = "anthropic" | "openai";
 
@@ -492,11 +514,13 @@ export async function runOpencodePrompt(
       const configuredServerPort = process.env.OPENCODE_SERVER_PORT?.trim();
       const serverPort = configuredServerPort ? Number(configuredServerPort) : 0;
 
-      opencode = await createManagedOpencode({
-        port: Number.isFinite(serverPort) ? serverPort : 0,
-        timeout: opencodeServerTimeoutMs(),
-        config: config as Record<string, unknown>,
-      });
+      opencode = withServerAuth(
+        await createManagedOpencode({
+          port: Number.isFinite(serverPort) ? serverPort : 0,
+          timeout: opencodeServerTimeoutMs(),
+          config: config as Record<string, unknown>,
+        })
+      );
 
       const createResult = (await opencode.client.session.create({
         body: {

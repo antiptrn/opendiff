@@ -12,9 +12,11 @@ export interface PublicStats {
   issuesFound: number;
   /** Fixes Contrast committed after they were accepted */
   fixesCommitted: number;
+  /** People with a Contrast account */
+  members: number;
 }
 
-type PublicStatsDb = Pick<PrismaClient, "reviewComment" | "reviewFix">;
+type PublicStatsDb = Pick<PrismaClient, "reviewComment" | "reviewFix" | "user">;
 
 /** Builds the totals around a database client and merged count, cached for a minute. */
 export function createPublicStatsService(
@@ -26,12 +28,13 @@ export function createPublicStatsService(
   return async function getPublicStats(): Promise<PublicStats> {
     if (cached && cached.expires > Date.now()) return cached.value;
     const db = getDb();
-    const [prsMerged, issuesFound, fixesCommitted] = await Promise.all([
+    const [prsMerged, issuesFound, fixesCommitted, members] = await Promise.all([
       countMerged(),
       db.reviewComment.count(),
       db.reviewFix.count({ where: { status: "ACCEPTED" } }),
+      db.user.count(),
     ]);
-    const value = { prsMerged, issuesFound, fixesCommitted };
+    const value = { prsMerged, issuesFound, fixesCommitted, members };
     cached = { value, expires: Date.now() + STATS_TTL_MS };
     return value;
   };

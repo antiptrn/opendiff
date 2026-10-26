@@ -18,35 +18,15 @@ function resolveGitHubToken(c: Parameters<typeof getAuthToken>[0]) {
   return isGitHubToken ? token : user.githubAccessToken || null;
 }
 
-async function countReviewGroups(where: Prisma.ReviewWhereInput) {
-  const filters = [
-    Prisma.sql`r."organizationId" = ${where.organizationId as string}`,
-    Prisma.sql`r."repositorySettingsId" IS NOT NULL`,
-  ];
+/** How many of the most recently reviewed pull requests the list filters, counts and sorts over */
+const PULL_REQUEST_LIST_CAP = 200;
 
-  if (where.repositorySettings) {
-    const ownerFilter = where.repositorySettings.owner;
-    if (ownerFilter && typeof ownerFilter === "object" && "contains" in ownerFilter) {
-      filters.push(Prisma.sql`rs."owner" ILIKE ${`%${ownerFilter.contains}%`}`);
-    }
-
-    const repoFilter = where.repositorySettings.repo;
-    if (repoFilter && typeof repoFilter === "object" && "contains" in repoFilter) {
-      filters.push(Prisma.sql`rs."repo" ILIKE ${`%${repoFilter.contains}%`}`);
-    }
-  }
-
-  const [result] = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
-    SELECT COUNT(*) AS count
-    FROM (
-      SELECT DISTINCT r."repositorySettingsId", r."pullNumber"
-      FROM "Review" r
-      LEFT JOIN "RepositorySettings" rs ON rs."id" = r."repositorySettingsId"
-      WHERE ${Prisma.join(filters, " AND ")}
-    ) grouped_reviews
-  `);
-
-  return Number(result?.count ?? 0);
+/** A comma-separated query parameter as a list, ignoring blanks */
+function csvParam(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 // Get paginated reviews for org
@@ -80,21 +60,19 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     }
   }
 
-  const [reviewGroups, total] = await Promise.all([
-    prisma.review.groupBy({
-      by: ["repositorySettingsId", "pullNumber"],
-      where,
-      _max: { createdAt: true },
-      orderBy: [
-        { _max: { createdAt: "desc" } },
-        { repositorySettingsId: "desc" },
-        { pullNumber: "desc" },
-      ],
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    countReviewGroups(where),
-  ]);
+  // GitHub holds each PR's state, labels and comments, so filtering and counting happen here over
+  // the most recently reviewed pull requests rather than in the database
+  const reviewGroups = await prisma.review.groupBy({
+    by: ["repositorySettingsId", "pullNumber"],
+    where,
+    _max: { createdAt: true },
+    orderBy: [
+      { _max: { createdAt: "desc" } },
+      { repositorySettingsId: "desc" },
+      { pullNumber: "desc" },
+    ],
+    take: PULL_REQUEST_LIST_CAP,
+  });
 
   const latestReviewSelectors = reviewGroups.flatMap((group) => {
     if (!group.repositorySettingsId || !group._max.createdAt) {
@@ -136,7 +114,7 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     .map((group) => reviewByPullRequest.get(`${group.repositorySettingsId}:${group.pullNumber}`))
     .filter((review): review is (typeof candidateReviews)[number] => Boolean(review));
 
-  // Batch fetch PR metadata from GitHub
+  // Batch fetch PR metadata from GitHub (cached briefly, since every list load asks for all of them)
   const githubToken = resolveGitHubToken(c);
   const prRequests = reviews
     .filter((r) => r.repositorySettings)
@@ -146,9 +124,9 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       pullNumber: r.pullNumber,
     }));
 
-  const prMetaMap = await fetchPRMetadataBatch(prRequests, githubToken);
+  const prMetaMap = await fetchPRMetadataBatch(prRequests, githubToken, { cache: true });
 
-  const items = reviews.map((r) => {
+  const allItems = reviews.map((r) => {
     const commentCount = r.comments.length;
     const fixCount = r.comments.filter((c) => c.fix).length;
     const acceptedCount = r.comments.filter((c) => c.fix?.status === "ACCEPTED").length;
@@ -172,6 +150,13 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
         prMeta?.htmlUrl ??
         (owner && repo ? `https://github.com/${owner}/${repo}/pull/${r.pullNumber}` : null),
       pullAuthor: prMeta?.author ?? r.pullAuthor ?? null,
+      authorAvatarUrl: prMeta?.authorAvatarUrl ?? null,
+      // null when GitHub couldn't be asked; such PRs are listed with the open ones
+      state: prMeta ? (prMeta.merged ? "merged" : prMeta.state) : null,
+      draft: prMeta?.draft ?? false,
+      labels: prMeta?.labelDetails ?? [],
+      githubCommentCount: prMeta?.commentCount ?? null,
+      openedAt: prMeta?.createdAt ?? null,
       reviewType: r.reviewType,
       commentCount,
       fixCount,
@@ -182,6 +167,40 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
     };
   });
 
+  // Author, repository and text filters narrow both the list and the Open/Closed counts
+  const authors = csvParam(c.req.query("author"));
+  const repos = csvParam(c.req.query("repos"));
+  const q = c.req.query("q")?.trim().toLowerCase();
+  const narrowed = allItems.filter(
+    (item) =>
+      (authors.length === 0 || (item.pullAuthor !== null && authors.includes(item.pullAuthor))) &&
+      (repos.length === 0 || repos.includes(`${item.owner}/${item.repo}`)) &&
+      (!q ||
+        item.pullTitle?.toLowerCase().includes(q) ||
+        String(item.pullNumber).includes(q) ||
+        item.pullAuthor?.toLowerCase().includes(q) ||
+        `${item.owner}/${item.repo}`.toLowerCase().includes(q))
+  );
+
+  const isOpen = (item: (typeof allItems)[number]) => item.state === "open" || item.state === null;
+  const stateFilter = c.req.query("state") ?? "open";
+  const listed = narrowed.filter((item) =>
+    stateFilter === "all" ? true : stateFilter === "closed" ? !isOpen(item) : isOpen(item)
+  );
+
+  const sort = c.req.query("sort") ?? "reviewed";
+  const time = (value: string | Date | null) => (value ? new Date(value).getTime() : 0);
+  const sorted = [...listed].sort((a, b) => {
+    if (sort === "newest") return time(b.openedAt) - time(a.openedAt);
+    if (sort === "oldest") return time(a.openedAt) - time(b.openedAt);
+    if (sort === "issues") return b.commentCount - a.commentCount;
+    if (sort === "comments") return (b.githubCommentCount ?? 0) - (a.githubCommentCount ?? 0);
+    return 0; // "reviewed": already newest review first
+  });
+
+  const total = sorted.length;
+  const items = sorted.slice((page - 1) * limit, page * limit);
+
   return c.json({
     reviews: items,
     pagination: {
@@ -189,6 +208,23 @@ queryRoutes.get("/reviews", requireAuth(), async (c) => {
       limit,
       total,
       totalPages: Math.ceil(total / limit),
+    },
+    counts: {
+      open: narrowed.filter(isOpen).length,
+      closed: narrowed.filter((item) => !isOpen(item)).length,
+    },
+    // Everyone and every repository in the list, for the Author and Repository menus
+    facets: {
+      authors: [
+        ...new Set(allItems.flatMap((item) => (item.pullAuthor ? [item.pullAuthor] : []))),
+      ].sort((a, b) => a.localeCompare(b)),
+      repos: [
+        ...new Set(
+          allItems.flatMap((item) =>
+            item.owner && item.repo ? [`${item.owner}/${item.repo}`] : []
+          )
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
     },
   });
 });
@@ -206,7 +242,10 @@ function issueTitle(body: string) {
       .split("\n")
       .map((line) => line.trim())
       .find((line) => line.length > 0) ?? "";
-  return firstLine.replace(/^[#>*\-\s]+/, "").replace(/[*_`]/g, "").slice(0, 200);
+  return firstLine
+    .replace(/^[#>*\-\s]+/, "")
+    .replace(/[*_`]/g, "")
+    .slice(0, 200);
 }
 
 // Get paginated issues (review comments) for org, newest first. `q` matches the comment text,
@@ -219,15 +258,22 @@ queryRoutes.get("/review-issues", requireAuth(), async (c) => {
 
   const { page, limit } = parsePagination(c);
   const search = c.req.query("q")?.trim();
+  // An issue is closed once its fix was accepted or rejected; otherwise it's still open
+  const status = c.req.query("status");
+  const closedFix: Prisma.ReviewFixWhereInput = { status: { in: ["ACCEPTED", "REJECTED"] } };
   const where: Prisma.ReviewCommentWhereInput = {
     review: { organizationId: orgId, repositorySettingsId: { not: null } },
+    ...(status === "closed" ? { fix: closedFix } : {}),
+    ...(status === "open" ? { NOT: { fix: closedFix } } : {}),
     ...(search
       ? {
           OR: [
             { body: { contains: search, mode: "insensitive" } },
             { path: { contains: search, mode: "insensitive" } },
             { review: { repositorySettings: { repo: { contains: search, mode: "insensitive" } } } },
-            { review: { repositorySettings: { owner: { contains: search, mode: "insensitive" } } } },
+            {
+              review: { repositorySettings: { owner: { contains: search, mode: "insensitive" } } },
+            },
           ],
         }
       : {}),

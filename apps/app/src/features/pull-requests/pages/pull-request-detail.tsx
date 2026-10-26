@@ -1,4 +1,12 @@
-import { CheckCheckIcon, CircleDotIcon, ExternalLinkIcon, GitMergeIcon, GitPullRequestIcon, Loading03Icon, SparklesIcon } from "@hugeicons/core-free-icons";
+import {
+  CheckCheckIcon,
+  CircleDotIcon,
+  ExternalLinkIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
+  Loading03Icon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
 import { TableEmpty } from "@/components/paginated-table";
 import {
   Accordion,

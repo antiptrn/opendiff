@@ -85,19 +85,20 @@ export function AddRepoDialog({
             <Link to="/console/settings/account">Go to Settings</Link>
           </Button>
         ) : (
-          <div className="space-y-3">
+          // min-w-0 lets this grid item shrink to the dialog instead of stretching it sideways
+          <div className="min-w-0 space-y-3">
             <SearchBar
-              className="bg-background"
+              variant="muted"
               placeholder="Search repositories"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
             />
-            <div className="max-h-80 bg-background overflow-y-auto rounded-md py-2.5">
+            <div className="max-h-80 overflow-x-hidden overflow-y-auto rounded-md bg-background py-2.5">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <HugeiconsIcon
                     icon={Loading03Icon}
-                    className="size-4 animate-spin text-muted-foreground"
+                    className="size-6 animate-spin text-muted-foreground"
                   />
                 </div>
               )}
@@ -119,10 +120,11 @@ export function AddRepoDialog({
                       type="button"
                       onClick={() => !isAlreadyAdded && onRepoSelect(repo.full_name)}
                       disabled={isAlreadyAdded}
-                      className={`w-full text-left px-5 py-2 transition-colors ${isAlreadyAdded
-                        ? "opacity-50 cursor-not-allowed"
-                        : "hover:bg-muted/50 cursor-pointer"
-                        }`}
+                      className={`block w-full min-w-0 rounded-md text-left px-3 py-2 transition-colors ${
+                        isAlreadyAdded
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:bg-muted/50 cursor-pointer"
+                      }`}
                     >
                       <RepoListItem name={repo.full_name}>
                         {isAlreadyAdded && (

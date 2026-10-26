@@ -94,7 +94,7 @@ githubRoutes.get("/callback", async (c) => {
 
     if (tokenData.error) {
       const errorRedirect = linkOperation
-        ? `${FRONTEND_URL}/console/settings?error=github_link_failed`
+        ? `${FRONTEND_URL}/console/settings/account?error=github_link_failed`
         : `${FRONTEND_URL}/login?error=${tokenData.error_description || tokenData.error}`;
       return c.redirect(errorRedirect);
     }
@@ -115,7 +115,7 @@ githubRoutes.get("/callback", async (c) => {
       });
 
       if (existingGithubUser && existingGithubUser.id !== linkOperation.userId) {
-        return c.redirect(`${FRONTEND_URL}/console/settings?error=github_already_linked`);
+        return c.redirect(`${FRONTEND_URL}/console/settings/account?error=github_already_linked`);
       }
 
       const existingUser = await prisma.user.findUnique({
@@ -123,7 +123,7 @@ githubRoutes.get("/callback", async (c) => {
       });
 
       if (!existingUser) {
-        return c.redirect(`${FRONTEND_URL}/console/settings?error=user_not_found`);
+        return c.redirect(`${FRONTEND_URL}/console/settings/account?error=user_not_found`);
       }
 
       const updatedUser = await prisma.user.update({
@@ -314,7 +314,7 @@ githubRoutes.get("/callback", async (c) => {
   } catch (error) {
     console.error("GitHub OAuth error:", error);
     const errorRedirect = linkOperation
-      ? `${FRONTEND_URL}/console/settings?error=github_link_failed`
+      ? `${FRONTEND_URL}/console/settings/account?error=github_link_failed`
       : `${FRONTEND_URL}/login?error=auth_failed`;
     return c.redirect(errorRedirect);
   }

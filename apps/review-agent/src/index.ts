@@ -753,6 +753,73 @@ app.post("/internal/local-review", async (c) => {
   }
 });
 
+// Queues a review for every open, non-draft pull request in a repository, as if each had just been
+// opened. Used when a repository is connected with "review open pull requests" ticked.
+app.post("/internal/review-open-pulls", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!isAuthorizedInternalApiKey(apiKey)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { owner?: string; repo?: string };
+  const { owner, repo } = body;
+  if (!owner || !repo) {
+    return c.json({ error: "owner and repo are required" }, 400);
+  }
+
+  try {
+    // The queued jobs authenticate with the repository's App installation, like webhook payloads
+    let installation: { id: number } | undefined;
+    const privateKey = getPrivateKey();
+    if (GITHUB_APP_ID && privateKey) {
+      const appOctokit = new Octokit({
+        authStrategy: createAppAuth,
+        auth: { appId: GITHUB_APP_ID, privateKey },
+      });
+      try {
+        const { data } = await appOctokit.apps.getRepoInstallation({ owner, repo });
+        installation = { id: data.id };
+      } catch (error) {
+        // The App isn't installed on this repository, so it can't read or review its pull requests
+        if ((error as { status?: number }).status === 404) {
+          return c.json({ error: "app_not_installed" }, 404);
+        }
+        throw error;
+      }
+    }
+
+    const githubClient = new GitHubClient(createOctokit(installation?.id));
+    const pulls = await githubClient.listOpenPullRequests(owner, repo);
+
+    let queued = 0;
+    let rejected = 0;
+    const drafts = pulls.filter((pull) => pull.draft).length;
+    for (const pull of pulls) {
+      if (pull.draft) continue;
+      const payload: PullRequestReviewJobPayload = {
+        action: "opened",
+        installation,
+        repository: { id: pull.repoId, owner: { login: owner }, name: repo },
+        pull_request: { number: pull.number, draft: false },
+      };
+      const result = reviewQueue.enqueue(buildPullRequestReviewJobKey(payload), {
+        payload,
+        deliveryId: null,
+      });
+      if (result.accepted) queued++;
+      else rejected++;
+    }
+
+    console.log(
+      `Queued reviews for ${queued} open PRs in ${owner}/${repo} (${drafts} drafts skipped, ${rejected} rejected)`
+    );
+    return c.json({ queued, skippedDrafts: drafts, rejected });
+  } catch (error) {
+    console.error(`Failed to queue open PR reviews for ${owner}/${repo}:`, error);
+    return c.json({ error: "Failed to queue reviews" }, 500);
+  }
+});
+
 app.post("/internal/generate-summary", async (c) => {
   const apiKey = c.req.header("X-API-Key");
   if (!isAuthorizedInternalApiKey(apiKey)) {
@@ -823,7 +890,10 @@ async function notifyPullRequestMerged(merge: {
       body: JSON.stringify(merge),
     });
   } catch (err) {
-    console.warn(`Failed to notify server of merged PR ${merge.owner}/${merge.repo}#${merge.pullNumber}:`, err);
+    console.warn(
+      `Failed to notify server of merged PR ${merge.owner}/${merge.repo}#${merge.pullNumber}:`,
+      err
+    );
   }
 }
 
@@ -847,7 +917,11 @@ app.post("/webhook", async (c) => {
   // Handle pull request events
   if (event === "pull_request") {
     // Count merged pull requests that Contrast reviewed (for the public stats)
-    if (payload.action === "closed" && payload.pull_request?.merged && hasRepositoryIdentity(payload)) {
+    if (
+      payload.action === "closed" &&
+      payload.pull_request?.merged &&
+      hasRepositoryIdentity(payload)
+    ) {
       void notifyPullRequestMerged({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,

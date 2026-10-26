@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "NODE_OPTIONS=--max-http-header-size=65536 vite",
     "build": "tsc --noEmit && vite build",
     "lint": "biome lint .",
     "preview": "vite preview",

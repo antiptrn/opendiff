@@ -483,6 +483,38 @@ describe("Application endpoints", () => {
       expect(body.status).toBe("ignored");
     });
   });
+
+  describe("POST /internal/review-open-pulls", () => {
+    const reviewOpenPulls = async (body: unknown, apiKey?: string) => {
+      const { default: app } = await import("./index");
+      return app.fetch(
+        new Request(`http://localhost:${TEST_PORT}/internal/review-open-pulls`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { "X-API-Key": apiKey } : {}),
+          },
+          body: JSON.stringify(body),
+        })
+      );
+    };
+
+    it("rejects requests without the internal API key (401)", async () => {
+      const response = await reviewOpenPulls({ owner: "acme", repo: "web" });
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects requests with the wrong internal API key (401)", async () => {
+      const response = await reviewOpenPulls({ owner: "acme", repo: "web" }, "wrong-key");
+      expect(response.status).toBe(401);
+    });
+
+    it("requires an owner and a repo (400)", async () => {
+      const response = await reviewOpenPulls({ owner: "acme" }, "test-review-agent-key");
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "owner and repo are required" });
+    });
+  });
 });
 
 describe("Bot mention aliases", () => {
