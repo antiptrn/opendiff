@@ -46,6 +46,9 @@ jobs:
       - name: Typecheck review-agent
         run: cd "$CI_DIR" && bun run --cwd apps/review-agent typecheck
 
+      - name: Test review-agent process cleanup
+        run: cd "$CI_DIR" && bun test apps/review-agent/src/utils/managed-process.test.ts apps/review-agent/src/utils/opencode-server.test.ts apps/review-agent/src/utils/opencode.test.ts
+
       - name: Run tests
         run: cd "$CI_DIR" && bun run test
 

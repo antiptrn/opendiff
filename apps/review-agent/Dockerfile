@@ -22,7 +22,7 @@ FROM oven/bun:1 AS runner
 WORKDIR /app
 
 # Install git and SSL certificates for cloning repos over HTTPS
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates tini && rm -rf /var/lib/apt/lists/*
 
 # Install opencode CLI (required by @opencode-ai/sdk at runtime)
 # Install into a shared prefix so the non-root user can access the binary.
@@ -49,4 +49,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["bun", "run", "dist/index.js"]

@@ -1,16 +1,17 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk";
+import { createOpencodeClient } from "@opencode-ai/sdk";
 import {
   type OpencodeOauthCredentials,
   loadOpencodeOauthCredentials,
   shouldUseOpencodeAuthJson,
 } from "./opencode-auth";
+import { createManagedOpencode } from "./opencode-server";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
 
-type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
+type OpencodeInstance = Awaited<ReturnType<typeof createManagedOpencode>>;
 
 /**
  * With OPENCODE_SERVER_PASSWORD set, the OpenCode server we start (which inherits our environment)
@@ -327,17 +328,11 @@ function opencodePromptTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 1_800_000;
 }
 
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string,
-  onTimeout?: () => void
-): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout>;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
-      onTimeout?.();
       reject(new Error(`${label} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
@@ -456,7 +451,7 @@ export async function runOpencodePrompt(
 ): Promise<RunOpencodePromptResult> {
   return queueOp(async () => {
     const originalCwd = process.cwd();
-    let opencode: Awaited<ReturnType<typeof createOpencode>> | null = null;
+    let opencode: Awaited<ReturnType<typeof createManagedOpencode>> | null = null;
     let tempAuthDir: string | null = null;
     let originalXdgDataHome: string | undefined;
 
@@ -520,7 +515,7 @@ export async function runOpencodePrompt(
       const serverPort = configuredServerPort ? Number(configuredServerPort) : 0;
 
       opencode = withServerAuth(
-        await createOpencode({
+        await createManagedOpencode({
           port: Number.isFinite(serverPort) ? serverPort : 0,
           timeout: opencodeServerTimeoutMs(),
           config: config as Record<string, unknown>,
@@ -547,14 +542,7 @@ export async function runOpencodePrompt(
           },
         }),
         opencodePromptTimeoutMs(),
-        input.title ?? "OpenCode prompt",
-        () => {
-          try {
-            opencode?.server.close();
-          } catch {
-            // best effort
-          }
-        }
+        input.title ?? "OpenCode prompt"
       )) as unknown as {
         data?: {
           info?: Record<string, unknown>;
@@ -583,29 +571,25 @@ export async function runOpencodePrompt(
         tokensUsed: extractTokens(info),
       };
     } finally {
-      if (opencode) {
-        try {
-          opencode.server.close();
-        } catch {
-          // best effort
+      try {
+        await opencode?.server.close();
+      } finally {
+        // Restore XDG_DATA_HOME and clean up temp auth dir
+        if (tempAuthDir) {
+          if (originalXdgDataHome !== undefined) {
+            process.env.XDG_DATA_HOME = originalXdgDataHome;
+          } else {
+            process.env.XDG_DATA_HOME = undefined;
+          }
+          try {
+            fs.rmSync(tempAuthDir, { recursive: true, force: true });
+          } catch {
+            // best effort
+          }
         }
-      }
 
-      // Restore XDG_DATA_HOME and clean up temp auth dir
-      if (tempAuthDir) {
-        if (originalXdgDataHome !== undefined) {
-          process.env.XDG_DATA_HOME = originalXdgDataHome;
-        } else {
-          process.env.XDG_DATA_HOME = undefined;
-        }
-        try {
-          fs.rmSync(tempAuthDir, { recursive: true, force: true });
-        } catch {
-          // best effort
-        }
+        process.chdir(originalCwd);
       }
-
-      process.chdir(originalCwd);
     }
   });
 }

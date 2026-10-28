@@ -51,7 +51,7 @@ EXPOSE 8080
 # ── Agent ────────────────────────────────────────────────────────
 FROM base AS agent
 
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates tini && rm -rf /var/lib/apt/lists/*
 ENV BUN_INSTALL=/usr/local
 RUN bun install -g opencode-ai
 RUN bun run --cwd apps/review-agent build
@@ -63,4 +63,5 @@ ENV BUN_CRASH_REPORTER_URL=""
 USER bun
 EXPOSE 3000
 
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["sh", "-c", "ulimit -c 0 && exec bun run apps/review-agent/dist/index.js"]
