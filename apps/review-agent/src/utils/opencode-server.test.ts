@@ -1,7 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { simpleGit } from "simple-git";
 import { describe, expect, it } from "vitest";
+import { TriageAgent } from "../agent/triage";
 import { runOpencodePrompt } from "./opencode";
 import { createManagedOpencode } from "./opencode-server";
 
@@ -33,6 +35,91 @@ function expectExited(pidFile: string): void {
 }
 
 describe.skipIf(process.platform === "win32")("managed OpenCode server", () => {
+  it("routes real review and autofix entrypoints to independent models without changing globals", async () => {
+    await withFakeServer(
+      `
+      const fs = require("node:fs");
+      const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT);
+      const selection = {model: config.model, reasoningEffort: config.provider?.openai?.models?.[config.model.split("/")[1]]?.options?.reasoningEffort};
+      fs.appendFileSync(process.argv[1] + ".selections", JSON.stringify(selection) + "\\n");
+      const server = Bun.serve({port: 0, async fetch(request) {
+        if (new URL(request.url).pathname === "/session") return Response.json({id: "routing-session"});
+        const body = await request.json();
+        let result = selection;
+        if (body.parts?.[0]?.text !== "capture configuration") {
+          fs.writeFileSync("example.ts", "export const add = (a: number, b: number) => a + b;\\n");
+          result = {status: "fixed", explanation: "Return the sum instead of the difference."};
+        }
+        return Response.json({info: {}, parts: [{type: "text", text: JSON.stringify(result)}]});
+      }});
+      console.log("opencode server listening on http://127.0.0.1:" + server.port);
+      `,
+      async (pidFile) => {
+        const workingDir = mkdtempSync(join(tmpdir(), "opencode-routing-repo-"));
+        const overrides = {
+          OPENCODE_MODEL: "openai/legacy",
+          OPENCODE_REASONING_EFFORT: "medium",
+          OPENCODE_REVIEW_MODEL: "openai/gpt-6.1-terra",
+          OPENCODE_REVIEW_REASONING_EFFORT: "max",
+          OPENCODE_AUTOFIX_MODEL: "openai/gpt-6.1-sol",
+          OPENCODE_AUTOFIX_REASONING_EFFORT: "high",
+          OPENCODE_USE_AUTH_JSON: "false",
+          OPENCODE_AUTH_PATH: join(workingDir, "absent-auth.json"),
+        };
+        const previous = Object.fromEntries(
+          Object.keys(overrides).map((key) => [key, process.env[key]])
+        );
+        Object.assign(process.env, overrides);
+        try {
+          await simpleGit(workingDir).init();
+          writeFileSync(
+            join(workingDir, "example.ts"),
+            "export const add = (a: number, b: number) => a - b;\n"
+          );
+          const review = await runOpencodePrompt({
+            cwd: workingDir,
+            mode: "read_only",
+            prompt: "capture configuration",
+          });
+          expect(JSON.parse(review.text)).toEqual({
+            model: "openai/gpt-6.1-terra",
+            reasoningEffort: "max",
+          });
+          const fix = await new TriageAgent().fixIssue(
+            {
+              type: "bug-risk",
+              severity: "warning",
+              file: "example.ts",
+              line: 1,
+              message: "Addition subtracts",
+              suggestion: "Return a + b.",
+            },
+            workingDir
+          );
+          expect(fix.fixed).toBe(true);
+          expect(readFileSync(join(workingDir, "example.ts"), "utf8")).toContain("a + b");
+          const selections = readFileSync(join(pidFile, "..", "opencode.selections"), "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          expect(selections).toEqual([
+            { model: "openai/gpt-6.1-terra", reasoningEffort: "max" },
+            { model: "openai/gpt-6.1-sol", reasoningEffort: "high" },
+          ]);
+          expect(process.env.OPENCODE_MODEL).toBe("openai/legacy");
+          expect(process.env.OPENCODE_REASONING_EFFORT).toBe("medium");
+          expectExited(pidFile);
+        } finally {
+          for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) Reflect.deleteProperty(process.env, key);
+            else process.env[key] = value;
+          }
+          rmSync(workingDir, { recursive: true, force: true });
+        }
+      }
+    );
+  });
+
   it("parses a split listening line and waits for exit when closed", async () => {
     await withFakeServer(
       `
