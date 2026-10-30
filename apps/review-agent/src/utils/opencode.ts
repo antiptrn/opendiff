@@ -7,6 +7,11 @@ import {
   loadOpencodeOauthCredentials,
   shouldUseOpencodeAuthJson,
 } from "./opencode-auth";
+import {
+  type OpenAiReasoningEffort,
+  type OpenCodeTask,
+  resolveOpencodeRuntime,
+} from "./opencode-runtime";
 import { createManagedOpencode } from "./opencode-server";
 
 type PermissionMode = "read_only" | "read_write" | "no_tools";
@@ -31,7 +36,6 @@ function withServerAuth(opencode: OpencodeInstance): OpencodeInstance {
     }),
   };
 }
-type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type SupportedProvider = "anthropic" | "openai";
 
 export type AiAuthMethod = "API_KEY" | "OAUTH_TOKEN";
@@ -48,6 +52,7 @@ interface RunOpencodePromptInput {
   cwd: string;
   prompt: string;
   mode: PermissionMode;
+  task?: OpenCodeTask;
   aiConfig?: AiRuntimeConfig | null;
   title?: string;
   format?: {
@@ -231,22 +236,10 @@ function providerFromModel(model: string): SupportedProvider | null {
   return null;
 }
 
-function openAiReasoningEffortFromEnv(): OpenAiReasoningEffort | null {
-  const value = process.env.OPENCODE_REASONING_EFFORT?.trim().toLowerCase();
-  switch (value) {
-    case "none":
-    case "minimal":
-    case "low":
-    case "medium":
-    case "high":
-    case "xhigh":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function providerOverridesForModel(model?: string): Record<string, unknown> | undefined {
+function providerOverridesForModel(
+  model: string | undefined,
+  reasoningEffort: OpenAiReasoningEffort | undefined
+): Record<string, unknown> | undefined {
   if (!model) {
     return undefined;
   }
@@ -256,7 +249,6 @@ function providerOverridesForModel(model?: string): Record<string, unknown> | un
     return undefined;
   }
 
-  const reasoningEffort = openAiReasoningEffortFromEnv();
   if (!reasoningEffort) {
     return undefined;
   }
@@ -458,7 +450,11 @@ export async function runOpencodePrompt(
     try {
       process.chdir(input.cwd);
 
-      const model = input.aiConfig?.model || process.env.OPENCODE_MODEL?.trim() || undefined;
+      const task = input.task ?? "review";
+      const { model, reasoningEffort } = resolveOpencodeRuntime(task, input.aiConfig);
+      console.log(
+        `OpenCode runtime selected: task=${task}, model=${model ?? "default"}, reasoningEffort=${reasoningEffort ?? "default"}`
+      );
       const useAuthJson = shouldUseOpencodeAuthJson();
 
       if (useAuthJson) {
@@ -503,7 +499,7 @@ export async function runOpencodePrompt(
         : input.aiConfig
           ? providerConfigFromAiConfig(input.aiConfig)
           : providerConfigFromEnv(model);
-      const providerOverrides = providerOverridesForModel(model);
+      const providerOverrides = providerOverridesForModel(model, reasoningEffort);
       const mergedProvider = mergeProviderConfig(provider, providerOverrides);
       const config = {
         ...(model ? { model } : {}),

@@ -57,6 +57,7 @@ export class TriageAgent {
         cwd: workingDir,
         prompt,
         mode: "read_write",
+        task: "autofix",
         aiConfig: this.aiConfig,
         title: "Triage autofix",
       });
