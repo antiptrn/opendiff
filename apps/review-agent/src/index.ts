@@ -593,7 +593,7 @@ async function processPullRequestReviewJob(
             reviewIncludedDirs
           );
 
-    if (result.skipped) {
+    if (result.skipped || !result.success) {
       if (result.tokensUsed && result.tokensUsed > 0) {
         await recordReview({
           githubRepoId: payload.repository.id,
@@ -605,14 +605,13 @@ async function processPullRequestReviewJob(
           usageOnly: true,
         });
       }
+      if (!result.success) {
+        throw new Error(result.error || "Review failed");
+      }
       console.log(
         `Queued PR review skipped for ${owner}/${repo}#${reviewPayload.pull_request.number}`
       );
       return;
-    }
-
-    if (!result.success) {
-      throw new Error(result.error || "Review failed");
     }
 
     const dbReviewId = await recordReview({

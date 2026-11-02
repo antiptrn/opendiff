@@ -19,6 +19,7 @@ describe("Application endpoints", () => {
     process.env.BOT_TEAMS = "team-a,team-b";
     process.env.SETTINGS_API_URL = "";
     process.env.REVIEW_AGENT_API_KEY = "test-review-agent-key";
+    process.env.REVIEW_QUEUE_RETRY_DELAY_MS = "1";
   });
 
   afterAll(() => {
@@ -181,9 +182,14 @@ describe("Application endpoints", () => {
       expect(body.reviewQueue).toBeDefined();
     });
 
-    it.each([200, undefined])(
-      "accounts for skipped queued reviews with token usage %s",
-      async (tokensUsed) => {
+    it.each([
+      { tokensUsed: 200, success: true },
+      { tokensUsed: undefined, success: true },
+      { tokensUsed: 200, success: false },
+      { tokensUsed: undefined, success: false },
+    ])(
+      "accounts for unpublished queued reviews with token usage $tokensUsed and success $success",
+      async ({ tokensUsed, success }) => {
         const { default: app } = await import("./index");
         const settings = await import("./utils/settings");
         const { GitHubClient } = await import("./github/client");
@@ -202,11 +208,15 @@ describe("Application endpoints", () => {
         vi.spyOn(settings, "getCustomReviewRules").mockResolvedValue(null);
         const record = vi.spyOn(settings, "recordReview").mockResolvedValue(null);
         const comments = vi.spyOn(settings, "recordReviewComments").mockResolvedValue(undefined);
-        vi.spyOn(WebhookHandler.prototype, "handlePullRequestOpened").mockResolvedValue({
-          success: true,
-          skipped: true,
-          tokensUsed,
-        });
+        const review = vi
+          .spyOn(WebhookHandler.prototype, "handlePullRequestOpened")
+          .mockResolvedValue({ success: true, skipped: true })
+          .mockResolvedValueOnce({
+            success,
+            skipped: success,
+            tokensUsed,
+            ...(success ? {} : { error: "Failed to verify review scope" }),
+          });
         vi.spyOn(GitHubClient.prototype, "createPullRequestEyesReaction").mockResolvedValue({
           id: 123,
         });
@@ -239,10 +249,16 @@ describe("Application endpoints", () => {
             })
           );
           expect(response.status).toBe(202);
-          for (let attempt = 0; attempt < 100 && cleanup.mock.calls.length === 0; attempt++) {
+          const expectedAttempts = success ? 1 : 2;
+          for (
+            let attempt = 0;
+            attempt < 100 && cleanup.mock.calls.length < expectedAttempts;
+            attempt++
+          ) {
             await new Promise((resolve) => setTimeout(resolve, 10));
           }
-          expect(cleanup).toHaveBeenCalledTimes(1);
+          expect(cleanup).toHaveBeenCalledTimes(expectedAttempts);
+          expect(review).toHaveBeenCalledTimes(expectedAttempts);
           if (tokensUsed) {
             expect(record).toHaveBeenCalledTimes(1);
             expect(record).toHaveBeenCalledWith({

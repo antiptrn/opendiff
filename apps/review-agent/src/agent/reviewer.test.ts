@@ -676,7 +676,10 @@ describe("CodeReviewAgent", () => {
         mockVerificationResult = invalid;
         await expect(
           agent.reviewFiles(files, { prTitle: "Change getUser", prBody: null }, "/tmp/test-repo")
-        ).rejects.toThrow("Failed to verify review scope");
+        ).rejects.toMatchObject({
+          message: expect.stringContaining("Failed to verify review scope"),
+          tokensUsed: 200,
+        });
       }
     });
 

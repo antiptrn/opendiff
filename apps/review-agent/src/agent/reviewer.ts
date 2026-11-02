@@ -26,6 +26,13 @@ export interface CommentIntentResult {
   executionInstruction?: string;
 }
 
+export class ReviewError extends Error {
+  constructor(cause: unknown, readonly tokensUsed: number) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ReviewError";
+  }
+}
+
 export class CodeReviewAgent {
   constructor(private aiConfig: AiRuntimeConfig | null = null) {}
 
@@ -157,87 +164,94 @@ Report only actionable problems introduced or materially worsened by the PR. Do 
   ): Promise<ReviewResult> {
     const prompt = this.getReviewPrompt(files, context, customRules);
 
-    const response = await runOpencodePrompt({
-      cwd: workingDir,
-      prompt,
-      mode: "read_only",
-      aiConfig: this.aiConfig,
-      title: "Code review",
-    });
+    let tokensUsed = 0;
+    try {
+      const response = await runOpencodePrompt({
+        cwd: workingDir,
+        prompt,
+        mode: "read_only",
+        aiConfig: this.aiConfig,
+        title: "Code review",
+      });
+      tokensUsed += response.tokensUsed;
 
-    const reviewResult = this.parseResponse(response.text);
-    const { accepted, rejected } = validateReviewScope(reviewResult.issues, files);
-    const scopeRejectedIssues = [...(reviewResult.scopeRejectedIssues ?? []), ...rejected];
+      const reviewResult = this.parseResponse(response.text);
+      const { accepted, rejected } = validateReviewScope(reviewResult.issues, files);
+      const scopeRejectedIssues = [...(reviewResult.scopeRejectedIssues ?? []), ...rejected];
 
-    if (accepted.length === 0 && scopeRejectedIssues.length === 0) {
-      return {
-        ...reviewResult,
-        issues: [],
-        scopeRejectedIssues,
-        verdict: "approve",
-        tokensUsed: response.tokensUsed,
-      };
-    }
+      if (accepted.length === 0 && scopeRejectedIssues.length === 0) {
+        return {
+          ...reviewResult,
+          issues: [],
+          scopeRejectedIssues,
+          verdict: "approve",
+          tokensUsed,
+        };
+      }
 
-    const verificationResponse = await runOpencodePrompt({
-      cwd: workingDir,
-      prompt: loadPrompt("verify-review-scope", {
-        prTitle: context.prTitle,
-        prBodySection: context.prBody ? `**Description:** ${context.prBody}` : "",
-        baseContextSection: this.getBaseContextSection(context.baseDirectory),
-        filesChanged: files
-          .map(
-            (file) =>
-              `- ${file.filename}${file.status ? ` (${file.status})` : ""}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}`
-          )
-          .join("\n"),
-        diffs: files
-          .filter((file) => file.patch)
-          .map(
-            (file) =>
-              `### ${file.filename}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}\n\`\`\`diff\n${file.patch}\n\`\`\``
-          )
-          .join("\n\n"),
-        candidates: JSON.stringify(accepted.map((issue, index) => ({ index, issue }))),
-      }),
-      mode: "read_only",
-      aiConfig: this.aiConfig,
-      title: "Verify review scope",
-      format: {
-        type: "json_schema",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["acceptedIssueIndices", "summary", "mergeSafety", "verdict"],
-          properties: {
-            acceptedIssueIndices: {
-              type: "array",
-              uniqueItems: true,
-              maxItems: accepted.length,
-              items: { type: "integer", minimum: 0, maximum: Math.max(0, accepted.length - 1) },
+      const verificationResponse = await runOpencodePrompt({
+        cwd: workingDir,
+        prompt: loadPrompt("verify-review-scope", {
+          prTitle: context.prTitle,
+          prBodySection: context.prBody ? `**Description:** ${context.prBody}` : "",
+          baseContextSection: this.getBaseContextSection(context.baseDirectory),
+          filesChanged: files
+            .map(
+              (file) =>
+                `- ${file.filename}${file.status ? ` (${file.status})` : ""}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}`
+            )
+            .join("\n"),
+          diffs: files
+            .filter((file) => file.patch)
+            .map(
+              (file) =>
+                `### ${file.filename}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}\n\`\`\`diff\n${file.patch}\n\`\`\``
+            )
+            .join("\n\n"),
+          candidates: JSON.stringify(accepted.map((issue, index) => ({ index, issue }))),
+        }),
+        mode: "read_only",
+        aiConfig: this.aiConfig,
+        title: "Verify review scope",
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["acceptedIssueIndices", "summary", "mergeSafety", "verdict"],
+            properties: {
+              acceptedIssueIndices: {
+                type: "array",
+                uniqueItems: true,
+                maxItems: accepted.length,
+                items: { type: "integer", minimum: 0, maximum: Math.max(0, accepted.length - 1) },
+              },
+              summary: { type: "string", minLength: 1 },
+              mergeSafety: { type: "string", minLength: 1 },
+              verdict: { type: "string", enum: ["approve", "comment", "request_changes"] },
             },
-            summary: { type: "string", minLength: 1 },
-            mergeSafety: { type: "string", minLength: 1 },
-            verdict: { type: "string", enum: ["approve", "comment", "request_changes"] },
           },
         },
-      },
-    });
-    const verification = this.parseScopeVerification(verificationResponse.text, accepted.length);
-    const acceptedIndices = new Set(verification.acceptedIssueIndices);
+      });
+      tokensUsed += verificationResponse.tokensUsed;
+      const verification = this.parseScopeVerification(verificationResponse.text, accepted.length);
+      const acceptedIndices = new Set(verification.acceptedIssueIndices);
 
-    return {
-      ...reviewResult,
-      issues: accepted.filter((_, index) => acceptedIndices.has(index)),
-      scopeRejectedIssues: [
-        ...scopeRejectedIssues,
-        ...accepted.filter((_, index) => !acceptedIndices.has(index)),
-      ],
-      verdict: acceptedIndices.size === 0 ? "approve" : verification.verdict,
-      summary: verification.summary,
-      mergeSafety: verification.mergeSafety,
-      tokensUsed: response.tokensUsed + verificationResponse.tokensUsed,
-    };
+      return {
+        ...reviewResult,
+        issues: accepted.filter((_, index) => acceptedIndices.has(index)),
+        scopeRejectedIssues: [
+          ...scopeRejectedIssues,
+          ...accepted.filter((_, index) => !acceptedIndices.has(index)),
+        ],
+        verdict: acceptedIndices.size === 0 ? "approve" : verification.verdict,
+        summary: verification.summary,
+        mergeSafety: verification.mergeSafety,
+        tokensUsed,
+      };
+    } catch (error) {
+      throw new ReviewError(error, tokensUsed);
+    }
   }
 
   private getBaseContextSection(baseDirectory?: string): string {

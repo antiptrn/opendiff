@@ -1,4 +1,4 @@
-import type { CodeReviewAgent } from "../agent/reviewer";
+import { type CodeReviewAgent, ReviewError } from "../agent/reviewer";
 import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue, FileToReview } from "../agent/types";
 import type { GitHubClient } from "../github/client";
@@ -1109,6 +1109,7 @@ export class WebhookHandler {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof ReviewError ? { tokensUsed: error.tokensUsed } : {}),
       };
     }
   }

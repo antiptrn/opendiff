@@ -1455,6 +1455,67 @@ describe("WebhookHandler", () => {
       }
     );
 
+    it.each([false, true])(
+      "should preserve consumed usage without publishing when scope verification fails (request error=%s)",
+      async (requestError) => {
+        mockSnapshotFiles.mockResolvedValue([
+          { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+        ]);
+        const prompt = vi.spyOn(opencode, "runOpencodePrompt").mockResolvedValueOnce({
+          text: JSON.stringify({
+            summary: "Found a regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+            issues: [
+              {
+                type: "bug-risk",
+                severity: "warning",
+                file: "src/index.ts",
+                line: 1,
+                message: "Changed behavior breaks callers.",
+                scope: scopeFor(),
+              },
+            ],
+          }),
+          tokensUsed: 123,
+        });
+        if (requestError) {
+          prompt.mockRejectedValueOnce(new Error("Verifier unavailable"));
+        } else {
+          prompt.mockResolvedValueOnce({
+            text: JSON.stringify({
+              acceptedIssueIndices: [0],
+              summary: "Verified regression.",
+              mergeSafety: " ",
+              verdict: "comment",
+            }),
+            tokensUsed: 77,
+          });
+        }
+        handler = new WebhookHandler(
+          mockGitHubClient as GitHubClient,
+          new CodeReviewAgent(),
+          mockFormatter as ReviewFormatter
+        );
+
+        const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+        expect(prompt).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({
+          success: false,
+          error: requestError
+            ? "Verifier unavailable"
+            : "Failed to verify review scope: Invalid scope verification structure",
+          tokensUsed: requestError ? 123 : 200,
+        });
+        expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();
+        expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+        expect(mockFormatter.formatReview).not.toHaveBeenCalled();
+      }
+    );
+
     it("should handle API errors gracefully", async () => {
       mockSnapshotFiles.mockImplementation(async () => {
         throw new Error("API error");
