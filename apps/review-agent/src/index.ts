@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { type Context, Hono } from "hono";
+import type { FilePayload } from "shared/types";
 import { CodeReviewAgent } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
@@ -737,7 +738,7 @@ app.post("/internal/local-review", async (c) => {
   }
 
   const body = (await c.req.json()) as {
-    files?: Array<{ filename: string; content: string; patch: string }>;
+    files?: FilePayload[];
     title?: string;
     sensitivity?: number;
     aiConfig?: { authMethod: "API_KEY" | "OAUTH_TOKEN"; model: string; credential: string };

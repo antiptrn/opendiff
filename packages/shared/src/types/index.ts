@@ -50,8 +50,7 @@ export interface FileToReview {
 
 // ── Local Review Types (VSCode Extension ↔ BFF) ──────────────────────────────
 
-export interface FilePayload {
-  filename: string;
+export interface FilePayload extends FileToReview {
   content: string;
   patch: string;
 }

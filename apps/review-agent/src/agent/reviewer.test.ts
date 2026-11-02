@@ -1,19 +1,24 @@
 import { mock } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDiffFiles } from "../../../../packages/vscode-extension/src/git/diff";
 import type { CodeIssue, FileToReview } from "./types";
 
 let mockPromptResult = "";
 let mockPromptShouldFail = false;
 let mockPromptError = "Agent failed";
 let lastPromptArgs: unknown = null;
-let promptCalls: Array<{ title?: string; prompt?: string }> = [];
+let promptCalls: Array<{ title?: string; prompt?: string; cwd?: string }> = [];
 let mockVerificationResult: string | null = null;
 let mockAcceptedIssueIndices: number[] = [];
 
 mock.module("../utils/opencode", () => ({
   runOpencodePrompt: async (args: unknown) => {
     lastPromptArgs = args;
-    const input = args as { title?: string; prompt?: string };
+    const input = args as { title?: string; prompt?: string; cwd?: string };
     promptCalls.push(input);
     if (mockPromptShouldFail) {
       throw new Error(mockPromptError);
@@ -432,6 +437,66 @@ describe("CodeReviewAgent", () => {
       });
     }
 
+    function extensionRename(removeValidation: boolean) {
+      const dir = mkdtempSync(join(tmpdir(), "opendiff-extension-review-test-"));
+      const git = (...args: string[]) =>
+        execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: "pipe" });
+      const oldPath = "src/lib/api.ts";
+      const newPath = "src/moved/api.ts";
+      const source = [
+        'import { readUser } from "./helper";',
+        "",
+        'export const source = "local";',
+        "export const timeout = 30;",
+        "",
+        "export function getUser(id: string) {",
+        '  if (!id) throw new Error("id required");',
+        "  return readUser(id);",
+        "}",
+        "",
+        "export const version = 1;",
+        "",
+      ].join("\n");
+
+      try {
+        git("init", "--initial-branch=main");
+        git("config", "user.name", "Extension review test");
+        git("config", "user.email", "extension-review@example.test");
+        mkdirSync(join(dir, "src/lib"), { recursive: true });
+        writeFileSync(join(dir, oldPath), source);
+        writeFileSync(
+          join(dir, "src/lib/helper.ts"),
+          "export const readUser = (id: string) => ({id});\n"
+        );
+        writeFileSync(
+          join(dir, "src/consumer.ts"),
+          'import { getUser } from "./lib/api";\nexport const user = getUser("1");\n'
+        );
+        git("add", ".");
+        git("commit", "-m", "Add API and unchanged consumer");
+        git("checkout", "-b", "move-api");
+        mkdirSync(join(dir, "src/moved"), { recursive: true });
+        renameSync(join(dir, oldPath), join(dir, newPath));
+        if (removeValidation) {
+          writeFileSync(
+            join(dir, newPath),
+            source.replace('  if (!id) throw new Error("id required");\n', "")
+          );
+        }
+        git("add", ".");
+        git("commit", "-m", "Move API");
+
+        // This is the real extension payload as transported over its JSON API.
+        const payload = JSON.parse(
+          JSON.stringify(getDiffFiles(dir, "branch", "main"))
+        ) as ReturnType<typeof getDiffFiles>;
+        return { dir, payload, oldPath, newPath };
+      } catch (error) {
+        rmSync(dir, { recursive: true, force: true });
+        throw error;
+      }
+    }
+
     it("verifies causality against base files and rejects an existing adjacent bug", async () => {
       reviewWith([candidate({ message: "Existing caller has missing error handling" })]);
       mockAcceptedIssueIndices = [];
@@ -663,6 +728,98 @@ describe("CodeReviewAgent", () => {
       expect(result.tokensUsed).toBe(200);
       expect(promptCalls).toHaveLength(2);
       expect(promptCalls[1].prompt).toContain("No separate base snapshot is available");
+    });
+
+    it("retains a rename-only finding through the actual extension JSON payload and local review", async () => {
+      const { dir, payload, oldPath, newPath } = extensionRename(false);
+      try {
+        expect(payload).toHaveLength(1);
+        expect(payload[0]).toMatchObject({
+          filename: newPath,
+          previousFilename: oldPath,
+          status: "renamed",
+        });
+        expect(payload[0].patch).toContain(`rename from ${oldPath}`);
+        expect(payload[0].patch).not.toContain("@@");
+
+        const issue = candidate({
+          file: "src/consumer.ts",
+          line: 1,
+          message: "Moving the API breaks the unchanged consumer import",
+          scope: {
+            file: newPath,
+            line: 1,
+            side: "FILE",
+            before: "The consumer imports ./lib/api and the API reads its adjacent ./helper.",
+            after:
+              "Moving the API to src/moved/api.ts leaves the consumer import and the API's relative ./helper import unresolved.",
+          },
+        });
+        reviewWith([issue]);
+        mockAcceptedIssueIndices = [0];
+
+        const result = await runLocalReview({
+          files: payload,
+          title: "Move the API module",
+          sensitivity: 50,
+        });
+
+        expect(result.review.issues).toEqual([issue]);
+        expect(result.review.scopeRejectedIssues).toHaveLength(0);
+        expect(promptCalls).toHaveLength(2);
+        expect(promptCalls[1].title).toBe("Verify review scope");
+        expect(promptCalls[1].prompt).toContain(`${newPath} (renamed) (previously ${oldPath})`);
+        expect(promptCalls[1].prompt).toContain(`rename from ${oldPath}`);
+        expect(promptCalls[1].prompt).toContain(`rename to ${newPath}`);
+        expect(existsSync(promptCalls[0].cwd ?? "")).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("retains a LEFT anchor at the original path after an extension rename with edits", async () => {
+      const { dir, payload, oldPath, newPath } = extensionRename(true);
+      try {
+        expect(payload).toHaveLength(1);
+        expect(payload[0]).toMatchObject({
+          filename: newPath,
+          previousFilename: oldPath,
+          status: "renamed",
+        });
+        expect(payload[0].patch).toContain('-  if (!id) throw new Error("id required");');
+
+        const issue = candidate({
+          file: newPath,
+          line: 7,
+          message: "Removing validation passes an empty identifier to the reader",
+          scope: {
+            file: oldPath,
+            line: 7,
+            side: "LEFT",
+            before: "getUser rejected an empty identifier before calling readUser.",
+            after: "The deleted guard now allows an empty identifier to reach readUser.",
+          },
+        });
+        reviewWith([issue]);
+        mockAcceptedIssueIndices = [0];
+
+        const result = await runLocalReview({
+          files: payload,
+          title: "Move the API and remove its guard",
+          sensitivity: 50,
+        });
+
+        expect(result.review.issues).toEqual([issue]);
+        expect(result.review.scopeRejectedIssues).toHaveLength(0);
+        expect(promptCalls).toHaveLength(2);
+        expect(promptCalls[1].prompt).toContain(`${newPath} (renamed) (previously ${oldPath})`);
+        expect(promptCalls[1].prompt).toContain(
+          `\"file\":\"${oldPath}\",\"line\":7,\"side\":\"LEFT\"`
+        );
+        expect(existsSync(promptCalls[0].cwd ?? "")).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 

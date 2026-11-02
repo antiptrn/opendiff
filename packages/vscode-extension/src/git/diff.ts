@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FilePayload } from "../types";
@@ -6,54 +6,80 @@ import type { FilePayload } from "../types";
 export type DiffScope = "working" | "branch";
 
 export function getDiffFiles(cwd: string, scope: DiffScope, baseBranch: string): FilePayload[] {
-  const diffCmd = scope === "branch" ? `git diff ${baseBranch}...HEAD` : "git diff";
-  const nameCmd =
-    scope === "branch" ? `git diff --name-only ${baseBranch}...HEAD` : "git diff --name-only";
+  const git = (args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
+  // Resolve branch refs once so metadata, patches, and content use the same revisions.
+  const head =
+    scope === "branch"
+      ? git(["rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"]).trim()
+      : null;
+  const revisions = head
+    ? [
+        `${git(["rev-parse", "--verify", "--end-of-options", `${baseBranch}^{commit}`]).trim()}...${head}`,
+      ]
+    : [];
+  const diffOptions = [
+    "diff",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-color",
+    "--submodule=short",
+    "--find-renames",
+  ];
+  const fields = git([...diffOptions, "--name-status", "-z", ...revisions, "--"]).split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  if (fields.length === 0) return [];
 
-  const patch = execSync(diffCmd, { cwd, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
-  const names = execSync(nameCmd, { cwd, encoding: "utf-8" }).trim();
-
-  if (!names) {
-    return [];
-  }
-
-  const filenames = names.split("\n");
-
-  // Split the unified diff into per-file patches
-  const patchMap = splitPatch(patch);
-
-  const files: FilePayload[] = [];
-  for (const filename of filenames) {
-    let content = "";
-    try {
-      content = readFileSync(join(cwd, filename), "utf-8");
-    } catch {
-      // File may have been deleted
+  const files: Array<FilePayload & { patchCount: number }> = [];
+  for (let index = 0; index < fields.length; ) {
+    const status = fields[index++];
+    const originalPath = fields[index++];
+    const renamed = status.startsWith("R") || status.startsWith("C");
+    const filename = renamed ? fields[index++] : originalPath;
+    const statusName = {
+      A: "added",
+      D: "removed",
+      M: "modified",
+      T: "modified",
+      R: "renamed",
+      C: "copied",
+    }[status[0]];
+    if (!filename || !originalPath || !statusName) {
+      throw new Error("Invalid changed-file metadata in local review");
     }
-
+    let content = "";
+    if (statusName !== "removed") {
+      if (head) {
+        const entry = git(["--literal-pathspecs", "ls-tree", "-z", head, "--", filename]);
+        // A submodule gitlink is not a blob and its commit may be unavailable locally.
+        if (/^[0-7]{6} blob /.test(entry)) content = git(["show", `${head}:${filename}`]);
+      } else {
+        try {
+          content = readFileSync(join(cwd, filename), "utf-8");
+        } catch {
+          // Gitlinks and files removed during collection may have no readable content.
+        }
+      }
+    }
     files.push({
       filename,
       content,
-      patch: patchMap.get(filename) || "",
+      status: statusName,
+      ...(renamed ? { previousFilename: originalPath } : {}),
+      patch: "",
+      // Git emits deletion and addition sections for a type change.
+      patchCount: status[0] === "T" ? 2 : 1,
     });
   }
 
-  return files;
-}
-
-function splitPatch(patch: string): Map<string, string> {
-  const map = new Map<string, string>();
-  const parts = patch.split(/^diff --git /m);
-
-  for (const part of parts) {
-    if (!part.trim()) continue;
-    // Extract filename from "a/path b/path" header
-    const headerMatch = part.match(/^a\/(.+?) b\/(.+)/m);
-    if (headerMatch) {
-      const filename = headerMatch[2];
-      map.set(filename, `diff --git ${part}`);
-    }
+  const patch = git([...diffOptions, "--unified=3", ...revisions, "--"]);
+  const sections = patch.split(/(?=^diff --git )/m).filter(Boolean);
+  if (sections.length !== files.reduce((count, file) => count + file.patchCount, 0)) {
+    throw new Error("Local review patch does not match changed-file metadata");
   }
-
-  return map;
+  // Matching Git order preserves spaces and UTF-8 names without parsing quoted headers.
+  return files.map(({ patchCount, ...file }) => ({
+    ...file,
+    patch: sections.splice(0, patchCount).join(""),
+  }));
 }
