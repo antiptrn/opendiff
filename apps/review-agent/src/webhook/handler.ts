@@ -830,7 +830,11 @@ export class WebhookHandler {
 
           // A queued review may become stale while the model is investigating.
           // Stop before updating history, comments, approvals, or launching autofix.
-          const currentPullRequest = await this.github.getPullRequest(owner, repo, prNumber);
+          const currentPullRequest = await this.github
+            .getPullRequest(owner, repo, prNumber)
+            .catch((error: unknown) => {
+              throw new ReviewError(error, reviewResult.tokensUsed ?? 0);
+            });
           if (
             currentPullRequest.head.sha !== pull_request.head.sha ||
             currentPullRequest.base.sha !== pull_request.base.sha

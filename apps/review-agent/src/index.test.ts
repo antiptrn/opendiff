@@ -270,6 +270,11 @@ describe("Application endpoints", () => {
               tokensUsed: 200,
               usageOnly: true,
             });
+            if (!success) {
+              expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+                review.mock.invocationCallOrder[1]
+              );
+            }
           } else {
             expect(record).not.toHaveBeenCalled();
           }

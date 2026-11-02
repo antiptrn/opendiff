@@ -1455,6 +1455,62 @@ describe("WebhookHandler", () => {
       }
     );
 
+    it("should preserve both model passes' usage without publishing when the revision lookup fails", async () => {
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+      ]);
+      mockGitHubClient.getPullRequest.mockRejectedValue(new Error("Revision lookup unavailable"));
+      const prompt = vi
+        .spyOn(opencode, "runOpencodePrompt")
+        .mockResolvedValueOnce({
+          text: JSON.stringify({
+            summary: "Found a regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+            issues: [
+              {
+                type: "bug-risk",
+                severity: "warning",
+                file: "src/index.ts",
+                line: 1,
+                message: "Changed behavior breaks callers.",
+                scope: scopeFor(),
+              },
+            ],
+          }),
+          tokensUsed: 123,
+        })
+        .mockResolvedValueOnce({
+          text: JSON.stringify({
+            acceptedIssueIndices: [0],
+            summary: "Verified regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+          }),
+          tokensUsed: 77,
+        });
+      handler = new WebhookHandler(
+        mockGitHubClient as GitHubClient,
+        new CodeReviewAgent(),
+        mockFormatter as ReviewFormatter
+      );
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(prompt).toHaveBeenCalledTimes(2);
+      expect(mockGitHubClient.getPullRequest).toHaveBeenCalledWith("owner", "repo", 42);
+      expect(result).toEqual({
+        success: false,
+        error: "Revision lookup unavailable",
+        tokensUsed: 200,
+      });
+      expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockFormatter.formatReview).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])(
       "should preserve consumed usage without publishing when scope verification fails (request error=%s)",
       async (requestError) => {
