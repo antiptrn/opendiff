@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { simpleGit } from "simple-git";
+import type { CodeIssue } from "../agent/types";
+import { validateReviewScope } from "../review/scope";
 import { checkoutReviewCommit, prepareReviewSnapshot } from "./review-snapshot";
 
 const temporaryDirectories: string[] = [];
@@ -176,6 +178,87 @@ describe("review snapshots", () => {
     expect(dynamicRoute?.patch).not.toContain("--- a/src/i.tsx");
     expect(dynamicRoute?.additions).toBe(1);
     expect(dynamicRoute?.deletions).toBe(1);
+  });
+
+  it("isolates patches when a file becomes a directory and preserves deletion anchors", async () => {
+    const { dir, git } = await repository();
+    await write(dir, "src/api.ts", "export const api = true;\n");
+    await write(dir, "caller.ts", 'import { api } from "./src/api.ts";\n');
+    await git.add(".");
+    await git.commit("Initial API and caller");
+    const base = (await git.revparse(["HEAD"])).trim();
+    await rm(join(dir, "src/api.ts"));
+    await write(dir, "src/api.ts/index.ts", "export function replacement() {}\n");
+    await git.add(".");
+    await git.commit("Replace API file with a directory");
+    const head = (await git.revparse(["HEAD"])).trim();
+
+    const snapshot = await prepareReviewSnapshot(dir, git, {
+      head: { sha: head, ref: "main" },
+      base: { sha: base, ref: "main" },
+    });
+    expect(snapshot.files).toHaveLength(2);
+    const removed = snapshot.files.find((file) => file.filename === "src/api.ts");
+    const added = snapshot.files.find((file) => file.filename === "src/api.ts/index.ts");
+    expect(removed?.status).toBe("removed");
+    expect(removed?.patch).toContain("-export const api = true;");
+    expect(removed?.patch).not.toContain("src/api.ts/index.ts");
+    expect(removed?.additions).toBe(0);
+    expect(removed?.deletions).toBe(1);
+    expect(added?.status).toBe("added");
+    expect(added?.patch).toContain("+export function replacement() {}");
+    expect(added?.patch).not.toContain("-export const api = true;");
+    expect(added?.additions).toBe(1);
+    expect(added?.deletions).toBe(0);
+    expect(await readFile(join(snapshot.baseDirectory, "src/api.ts"), "utf8")).toBe(
+      "export const api = true;\n"
+    );
+    const issue: CodeIssue = {
+      type: "bug-risk",
+      severity: "warning",
+      file: "caller.ts",
+      line: 1,
+      message: "The explicit file import no longer resolves",
+      scope: {
+        file: "src/api.ts",
+        line: 1,
+        side: "LEFT",
+        before: "The caller could import the API file explicitly.",
+        after: "The API file is a directory, so the explicit import fails.",
+      },
+    };
+    expect(validateReviewScope([issue], snapshot.files)).toEqual({
+      accepted: [issue],
+      rejected: [],
+    });
+  });
+
+  it("keeps both type-change sections associated with their canonical file", async () => {
+    const { dir, git } = await repository();
+    await write(dir, "a.ts", "original();\n");
+    await write(dir, "z.ts", "before();\n");
+    await git.add(".");
+    await git.commit("Initial files");
+    const base = (await git.revparse(["HEAD"])).trim();
+    await rm(join(dir, "a.ts"));
+    await symlink("z.ts", join(dir, "a.ts"));
+    await write(dir, "z.ts", "after();\n");
+    await git.add(".");
+    await git.commit("Replace a file with a symlink and modify another file");
+    const head = (await git.revparse(["HEAD"])).trim();
+
+    const snapshot = await prepareReviewSnapshot(dir, git, {
+      head: { sha: head, ref: "main" },
+      base: { sha: base, ref: "main" },
+    });
+    expect(snapshot.files).toHaveLength(2);
+    const changedType = snapshot.files.find((file) => file.filename === "a.ts");
+    expect(changedType?.patch).toContain("-original();");
+    expect(changedType?.patch).toContain("+z.ts");
+    expect(changedType?.patch).not.toContain("diff --git a/z.ts");
+    const modified = snapshot.files.find((file) => file.filename === "z.ts");
+    expect(modified?.patch).toContain("-before();\n+after();");
+    expect(modified?.patch).not.toContain("diff --git a/a.ts");
   });
 
   it("preserves rename-only metadata and the original baseline without inventing text changes", async () => {

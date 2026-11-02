@@ -62,10 +62,11 @@ function safeSnapshotPath(directory: string, filename: string): string {
   return result;
 }
 
-function parseChangedFiles(output: string): PullRequestFile[] {
+function parseChangedFiles(output: string): { files: PullRequestFile[]; patchCounts: number[] } {
   const fields = output.split("\0");
   if (fields.at(-1) === "") fields.pop();
   const files: PullRequestFile[] = [];
+  const patchCounts: number[] = [];
   for (let index = 0; index < fields.length; ) {
     const status = fields[index++];
     const firstPath = fields[index++];
@@ -82,6 +83,8 @@ function parseChangedFiles(output: string): PullRequestFile[] {
       C: "copied",
     }[status[0]] as PullRequestFile["status"] | undefined;
     if (!statusName) throw new Error("Unsupported file status in review snapshot");
+    // Git represents a type change with separate deletion and addition sections.
+    patchCounts.push(status[0] === "T" ? 2 : 1);
     files.push({
       filename,
       ...(isRename ? { previousFilename: firstPath } : {}),
@@ -90,7 +93,7 @@ function parseChangedFiles(output: string): PullRequestFile[] {
       deletions: 0,
     });
   }
-  return files;
+  return { files, patchCounts };
 }
 
 /** Build the review diff and baseline from the same immutable PR revisions. */
@@ -102,7 +105,7 @@ export async function prepareReviewSnapshot(
   await checkoutReviewCommit(git, pullRequest.head.sha);
   await ensureCommit(git, pullRequest.base.sha);
   const mergeBase = await findMergeBase(git, pullRequest.base.sha, pullRequest.head.sha);
-  const files = parseChangedFiles(
+  const { files, patchCounts } = parseChangedFiles(
     await git.raw([
       "diff",
       "--no-ext-diff",
@@ -115,24 +118,30 @@ export async function prepareReviewSnapshot(
       "--",
     ])
   );
+  const canonicalPatch = await git.raw([
+    "diff",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-color",
+    "--unified=3",
+    "--find-renames",
+    mergeBase,
+    pullRequest.head.sha,
+    "--",
+  ]);
+  // Both canonical diffs use Git's file order and rename detection. Splitting at
+  // headers avoids pathspecs also selecting descendants during path transitions.
+  const patches = canonicalPatch.split(/(?=^diff --git )/m).filter(Boolean);
+  if (patches.length !== patchCounts.reduce((total, count) => total + count, 0)) {
+    throw new Error("Review snapshot patch does not match changed-file metadata");
+  }
   const baseDirectory = await mkdtemp(join(workingDir, ".opendiff-base-"));
 
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
     safeSnapshotPath(baseDirectory, file.filename);
     const basePath = file.previousFilename ?? file.filename;
     const snapshotPath = safeSnapshotPath(baseDirectory, basePath);
-    const patch = await git.raw([
-      "diff",
-      "--no-ext-diff",
-      "--no-textconv",
-      "--no-color",
-      "--unified=3",
-      "--find-renames",
-      mergeBase,
-      pullRequest.head.sha,
-      "--",
-      ...[...new Set([basePath, file.filename])].map((path) => `:(literal)${path}`),
-    ]);
+    const patch = patches.splice(0, patchCounts[index]).join("");
     if (/^@@ /m.test(patch) || file.status === "renamed") {
       file.patch = patch;
       let inHunk = false;
