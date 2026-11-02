@@ -1,10 +1,11 @@
 import { mock } from "bun:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CodeReviewAgent } from "../agent/reviewer";
+import { CodeReviewAgent } from "../agent/reviewer";
 import type { GitHubClient } from "../github/client";
 import { ReviewFormatter } from "../review/formatter";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import { buildIssueMarker } from "../utils/issue-markers";
+import * as opencode from "../utils/opencode";
 import * as reviewSnapshot from "../utils/review-snapshot";
 
 const mockSnapshotFiles = vi.fn();
@@ -1398,23 +1399,55 @@ describe("WebhookHandler", () => {
     );
 
     it.each(["head", "base"])(
-      "should discard stale reviews when the PR %s changes",
+      "should preserve both model passes' usage when the PR %s changes after review",
       async (revision) => {
         mockSnapshotFiles.mockResolvedValue([
           { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
         ]);
-        mockGitHubClient.getPullRequest.mockResolvedValue({
-          ...basePayload.pull_request,
-          [revision]: { ...basePayload.pull_request[revision], sha: "new-commit" },
-        });
-        mockAgent.reviewFiles.mockResolvedValue({
-          summary: "Reviewed the previous revision.",
-          mergeSafety: "Safe to merge.",
-          verdict: "approve",
-          issues: [],
-        });
+        mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+        const prompt = vi
+          .spyOn(opencode, "runOpencodePrompt")
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: "Found a regression.",
+              mergeSafety: "Review the finding.",
+              verdict: "comment",
+              issues: [
+                {
+                  type: "bug-risk",
+                  severity: "warning",
+                  file: "src/index.ts",
+                  line: 1,
+                  message: "Changed behavior breaks callers.",
+                  scope: scopeFor(),
+                },
+              ],
+            }),
+            tokensUsed: 123,
+          })
+          .mockImplementationOnce(async () => {
+            mockGitHubClient.getPullRequest.mockResolvedValue({
+              ...basePayload.pull_request,
+              [revision]: { ...basePayload.pull_request[revision], sha: "new-commit" },
+            });
+            return {
+              text: JSON.stringify({
+                acceptedIssueIndices: [0],
+                summary: "Verified regression.",
+                mergeSafety: "Review the finding.",
+                verdict: "comment",
+              }),
+              tokensUsed: 77,
+            };
+          });
+        handler = new WebhookHandler(
+          mockGitHubClient as GitHubClient,
+          new CodeReviewAgent(),
+          mockFormatter as ReviewFormatter
+        );
         const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
-        expect(result).toMatchObject({ success: true, skipped: true });
+        expect(prompt).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({ success: true, skipped: true, tokensUsed: 200 });
         expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
         expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
         expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();

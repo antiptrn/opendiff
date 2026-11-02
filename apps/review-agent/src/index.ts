@@ -593,6 +593,17 @@ async function processPullRequestReviewJob(
           );
 
     if (result.skipped) {
+      if (result.tokensUsed && result.tokensUsed > 0) {
+        await recordReview({
+          githubRepoId: payload.repository.id,
+          owner,
+          repo,
+          pullNumber: reviewPayload.pull_request.number,
+          reviewType: "initial",
+          tokensUsed: result.tokensUsed,
+          usageOnly: true,
+        });
+      }
       console.log(
         `Queued PR review skipped for ${owner}/${repo}#${reviewPayload.pull_request.number}`
       );

@@ -836,7 +836,7 @@ export class WebhookHandler {
             currentPullRequest.base.sha !== pull_request.base.sha
           ) {
             console.log(`Skipping stale review for ${owner}/${repo}#${prNumber}`);
-            return { success: true, skipped: true };
+            return { success: true, skipped: true, tokensUsed: reviewResult.tokensUsed };
           }
 
           const issueFingerprints = reviewableIssues.map((issue) => buildIssueFingerprint(issue));

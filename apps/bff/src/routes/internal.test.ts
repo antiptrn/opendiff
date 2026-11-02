@@ -273,6 +273,43 @@ describe("internal settings routes", () => {
     });
   });
 
+  it.each([0, 1_000_000])(
+    "accounts for stale review usage without creating a review when current usage is %s",
+    async (tokensUsedThisCycle) => {
+      repositorySettings.findFirst.mockResolvedValue({
+        id: "repo-settings-1",
+        organization: { id: "org-1", tokensUsedThisCycle },
+      });
+
+      const response = await createApp().fetch(
+        new Request("http://localhost/api/internal/reviews", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": "internal-secret",
+          },
+          body: JSON.stringify({
+            githubRepoId: 123,
+            owner: "owner",
+            repo: "repo",
+            pullNumber: 124,
+            reviewType: "initial",
+            tokensUsed: 200,
+            usageOnly: true,
+          }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ created: false });
+      expect(organization.update).toHaveBeenCalledWith({
+        where: { id: "org-1" },
+        data: { tokensUsedThisCycle: { increment: 200 } },
+      });
+      expect(review.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("disables repository settings that are not attached to an organization", async () => {
     mockResolvedRepositorySettings({
       id: "repo-settings-1",
