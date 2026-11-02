@@ -103,6 +103,55 @@ describe("review snapshots", () => {
     await expect(readFile(join(snapshot.baseDirectory, "added.ts"))).rejects.toThrow();
   });
 
+  for (const status of ["modified", "removed"] as const) {
+    it(`reviews code alongside a ${status} submodule with unavailable commit objects`, async () => {
+      const submodule = await repository();
+      await write(submodule.dir, "dependency.ts", "before();\n");
+      await submodule.git.add(".");
+      await submodule.git.commit("Initial dependency");
+      const oldCommit = (await submodule.git.revparse(["HEAD"])).trim();
+      await write(submodule.dir, "dependency.ts", "after();\n");
+      await submodule.git.add(".");
+      await submodule.git.commit("Update dependency");
+      const newCommit = (await submodule.git.revparse(["HEAD"])).trim();
+
+      const { dir, git } = await repository();
+      const submodulePath = "vendor/dependency";
+      await write(dir, "code.ts", "before();\n");
+      await git.add(".");
+      await git.raw(["update-index", "--add", "--cacheinfo", "160000", oldCommit, submodulePath]);
+      await git.commit("Initial code and gitlink");
+      const base = (await git.revparse(["HEAD"])).trim();
+      await write(dir, "code.ts", "after();\n");
+      await git.add("code.ts");
+      if (status === "modified") {
+        await git.raw(["update-index", "--cacheinfo", "160000", newCommit, submodulePath]);
+      } else {
+        await git.raw(["update-index", "--force-remove", submodulePath]);
+      }
+      await git.commit("Change code and submodule");
+      const head = (await git.revparse(["HEAD"])).trim();
+      await expect(git.raw(["cat-file", "-e", oldCommit])).rejects.toThrow();
+
+      const snapshot = await prepareReviewSnapshot(dir, git, {
+        head: { sha: head, ref: "main" },
+        base: { sha: base, ref: "main" },
+      });
+      expect(snapshot.files).toHaveLength(2);
+      const dependency = snapshot.files.find((file) => file.filename === submodulePath);
+      expect(dependency?.status).toBe(status);
+      expect(dependency?.patch).toContain(`-Subproject commit ${oldCommit}`);
+      if (status === "modified") {
+        expect(dependency?.patch).toContain(`+Subproject commit ${newCommit}`);
+      }
+      await expect(readFile(join(snapshot.baseDirectory, submodulePath))).rejects.toThrow();
+      expect(snapshot.files.find((file) => file.filename === "code.ts")?.patch).toContain(
+        "-before();\n+after();"
+      );
+      expect(await readFile(join(snapshot.baseDirectory, "code.ts"), "utf8")).toBe("before();\n");
+    });
+  }
+
   it("treats route filenames as literal paths instead of matching other changed files", async () => {
     const { dir, git } = await repository();
     for (const filename of ["src/[id].tsx", "src/i.tsx"]) {

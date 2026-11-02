@@ -145,6 +145,16 @@ export async function prepareReviewSnapshot(
     }
     // A pure rename still needs its original contents to verify path-dependent regressions.
     if (file.patch && file.status !== "added") {
+      const entry = await git.raw([
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        mergeBase,
+        "--",
+        basePath,
+      ]);
+      // Gitlinks reference submodule commits, which need not exist in this clone.
+      if (!/^[0-7]{6} blob /.test(entry)) continue;
       const content = await git.raw(["show", `${mergeBase}:${basePath}`]);
       await mkdir(dirname(snapshotPath), { recursive: true });
       await writeFile(snapshotPath, content);
