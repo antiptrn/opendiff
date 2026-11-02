@@ -24,8 +24,8 @@ function isLine(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
-/** Parse the entire patch, failing closed on truncated or inconsistent hunks. */
-function changedLines(patch: string | undefined): ChangedLines | null {
+/** Parse one patch section, failing closed on truncated or inconsistent hunks. */
+function sectionChangedLines(patch: string | undefined): ChangedLines | null {
   if (typeof patch !== "string" || !patch.trim()) return null;
 
   const result: ChangedLines = { left: new Set(), right: new Set() };
@@ -112,6 +112,49 @@ function changedLines(patch: string | undefined): ChangedLines | null {
   return hasHunk && oldRemaining === 0 && newRemaining === 0 ? result : null;
 }
 
+function matchesGitPath(value: string, path: string): boolean {
+  // Git quotes special characters and, by default, non-ASCII UTF-8 bytes.
+  const quoted = `"${Array.from(Buffer.from(path), (byte) => {
+    if (byte === 34) return '\\"';
+    if (byte === 92) return "\\\\";
+    if (byte >= 127) return `\\${byte.toString(8).padStart(3, "0")}`;
+    return String.fromCharCode(byte);
+  }).join("")}"`;
+  return value === path || value === quoted;
+}
+
+function changedLines(patch: string | undefined, filename: string): ChangedLines | null {
+  if (typeof patch !== "string") return null;
+  const sections = patch.split(/(?=^diff --git )/m).filter(Boolean);
+  if (sections.length <= 1) return sectionChangedLines(patch);
+  // A canonical type change is a deletion followed by an addition of the same
+  // path. Parse them separately so the addition can restart its line counters.
+  if (sections.length !== 2) return null;
+  if (sections[0].split("\n", 1)[0] !== sections[1].split("\n", 1)[0]) return null;
+  for (const [index, section] of sections.entries()) {
+    const lines = section.split("\n").map((line) => line.replace(/\r$/, ""));
+    const oldPath = lines.find((line) => line.startsWith("--- "))?.slice(4);
+    const newPath = lines.find((line) => line.startsWith("+++ "))?.slice(4);
+    if (
+      !lines[0].startsWith("diff --git ") ||
+      !lines.some((line) =>
+        (index === 0 ? /^deleted file mode [0-7]{6}$/ : /^new file mode [0-7]{6}$/).test(line)
+      ) ||
+      oldPath === undefined ||
+      newPath === undefined ||
+      (index === 0
+        ? !matchesGitPath(oldPath, `a/${filename}`) || newPath !== "/dev/null"
+        : oldPath !== "/dev/null" || !matchesGitPath(newPath, `b/${filename}`))
+    ) {
+      return null;
+    }
+  }
+  const deleted = sectionChangedLines(sections[0]);
+  const added = sectionChangedLines(sections[1]);
+  if (!deleted || !added || deleted.right.size !== 0 || added.left.size !== 0) return null;
+  return { left: deleted.left, right: added.right };
+}
+
 /**
  * Check that findings have a real changed-code anchor and before/after evidence.
  * This establishes eligibility; the reviewer must still verify causal correctness.
@@ -130,7 +173,7 @@ export function validateReviewScope(
     if (file.status === "renamed" && oldPath !== file.filename) {
       anchors.set(`FILE:${file.filename}`, new Set([1]));
     }
-    const parsed = changedLines(file.patch);
+    const parsed = changedLines(file.patch, file.filename);
     if (!parsed) continue;
     anchors.set(`RIGHT:${file.filename}`, parsed.right);
     anchors.set(`LEFT:${oldPath}`, parsed.left);

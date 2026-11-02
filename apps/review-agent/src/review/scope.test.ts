@@ -28,6 +28,11 @@ function finding(overrides: Partial<CodeIssue> = {}): CodeIssue {
   };
 }
 
+const typeChangeDeletion =
+  "diff --git a/src/save.ts b/src/save.ts\ndeleted file mode 100644\nindex 111..000\n--- a/src/save.ts\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-export const save = true;\n-export const validate = true;\n";
+const typeChangeAddition =
+  "diff --git a/src/save.ts b/src/save.ts\nnew file mode 120000\nindex 000..222\n--- /dev/null\n+++ b/src/save.ts\n@@ -0,0 +1 @@\n+other.ts\n\\ No newline at end of file\n";
+
 describe("validateReviewScope", () => {
   it("accepts evidence anchored to an actual changed line", () => {
     const issue = finding();
@@ -166,6 +171,53 @@ describe("validateReviewScope", () => {
       { filename: "src/save.ts", patch: "@@ -2 +2 @@\n---value;\n+++value;" },
     ];
     expect(validateReviewScope([finding()], patch).accepted).toHaveLength(1);
+  });
+
+  it.each([
+    { filename: "src/save.ts", oldPath: "a/src/save.ts", newPath: "b/src/save.ts" },
+    { filename: "src/a file.ts", oldPath: "a/src/a file.ts", newPath: "b/src/a file.ts" },
+    {
+      filename: 'src/"quoted".ts',
+      oldPath: '"a/src/\\"quoted\\".ts"',
+      newPath: '"b/src/\\"quoted\\".ts"',
+    },
+    {
+      filename: "src/café.ts",
+      oldPath: '"a/src/caf\\303\\251.ts"',
+      newPath: '"b/src/caf\\303\\251.ts"',
+    },
+  ])(
+    "accepts both sides of a canonical type change for $filename",
+    ({ filename, oldPath, newPath }) => {
+      const patch = (typeChangeDeletion + typeChangeAddition)
+        .replaceAll("a/src/save.ts", oldPath)
+        .replaceAll("b/src/save.ts", newPath);
+      const issues = (["LEFT", "RIGHT"] as const).map((side) => {
+        const issue = finding();
+        if (issue.scope) issue.scope = { ...issue.scope, file: filename, side, line: 1 };
+        return issue;
+      });
+      expect(validateReviewScope(issues, [{ filename, patch }])).toEqual({
+        accepted: issues,
+        rejected: [],
+      });
+    }
+  );
+
+  it.each([
+    typeChangeDeletion + typeChangeAddition.replaceAll("src/save.ts", "src/other.ts"),
+    typeChangeDeletion + typeChangeAddition.replace("+++ b/src/save.ts", "+++ b/src/other.ts"),
+    typeChangeDeletion + typeChangeAddition.replace("new file mode", "old mode"),
+    typeChangeDeletion + typeChangeAddition.replace("+1 @@", "+1,2 @@"),
+    typeChangeDeletion.replace("-1,2", "-1,3") + typeChangeAddition,
+    typeChangeDeletion + typeChangeAddition + typeChangeAddition,
+  ])("rejects inconsistent or truncated type-change sections %j", (patch) => {
+    const issue = finding();
+    if (issue.scope) issue.scope.line = 1;
+    expect(validateReviewScope([issue], [{ filename: "src/save.ts", patch }])).toEqual({
+      accepted: [],
+      rejected: [issue],
+    });
   });
 
   it.each([

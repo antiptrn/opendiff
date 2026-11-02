@@ -235,7 +235,8 @@ describe("review snapshots", () => {
 
   it("keeps both type-change sections associated with their canonical file", async () => {
     const { dir, git } = await repository();
-    await write(dir, "a.ts", "original();\n");
+    await write(dir, "a.ts", "export const original = true;\n");
+    await write(dir, "caller.ts", 'import { original } from "./a.ts";\n');
     await write(dir, "z.ts", "before();\n");
     await git.add(".");
     await git.commit("Initial files");
@@ -253,12 +254,30 @@ describe("review snapshots", () => {
     });
     expect(snapshot.files).toHaveLength(2);
     const changedType = snapshot.files.find((file) => file.filename === "a.ts");
-    expect(changedType?.patch).toContain("-original();");
+    expect(changedType?.patch).toContain("-export const original = true;");
     expect(changedType?.patch).toContain("+z.ts");
     expect(changedType?.patch).not.toContain("diff --git a/z.ts");
     const modified = snapshot.files.find((file) => file.filename === "z.ts");
     expect(modified?.patch).toContain("-before();\n+after();");
     expect(modified?.patch).not.toContain("diff --git a/a.ts");
+    const issues: CodeIssue[] = (["LEFT", "RIGHT"] as const).map((side) => ({
+      type: "bug-risk",
+      severity: "warning",
+      file: "caller.ts",
+      line: 1,
+      message: "Preserve the export used by the unchanged caller",
+      scope: {
+        file: "a.ts",
+        line: 1,
+        side,
+        before: "The caller could import original from a.ts.",
+        after: "The symlink targets z.ts, which does not export original.",
+      },
+    }));
+    expect(validateReviewScope(issues, snapshot.files)).toEqual({
+      accepted: issues,
+      rejected: [],
+    });
   });
 
   it("preserves rename-only metadata and the original baseline without inventing text changes", async () => {
