@@ -133,7 +133,7 @@ describe("review snapshots", () => {
       }
       await git.commit("Change code and submodule");
       const head = (await git.revparse(["HEAD"])).trim();
-      await expect(git.raw(["cat-file", "-e", oldCommit])).rejects.toThrow();
+      await expect(Promise.resolve(git.raw(["cat-file", "-t", oldCommit]))).rejects.toThrow();
 
       const snapshot = await prepareReviewSnapshot(dir, git, {
         head: { sha: head, ref: "main" },
