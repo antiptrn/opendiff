@@ -558,7 +558,9 @@ export async function runOpencodePrompt(
       const structured = info.structured_output;
 
       let text = extractTextFromParts(payload.parts);
-      if (!text && structured && typeof structured === "object") {
+      if (input.format && structured !== undefined && structured !== null) {
+        text = JSON.stringify(structured);
+      } else if (!text && structured && typeof structured === "object") {
         text = JSON.stringify(structured);
       }
 
