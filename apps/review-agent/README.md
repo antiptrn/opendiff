@@ -29,6 +29,11 @@ Copy `.env.example` to `.env` and configure values.
 | `OPENCODE_USE_AUTH_JSON` | Optional | Debug override. When truthy, OpenCode uses `auth.json` for all plans instead of org BYOK keys or OpenDiff provider API keys. |
 | `OPENCODE_AUTH_PATH` | Optional | Path to the OpenCode `auth.json` file when `OPENCODE_USE_AUTH_JSON` is enabled. |
 | `OPENCODE_MODEL` | Optional | Default model when org-level config is absent, or the debug `auth.json` override is enabled. |
+| `OPENCODE_REASONING_EFFORT` | Optional | Default OpenAI reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`, depending on model support. |
+| `OPENCODE_REVIEW_MODEL` | Optional | Override the default model for reviews, summaries, and comment responses. |
+| `OPENCODE_REVIEW_REASONING_EFFORT` | Optional | Override the default OpenAI reasoning effort for review-related calls. |
+| `OPENCODE_AUTOFIX_MODEL` | Optional | Override the default model for `TriageAgent.fixIssue`, including fixes requested through comment replies. |
+| `OPENCODE_AUTOFIX_REASONING_EFFORT` | Optional | Override the default OpenAI reasoning effort for autofix calls. |
 | `GITHUB_APP_ID` + (`GITHUB_PRIVATE_KEY` or `GITHUB_PRIVATE_KEY_PATH`) | Recommended | Preferred GitHub auth mode. Required for `fix-accepted` callback. |
 | `GITHUB_TOKEN` | Fallback | Used only when GitHub App auth is not configured. |
 | `BOT_USERNAME` | Optional | Defaults to `opendiff-bot`. |
@@ -86,6 +91,21 @@ Configure a GitHub webhook pointing to this service:
 - With autofix enabled, fixes are committed and pushed to the PR branch, then matching review threads are replied to and resolved.
 - With autofix disabled, fix metadata is collected without pushing commits.
 - In review comment threads, the bot can distinguish between discussion and explicit "do this" requests and trigger a fix attempt for executable requests.
+
+## Task-specific models
+
+Reviews, summaries, and comment responses use the review defaults. Actual fix attempts use the autofix defaults, regardless of whether a fix was triggered automatically or requested in a comment. Without task-specific settings, both continue to use `OPENCODE_MODEL` and `OPENCODE_REASONING_EFFORT`. Each setting falls back independently; configuring only an autofix model does not change its reasoning effort.
+
+For example:
+
+```env
+OPENCODE_REVIEW_MODEL=openai/gpt-6.1-terra
+OPENCODE_REVIEW_REASONING_EFFORT=max
+OPENCODE_AUTOFIX_MODEL=openai/gpt-6.1-sol
+OPENCODE_AUTOFIX_REASONING_EFFORT=high
+```
+
+Task overrides apply only when no organization AI configuration is passed. An organization's explicit model continues to use its existing credentials and the global reasoning setting. The selected default model's provider still needs valid credentials. Reasoning overrides apply only to OpenAI models; choose an effort supported by the selected model. An invalid non-empty task-specific effort fails before starting OpenCode instead of silently using another effort.
 
 ## Scripts
 
