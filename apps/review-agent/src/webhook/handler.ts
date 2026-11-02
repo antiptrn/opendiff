@@ -3,6 +3,7 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue, FileToReview } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 import type { ReviewFormatter } from "../review/formatter";
+import { validateReviewScope } from "../review/scope";
 import type { DiffPatches } from "../review/types";
 import { commentMentionsBot } from "../utils/bot-mentions";
 import { withClonedRepo } from "../utils/git";
@@ -19,6 +20,7 @@ import {
   extractStoredIssueRecords,
   toStoredIssueRecord,
 } from "../utils/issue-markers";
+import { prepareReviewSnapshot } from "../utils/review-snapshot";
 import {
   acquireExecutionLock,
   getClarificationLockByThread,
@@ -388,8 +390,9 @@ function buildReviewHistoryContext(
   const newIssues: StoredIssueRecord[] = [];
 
   for (const [fingerprint, issue] of historicalIssues) {
-    if (currentIssueMap.has(fingerprint)) {
-      unresolvedHistoricalIssues.push(issue);
+    const currentIssue = currentIssueMap.get(fingerprint);
+    if (currentIssue) {
+      unresolvedHistoricalIssues.push(currentIssue);
     } else {
       addressedIssues.push(issue);
     }
@@ -433,6 +436,9 @@ function buildPriorReviewPromptContext(historicalIssues: Map<string, StoredIssue
     lines.push(
       `- ${issue.file}:${issue.line} type=${issue.type} severity=${issue.severity} message="${issue.message}"`
     );
+    if (issue.scope) {
+      lines.push(`  scope=${JSON.stringify(issue.scope)}`);
+    }
   }
   return lines.join("\n");
 }
@@ -720,15 +726,14 @@ export class WebhookHandler {
           owner,
           repo,
           branch: pull_request.head.ref,
+          commit: pull_request.head.sha,
           label: `review-${prNumber}`,
         },
-        async (tempDir) => {
-          // Fetch PR files metadata
-          const files = await this.github.getPullRequestFiles(owner, repo, prNumber);
+        async (tempDir, git) => {
+          const { files, baseDirectory } = await prepareReviewSnapshot(tempDir, git, pull_request);
 
           // Filter to reviewable code files
           const codeFiles = files.filter((file) => {
-            if (file.status === "removed") return false;
             if (!this.isCodeFile(file.filename)) return false;
             if (this.shouldSkipFile(file.filename)) return false;
             const ignoredDir = getIgnoredDirForPath(file.filename, normalizedReviewIgnoredDirs);
@@ -748,6 +753,8 @@ export class WebhookHandler {
           const filesToReview: FileToReview[] = codeFiles.map((file) => ({
             filename: file.filename,
             patch: file.patch,
+            previousFilename: file.previousFilename,
+            status: file.status,
           }));
 
           // Run AI review with OpenCode (agent will read files itself)
@@ -764,10 +771,21 @@ export class WebhookHandler {
             prNumber,
             botUsername
           );
-          const reviewableHistoricalIssues = filterIssuesInReviewPathScope(
+          const historicalIssuesInPathScope = filterIssuesInReviewPathScope(
             historicalIssues,
             normalizedReviewIncludedDirs,
             normalizedReviewIgnoredDirs
+          );
+          // Legacy or no-longer-anchored findings are excluded, never called fixed.
+          const eligibleHistoricalIssues = validateReviewScope(
+            [...historicalIssuesInPathScope.values()].map(storedIssueToCodeIssue),
+            filesToReview
+          ).accepted;
+          const reviewableHistoricalIssues = new Map(
+            eligibleHistoricalIssues.map((issue) => [
+              buildIssueFingerprint(issue),
+              toStoredIssueRecord(issue),
+            ])
           );
           const reviewResult = await this.agent.reviewFiles(
             filesToReview,
@@ -775,6 +793,7 @@ export class WebhookHandler {
               prTitle: pull_request.title,
               prBody: pull_request.body,
               sensitivity,
+              baseDirectory,
               conversationContext,
               priorReviewContext: buildPriorReviewPromptContext(reviewableHistoricalIssues),
             },
@@ -782,7 +801,10 @@ export class WebhookHandler {
             customRules
           );
 
-          const reviewableIssues = reviewResult.issues.filter((issue) => {
+          // Validate here as well so all consumers (history, summary, storage and autofix)
+          // receive the same eligible set, including when a reviewer implementation changes.
+          const scoped = validateReviewScope(reviewResult.issues, filesToReview);
+          const reviewableIssues = scoped.accepted.filter((issue) => {
             const ignoredDir = getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs);
             if (ignoredDir) {
               console.log(`Dropping review finding for ${issue.file}; ignored by ${ignoredDir}`);
@@ -796,6 +818,26 @@ export class WebhookHandler {
             }
             return true;
           });
+
+          const scopeRejectedFingerprints = new Set(
+            [...scoped.rejected, ...(reviewResult.scopeRejectedIssues ?? [])].map(
+              buildIssueFingerprint
+            )
+          );
+          for (const fingerprint of scopeRejectedFingerprints) {
+            reviewableHistoricalIssues.delete(fingerprint);
+          }
+
+          // A queued review may become stale while the model is investigating.
+          // Stop before updating history, comments, approvals, or launching autofix.
+          const currentPullRequest = await this.github.getPullRequest(owner, repo, prNumber);
+          if (
+            currentPullRequest.head.sha !== pull_request.head.sha ||
+            currentPullRequest.base.sha !== pull_request.base.sha
+          ) {
+            console.log(`Skipping stale review for ${owner}/${repo}#${prNumber}`);
+            return { success: true, skipped: true };
+          }
 
           const issueFingerprints = reviewableIssues.map((issue) => buildIssueFingerprint(issue));
           const suppressed = await getSuppressedIssueFingerprints(
@@ -837,6 +879,20 @@ export class WebhookHandler {
             ...reviewResult,
             issues: filteredIssues,
           };
+          if (reviewableIssues.length !== reviewResult.issues.length) {
+            // Narrative generated from a rejected set must not reintroduce its concerns.
+            effectiveReviewResult.summary = `This PR changes ${filesToReview.map((file) => `\`${file.filename}\``).join(", ") || "no reviewable code files"}.`;
+            effectiveReviewResult.mergeSafety =
+              reviewableIssues.length === 0
+                ? "No in-scope findings remain from this review."
+                : "Review the remaining PR findings before merging.";
+            effectiveReviewResult.verdict =
+              reviewableIssues.length === 0
+                ? "approve"
+                : reviewableIssues.some((issue) => issue.severity === "critical")
+                  ? "request_changes"
+                  : "comment";
+          }
           const currentIssueMap = new Map(
             reviewableIssues
               .filter((issue) => !suppressed.has(buildIssueFingerprint(issue)))
@@ -845,7 +901,10 @@ export class WebhookHandler {
           const history = buildReviewHistoryContext(reviewableHistoricalIssues, currentIssueMap);
           const unresolvedHistoricalIssueFingerprints = new Set(
             [...historicalIssues].flatMap(([fingerprint, issue]) => {
-              // Ignored historical findings should stay unresolved until they are reviewed again.
+              // Scope exclusion is not evidence that the author fixed a finding.
+              if (!reviewableHistoricalIssues.has(fingerprint)) {
+                return fingerprint;
+              }
               if (getIgnoredDirForPath(issue.file, normalizedReviewIgnoredDirs)) {
                 return fingerprint;
               }

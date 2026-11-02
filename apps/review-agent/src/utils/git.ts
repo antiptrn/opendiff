@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
 import type { GitHubClient } from "../github/client";
 import { withRetry } from "./retry";
+import { checkoutReviewCommit } from "./review-snapshot";
 import { cleanupUserSkills, hydrateSkills } from "./skill-hydrator";
 
 /** Patterns that should never be committed by the bot */
@@ -19,6 +20,8 @@ interface CloneOptions {
 
 interface ReadOnlyCloneOptions extends CloneOptions {
   mode: "read-only";
+  /** Pin the checkout to the reviewed revision even if the branch advances. */
+  commit?: string;
 }
 
 interface ReadWriteCloneOptions extends CloneOptions {
@@ -58,12 +61,16 @@ export async function withClonedRepo<T>(
     await withRetry(
       () =>
         git.clone(cloneUrl, ".", {
-          "--branch": branch,
+          ...(opts.mode === "read-only" && opts.commit ? {} : { "--branch": branch }),
           "--depth": "1",
           "--single-branch": null,
         }),
       "git clone"
     );
+
+    if (opts.mode === "read-only" && opts.commit) {
+      await checkoutReviewCommit(git, opts.commit);
+    }
 
     if (opts.mode === "read-write") {
       await git.addConfig("user.email", `${opts.botUsername}[bot]@users.noreply.github.com`);

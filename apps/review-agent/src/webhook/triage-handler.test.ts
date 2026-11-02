@@ -4,6 +4,10 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 
+let mockClonedHead = "abc123";
+let mockCommitCalls = 0;
+let mockPushCalls = 0;
+
 mock.module("../utils/git", () => ({
   withClonedRepo: async (
     _options: unknown,
@@ -11,10 +15,16 @@ mock.module("../utils/git", () => ({
   ) => {
     const git = {
       add: async () => undefined,
-      commit: async () => ({ commit: "abc123" }),
+      commit: async () => {
+        mockCommitCalls++;
+        return { commit: "abc123" };
+      },
       diff: async () => "",
-      push: async () => undefined,
+      push: async () => {
+        mockPushCalls++;
+      },
       raw: async () => undefined,
+      revparse: async () => mockClonedHead,
     };
 
     return await callback("/tmp/repo", git);
@@ -32,6 +42,9 @@ describe("handleTriageAfterReview", () => {
   let mockTriageAgent: Partial<TriageAgent>;
 
   beforeEach(() => {
+    mockClonedHead = "abc123";
+    mockCommitCalls = 0;
+    mockPushCalls = 0;
     mockGitHubClient = {
       getIssueComments: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
@@ -44,6 +57,42 @@ describe("handleTriageAfterReview", () => {
       fixIssue: vi.fn(),
     };
   });
+
+  it.each([true, false])(
+    "should skip stale findings before attempting fixes when autofix is %s",
+    async (autofixEnabled) => {
+      mockClonedHead = "newer-revision";
+      const issue: CodeIssue = {
+        type: "bug-risk",
+        severity: "warning",
+        file: "src/code.ts",
+        line: 2,
+        message: "Finding from the previously reviewed revision",
+      };
+      mockTriageAgent.fixIssue = vi.fn().mockResolvedValue({ fixed: true, explanation: "Fixed" });
+
+      const result = await handleTriageAfterReview(
+        mockGitHubClient as GitHubClient,
+        mockTriageAgent as TriageAgent,
+        { number: 42, head: { sha: "abc123", ref: "feature-branch" } },
+        [issue],
+        "owner",
+        "repo",
+        "opendiff-bot",
+        autofixEnabled
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("PR head changed after review");
+      expect(mockTriageAgent.fixIssue).not.toHaveBeenCalled();
+      expect(mockGitHubClient.getReviewComments).not.toHaveBeenCalled();
+      expect(mockCommitCalls).toBe(0);
+      expect(mockPushCalls).toBe(0);
+      expect(result.fixedIssues).toEqual([]);
+      expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+    }
+  );
 
   it("should not post an autofix summary on a clean autofix push", async () => {
     const result = await handleTriageAfterReview(

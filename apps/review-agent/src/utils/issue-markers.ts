@@ -8,13 +8,14 @@ export interface StoredIssueRecord {
   file: string;
   line: number;
   message: string;
+  scope?: CodeIssue["scope"];
 }
 
 const ISSUE_MARKER_REGEX = /<!--\s*opendiff-issue:([A-Za-z0-9+/=]+)\s*-->/g;
 const FINGERPRINT_MARKER_REGEX = /<!--\s*opendiff-fingerprint:([a-f0-9]+)\s*-->/g;
 
 export function toStoredIssueRecord(
-  issue: Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message">
+  issue: Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message" | "scope">
 ): StoredIssueRecord {
   return {
     fingerprint: buildIssueFingerprint(issue),
@@ -23,13 +24,16 @@ export function toStoredIssueRecord(
     file: issue.file,
     line: issue.line,
     message: issue.message,
+    ...(issue.scope ? { scope: issue.scope } : {}),
   };
 }
 
 export function buildIssueMarker(
-  issue: Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message">
+  issue: Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message" | "scope">
 ): string {
-  const payload = Buffer.from(JSON.stringify(toStoredIssueRecord(issue)), "utf-8").toString("base64");
+  const payload = Buffer.from(JSON.stringify(toStoredIssueRecord(issue)), "utf-8").toString(
+    "base64"
+  );
   return `<!-- opendiff-issue:${payload} -->`;
 }
 
@@ -40,7 +44,9 @@ export function extractStoredIssueRecords(body: string): StoredIssueRecord[] {
     try {
       const encoded = match[1];
       if (!encoded) continue;
-      const parsed = JSON.parse(Buffer.from(encoded, "base64").toString("utf-8")) as StoredIssueRecord;
+      const parsed = JSON.parse(
+        Buffer.from(encoded, "base64").toString("utf-8")
+      ) as StoredIssueRecord;
       if (
         parsed &&
         typeof parsed.fingerprint === "string" &&

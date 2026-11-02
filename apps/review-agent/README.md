@@ -12,6 +12,21 @@ This package is part of the OpenDiff monorepo. For full platform setup, see the 
 - Can push auto-fixes when `autofixEnabled` is enabled in repository settings.
 - Exposes a callback endpoint for "fix accepted" actions to apply diffs and push commits.
 
+## PR review scope
+
+Reviews report actionable problems introduced or materially worsened by the PR. Sensitivity,
+custom rules, and repository skills apply within that boundary. Related unchanged code can be
+read to establish impact, including callers broken by a changed API or a moved file.
+
+Reviews use the exact PR head and its merge base. Findings must supply a changed-line or rename
+anchor and before/after evidence, then pass a separate scope verification before they reach
+summaries, merge assessments, stored review comments, or autofix. Reviews with candidate findings
+use an additional model call; its tokens count toward review usage. Local reviews use the same
+checks, with the supplied diff as their before/after evidence.
+
+Historical findings excluded by scope are not labeled fixed. Reviews stop before publication
+if the PR revision changes, and autofix stops if its checkout no longer matches the reviewed head.
+
 ## Endpoints
 
 - `GET /health` - health check.
