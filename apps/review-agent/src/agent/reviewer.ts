@@ -1,7 +1,33 @@
 import { loadPrompt } from "@opendiff/prompts";
 import type { AiRuntimeConfig } from "../utils/opencode";
 import { runOpencodePrompt } from "../utils/opencode";
-import type { FileToReview, ReviewResult } from "./types";
+import type { CodeIssue, FileToReview, ReviewResult } from "./types";
+
+const ISSUE_TYPES = new Set<CodeIssue["type"]>([
+  "anti-pattern",
+  "security",
+  "performance",
+  "style",
+  "bug-risk",
+]);
+const ISSUE_SEVERITIES = new Set<CodeIssue["severity"]>(["critical", "warning", "suggestion"]);
+const REVIEW_VERDICTS = new Set<ReviewResult["verdict"]>(["approve", "request_changes", "comment"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function deriveIssueMessage(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  const sentenceEnd = normalized.search(/[.!?](?:\s|$)/);
+  const firstSentence = sentenceEnd === -1 ? normalized : normalized.slice(0, sentenceEnd + 1);
+
+  return firstSentence.length <= 80 ? firstSentence : `${firstSentence.slice(0, 77).trimEnd()}...`;
+}
 
 interface PRContext {
   prTitle: string;
@@ -178,31 +204,47 @@ Flag anything that could be improved. The goal is to maintain the highest code q
         }
       }
 
-      const result = JSON.parse(jsonText) as ReviewResult;
+      const result: unknown = JSON.parse(jsonText);
 
       // Validate the response structure
       if (
-        !result.summary ||
-        typeof result.mergeSafety !== "string" ||
-        !result.mergeSafety.trim() ||
+        !isRecord(result) ||
+        !getNonEmptyString(result.summary) ||
+        !getNonEmptyString(result.mergeSafety) ||
         !Array.isArray(result.issues) ||
-        !result.verdict
+        !REVIEW_VERDICTS.has(result.verdict as ReviewResult["verdict"])
       ) {
         throw new Error("Invalid response structure");
       }
 
-      const actionableIssues = result.issues.filter((issue) => !this.isNonActionableIssue(issue));
+      let malformedIssueCount = 0;
+      const normalizedIssues = result.issues.flatMap((issue, index) => {
+        const normalized = this.normalizeIssue(issue, index);
+        if (!normalized) {
+          malformedIssueCount++;
+        }
+        return normalized ? [normalized] : [];
+      });
+      const actionableIssues = normalizedIssues.filter(
+        (issue) => !this.isNonActionableIssue(issue)
+      );
 
-      if (actionableIssues.length !== result.issues.length) {
+      if (actionableIssues.length !== normalizedIssues.length) {
         console.log(
-          `Dropped ${result.issues.length - actionableIssues.length} non-actionable issue(s) from review output`
+          `Dropped ${normalizedIssues.length - actionableIssues.length} non-actionable issue(s) from review output`
         );
       }
 
       return {
-        ...result,
+        summary: getNonEmptyString(result.summary) as string,
+        mergeSafety: getNonEmptyString(result.mergeSafety) as string,
         issues: actionableIssues,
-        verdict: actionableIssues.length === 0 ? "approve" : result.verdict,
+        verdict:
+          actionableIssues.length === 0
+            ? malformedIssueCount > 0
+              ? "comment"
+              : "approve"
+            : (result.verdict as ReviewResult["verdict"]),
       };
     } catch (error) {
       console.error("Raw response length:", text.length);
@@ -210,6 +252,75 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       console.error("Raw response (last 500 chars):", text.slice(-500));
       throw new Error(`Failed to parse review response: ${(error as Error).message}`);
     }
+  }
+
+  private normalizeIssue(value: unknown, index: number): CodeIssue | null {
+    if (!isRecord(value)) {
+      console.warn(`Dropped malformed review issue at index ${index}: expected an object`);
+      return null;
+    }
+
+    const type = value.type as CodeIssue["type"];
+    const severity = value.severity as CodeIssue["severity"];
+    const file = getNonEmptyString(value.file);
+    const line = value.line;
+
+    if (
+      !ISSUE_TYPES.has(type) ||
+      !ISSUE_SEVERITIES.has(severity) ||
+      !file ||
+      typeof line !== "number" ||
+      !Number.isInteger(line) ||
+      line < 0
+    ) {
+      console.warn(
+        `Dropped malformed review issue at index ${index}: invalid type, severity, file, or line`
+      );
+      return null;
+    }
+
+    const description = getNonEmptyString(value.description);
+    const suggestion = getNonEmptyString(value.suggestion);
+    const explicitMessage = getNonEmptyString(value.message);
+    const fallbackMessage = description ?? suggestion;
+    const message =
+      explicitMessage ?? (fallbackMessage ? deriveIssueMessage(fallbackMessage) : null);
+
+    if (!message) {
+      console.warn(`Dropped malformed review issue at index ${index}: missing message`);
+      return null;
+    }
+
+    if (!explicitMessage) {
+      console.warn(`Normalized review issue at index ${index}: derived missing message`);
+    }
+
+    const issue: CodeIssue = {
+      type,
+      severity,
+      file,
+      line,
+      message,
+    };
+
+    if (
+      typeof value.endLine === "number" &&
+      Number.isInteger(value.endLine) &&
+      value.endLine >= line
+    ) {
+      issue.endLine = value.endLine;
+    }
+    if (description) {
+      issue.description = description;
+    }
+    if (suggestion) {
+      issue.suggestion = suggestion;
+    }
+    if (typeof value.suggestedCode === "string") {
+      issue.suggestedCode = value.suggestedCode;
+    }
+
+    return issue;
   }
 
   private isNonActionableIssue(issue: ReviewResult["issues"][number]): boolean {
