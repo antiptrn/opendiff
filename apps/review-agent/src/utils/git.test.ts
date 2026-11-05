@@ -1,5 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
@@ -174,7 +174,7 @@ describe("cached worktree configuration", () => {
             workspaceDir = dir;
             mirrorDir = (await git.raw(["rev-parse", "--git-common-dir"])).trim();
             expect((await git.raw(["rev-parse", "--is-bare-repository"])).trim()).toBe("false");
-            expect((await git.revparse(["--show-toplevel"])).trim()).toBe(dir);
+            expect((await git.revparse(["--show-toplevel"])).trim()).toBe(await realpath(dir));
             expect((await git.status()).isClean()).toBe(true);
             if (mode === "read-write") {
               expect((await git.getConfig("user.name", "worktree")).value).toBe("test-bot[bot]");
