@@ -213,22 +213,32 @@ export async function pruneGitCache(config = getGitCacheConfig()): Promise<void>
     if (await hasActiveRepoLock(config, entry.repoId)) {
       continue;
     }
-    await pruneCachedRefs(entry.path, config.refTtlMs);
-    await pruneGitWorktreeMetadata(entry.path);
+    await withRepoLock(config, entry.repoId, async () => {
+      if (!(await pathExists(entry.path))) {
+        return;
+      }
+      await pruneCachedRefs(entry.path, config.refTtlMs);
+      await pruneGitWorktreeMetadata(entry.path);
+    });
   }
 
-  const now = Date.now();
   for (const entry of repoEntries) {
     if (await hasActiveRepoLock(config, entry.repoId)) {
       continue;
     }
-    if (now - entry.lastUsedAt < config.repoTtlMs) {
-      continue;
-    }
-    if (await hasLinkedWorktrees(entry.path)) {
-      continue;
-    }
-    await removeRepoCache(entry.path, "inactive TTL");
+    await withRepoLock(config, entry.repoId, async () => {
+      if (!(await pathExists(entry.path))) {
+        return;
+      }
+      const lastUsedAt = await getPathMtimeMs(join(entry.path, LAST_USED_FILE), entry.path);
+      if (Date.now() - lastUsedAt < config.repoTtlMs) {
+        return;
+      }
+      if (await hasLinkedWorktrees(entry.path)) {
+        return;
+      }
+      await removeRepoCache(entry.path, "inactive TTL");
+    });
   }
 
   await enforceRepoCacheLimits(config);
@@ -725,14 +735,9 @@ async function enforceRepoCacheLimits(config: GitCacheConfig): Promise<void> {
       if (reposToRemove <= 0) {
         break;
       }
-      if (await hasActiveRepoLock(config, entry.repoId)) {
-        continue;
+      if (await evictRepoCacheEntry(config, entry, "max repo count")) {
+        reposToRemove -= 1;
       }
-      if (await hasLinkedWorktrees(entry.path)) {
-        continue;
-      }
-      await removeRepoCache(entry.path, "max repo count");
-      reposToRemove -= 1;
     }
   }
 
@@ -751,15 +756,32 @@ async function enforceRepoCacheLimits(config: GitCacheConfig): Promise<void> {
     if (totalBytes <= config.maxBytes) {
       break;
     }
-    if (await hasActiveRepoLock(config, entry.repoId)) {
-      continue;
+    if (await evictRepoCacheEntry(config, entry, "max cache size")) {
+      totalBytes -= entry.sizeBytes;
     }
-    if (await hasLinkedWorktrees(entry.path)) {
-      continue;
-    }
-    await removeRepoCache(entry.path, "max cache size");
-    totalBytes -= entry.sizeBytes;
   }
+}
+
+async function evictRepoCacheEntry(
+  config: GitCacheConfig,
+  entry: RepoCacheEntry,
+  reason: string
+): Promise<boolean> {
+  if (await hasActiveRepoLock(config, entry.repoId)) {
+    return false;
+  }
+  return await withRepoLock(config, entry.repoId, async () => {
+    if (!(await pathExists(entry.path))) {
+      return false;
+    }
+    // A job may have used this repo since the LRU candidates were collected.
+    const lastUsedAt = await getPathMtimeMs(join(entry.path, LAST_USED_FILE), entry.path);
+    if (lastUsedAt !== entry.lastUsedAt || (await hasLinkedWorktrees(entry.path))) {
+      return false;
+    }
+    await removeRepoCache(entry.path, reason);
+    return true;
+  });
 }
 
 async function removeRepoCache(repoPath: string, reason: string): Promise<void> {
