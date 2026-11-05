@@ -3,7 +3,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { type Context, Hono } from "hono";
 import type { FilePayload } from "shared/types";
-import { CodeReviewAgent } from "./agent/reviewer";
+import { CodeReviewAgent, ReviewError } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
 import { generateReviewSummary } from "./internal/generate-summary";
@@ -760,7 +760,10 @@ app.post("/internal/local-review", async (c) => {
     return c.json(result);
   } catch (error) {
     console.error("Local review failed:", error);
-    return c.json({ error: "Review failed" }, 500);
+    return c.json(
+      { error: "Review failed", tokensUsed: error instanceof ReviewError ? error.tokensUsed : 0 },
+      500
+    );
   }
 });
 

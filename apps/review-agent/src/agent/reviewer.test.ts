@@ -13,6 +13,7 @@ let mockPromptError = "Agent failed";
 let lastPromptArgs: unknown = null;
 let promptCalls: Array<{ title?: string; prompt?: string; cwd?: string }> = [];
 let mockVerificationResult: string | null = null;
+let mockVerificationShouldFail = false;
 let mockAcceptedIssueIndices: number[] = [];
 
 mock.module("../utils/opencode", () => ({
@@ -25,6 +26,9 @@ mock.module("../utils/opencode", () => ({
     }
 
     if (input.title === "Verify review scope") {
+      if (mockVerificationShouldFail) {
+        throw new Error("Verifier request failed");
+      }
       return {
         text:
           mockVerificationResult ??
@@ -57,6 +61,7 @@ describe("CodeReviewAgent", () => {
     lastPromptArgs = null;
     promptCalls = [];
     mockVerificationResult = null;
+    mockVerificationShouldFail = false;
     mockAcceptedIssueIndices = [];
     mockPromptResult = JSON.stringify({
       summary: "LGTM",
@@ -732,6 +737,34 @@ describe("CodeReviewAgent", () => {
       expect(promptCalls).toHaveLength(2);
       expect(promptCalls[1].prompt).toContain("No separate base snapshot is available");
     });
+
+    it.each([
+      { requestFails: true, tokensUsed: 123 },
+      { requestFails: false, tokensUsed: 200 },
+    ])(
+      "preserves local usage when verification fails: $tokensUsed tokens",
+      async ({ requestFails, tokensUsed }) => {
+        reviewWith([candidate()]);
+        mockVerificationShouldFail = requestFails;
+        mockVerificationResult = "not JSON";
+
+        await expect(
+          runLocalReview({
+            files: [
+              {
+                ...files[0],
+                content: "export const getUser = () => undefined;",
+                patch: files[0].patch ?? "",
+              },
+            ],
+            title: "Change getUser locally",
+            sensitivity: 50,
+          })
+        ).rejects.toMatchObject({ tokensUsed });
+        expect(promptCalls).toHaveLength(2);
+        expect(existsSync(promptCalls[0].cwd ?? "")).toBe(false);
+      }
+    );
 
     it("retains a rename-only finding through the actual extension JSON payload and local review", async () => {
       const { dir, payload, oldPath, newPath } = extensionRename(false);

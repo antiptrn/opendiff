@@ -47,6 +47,37 @@ describe("Application endpoints", () => {
     });
   });
 
+  describe("POST /internal/local-review", () => {
+    it.each([123, 200])("returns consumed usage on failure (%i tokens)", async (tokensUsed) => {
+      const { default: app } = await import("./index");
+      const { CodeReviewAgent, ReviewError } = await import("./agent/reviewer");
+      const reviewFiles = vi
+        .spyOn(CodeReviewAgent.prototype, "reviewFiles")
+        .mockRejectedValueOnce(new ReviewError(new Error("Verification failed"), tokensUsed));
+
+      try {
+        const response = await app.fetch(
+          new Request(`http://localhost:${TEST_PORT}/internal/local-review`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": "test-review-agent-key",
+            },
+            body: JSON.stringify({
+              files: [{ filename: "test.ts", content: "export const value = 1;", patch: "" }],
+              title: "Local change",
+            }),
+          })
+        );
+
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({ error: "Review failed", tokensUsed });
+      } finally {
+        reviewFiles.mockRestore();
+      }
+    });
+  });
+
   describe("POST /webhook", () => {
     it("should reject requests with invalid signature (401)", async () => {
       const { default: app } = await import("./index");
