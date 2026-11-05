@@ -316,10 +316,10 @@ async function prepareFreshClone(
     `${sanitizePathSegment(opts.label)}-${repoId}-${Date.now()}-${randomId()}`
   );
   const repoUrl = getRepoUrl(opts.owner, opts.repo);
-  const git = simpleGit(tempDir).env(await getGitAuthEnv(config, token));
 
   try {
     await mkdir(tempDir, { recursive: true });
+    const git = simpleGit(tempDir).env(await getGitAuthEnv(config, token));
     await withRetry(
       () =>
         git.clone(repoUrl, ".", {
