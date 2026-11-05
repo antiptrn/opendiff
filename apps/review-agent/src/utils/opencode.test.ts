@@ -1,23 +1,24 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { OpenCodeAuthError, isOpenCodeAuthError, runOpencodePrompt } from "./opencode";
 
-const { prompt, close } = vi.hoisted(() => ({ prompt: vi.fn(), close: vi.fn() }));
+const prompt = mock();
+const close = mock();
 
-vi.mock("./opencode-server", () => ({
-  createManagedOpencode: vi.fn(async () => ({
+mock.module("./opencode-server", () => ({
+  createManagedOpencode: mock(async () => ({
     client: {
       session: {
-        create: vi.fn(async () => ({ data: { id: "test-session" } })),
+        create: mock(async () => ({ data: { id: "test-session" } })),
         prompt,
       },
     },
     server: { close },
   })),
 }));
-vi.mock("./opencode-auth", () => ({
+mock.module("./opencode-auth", () => ({
   shouldUseOpencodeAuthJson: () => false,
 }));
-vi.mock("./opencode-runtime", () => ({
+mock.module("./opencode-runtime", () => ({
   resolveOpencodeRuntime: () => ({}),
 }));
 
@@ -46,13 +47,17 @@ describe("runOpencodePrompt response selection", () => {
   };
   const format = { type: "json_schema" as const, schema: { type: "object" } };
 
+  let previousPassword: string | undefined;
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubEnv("OPENCODE_SERVER_PASSWORD", "");
+    prompt.mockClear();
+    close.mockClear();
+    previousPassword = process.env.OPENCODE_SERVER_PASSWORD;
+    process.env.OPENCODE_SERVER_PASSWORD = "";
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    if (previousPassword === undefined) Reflect.deleteProperty(process.env, "OPENCODE_SERVER_PASSWORD");
+    else process.env.OPENCODE_SERVER_PASSWORD = previousPassword;
   });
 
   it.each([true, false])("prefers structured output with text (wrapped=%s)", async (wrapped) => {
@@ -74,7 +79,7 @@ describe("runOpencodePrompt response selection", () => {
       path: { id: "test-session" },
       body: { parts: [{ type: "text", text: "Verify review scope" }], format },
     });
-    expect(close).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it.each([undefined, null])("falls back to text when structured output is %s", async (value) => {
