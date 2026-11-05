@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { type Context, Hono } from "hono";
-import { CodeReviewAgent } from "./agent/reviewer";
+import type { FilePayload } from "shared/types";
+import { CodeReviewAgent, ReviewError } from "./agent/reviewer";
 import { TriageAgent } from "./agent/triage";
 import { GitHubClient } from "./github/client";
 import { generateReviewSummary } from "./internal/generate-summary";
@@ -592,15 +593,25 @@ async function processPullRequestReviewJob(
             reviewIncludedDirs
           );
 
-    if (result.skipped) {
+    if (result.skipped || !result.success) {
+      if (result.tokensUsed && result.tokensUsed > 0) {
+        await recordReview({
+          githubRepoId: payload.repository.id,
+          owner,
+          repo,
+          pullNumber: reviewPayload.pull_request.number,
+          reviewType: "initial",
+          tokensUsed: result.tokensUsed,
+          usageOnly: true,
+        });
+      }
+      if (!result.success) {
+        throw new Error(result.error || "Review failed");
+      }
       console.log(
         `Queued PR review skipped for ${owner}/${repo}#${reviewPayload.pull_request.number}`
       );
       return;
-    }
-
-    if (!result.success) {
-      throw new Error(result.error || "Review failed");
     }
 
     const dbReviewId = await recordReview({
@@ -726,7 +737,7 @@ app.post("/internal/local-review", async (c) => {
   }
 
   const body = (await c.req.json()) as {
-    files?: Array<{ filename: string; content: string; patch: string }>;
+    files?: FilePayload[];
     title?: string;
     sensitivity?: number;
     aiConfig?: { authMethod: "API_KEY" | "OAUTH_TOKEN"; model: string; credential: string };
@@ -749,7 +760,10 @@ app.post("/internal/local-review", async (c) => {
     return c.json(result);
   } catch (error) {
     console.error("Local review failed:", error);
-    return c.json({ error: "Review failed" }, 500);
+    return c.json(
+      { error: "Review failed", tokensUsed: error instanceof ReviewError ? error.tokensUsed : 0 },
+      500
+    );
   }
 });
 

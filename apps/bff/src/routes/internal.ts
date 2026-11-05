@@ -687,10 +687,15 @@ internalRoutes.post("/reviews", async (c) => {
     pullTitle,
     pullAuthor,
     tokensUsed,
+    usageOnly,
   } = body;
 
   if (!githubRepoId || !pullNumber || !reviewType) {
     return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  if (usageOnly === true && (!Number.isSafeInteger(tokensUsed) || tokensUsed <= 0)) {
+    return c.json({ error: "Invalid token usage" }, 400);
   }
 
   try {
@@ -720,6 +725,18 @@ internalRoutes.post("/reviews", async (c) => {
     }
 
     const org = repoSettings.organization;
+
+    // Stale reviews have already consumed provider resources. Account for them
+    // even if another in-flight review has since exhausted the quota.
+    if (usageOnly === true) {
+      if (org) {
+        await prisma.organization.update({
+          where: { id: org.id },
+          data: { tokensUsedThisCycle: { increment: tokensUsed } },
+        });
+      }
+      return c.json({ created: false });
+    }
 
     if (org) {
       const quotaPool = await getOrgQuotaPool(org.id);

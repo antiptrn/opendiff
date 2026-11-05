@@ -105,6 +105,10 @@ export async function handleTriageAfterReview(
         botUsername,
       },
       async (_tempDir, git) => {
+        const clonedHead = (await git.revparse(["HEAD"])).trim();
+        if (clonedHead.toLowerCase() !== pullRequest.head.sha.toLowerCase()) {
+          throw new Error("PR head changed after review; skipping autofix for stale findings");
+        }
         const reviewComments = await github.getReviewComments(owner, repo, pullRequest.number);
         const botComments = reviewComments.filter(
           (c) => c.user === botUsername || c.user === `${botUsername}[bot]`

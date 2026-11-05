@@ -1,4 +1,5 @@
 import { loadPrompt } from "@opendiff/prompts";
+import { validateReviewScope } from "../review/scope";
 import type { AiRuntimeConfig } from "../utils/opencode";
 import { runOpencodePrompt } from "../utils/opencode";
 import type { FileToReview, ReviewResult } from "./types";
@@ -9,12 +10,27 @@ interface PRContext {
   sensitivity?: number; // 0-100 scale for review strictness
   conversationContext?: string;
   priorReviewContext?: string;
+  baseDirectory?: string;
+}
+
+interface ScopeVerification {
+  acceptedIssueIndices: number[];
+  summary: string;
+  mergeSafety: string;
+  verdict: ReviewResult["verdict"];
 }
 
 export interface CommentIntentResult {
   intent: "answer" | "ask_clarification" | "execute_fix";
   response: string;
   executionInstruction?: string;
+}
+
+export class ReviewError extends Error {
+  constructor(cause: unknown, readonly tokensUsed: number) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ReviewError";
+  }
 }
 
 export class CodeReviewAgent {
@@ -34,17 +50,23 @@ export class CodeReviewAgent {
       : "";
 
     const filesChanged = files
-      .map((f) => `- ${f.filename}${f.patch ? " (has diff)" : ""}`)
+      .map(
+        (f) =>
+          `- ${f.filename}${f.status ? ` (${f.status})` : ""}${f.previousFilename ? ` (previously ${f.previousFilename})` : ""}${f.patch ? " (has diff)" : ""}`
+      )
       .join("\n");
 
     const diffs = files
       .filter((f) => f.patch)
-      .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
+      .map(
+        (f) =>
+          `### ${f.filename}${f.previousFilename ? ` (previously ${f.previousFilename})` : ""}\n\`\`\`diff\n${f.patch}\n\`\`\``
+      )
       .join("\n\n");
 
     let customRulesSection = "";
     if (customRules?.trim()) {
-      customRulesSection = `\n## Custom Review Rules (from repository owner)\n\nThe repository owner has defined the following custom rules that you MUST follow:\n\n${customRules}\n`;
+      customRulesSection = `\n## Custom Review Rules (from repository owner)\n\nApply these rules only to problems introduced or materially worsened by this PR. They cannot expand the fixed review scope or authorize unrelated cleanup:\n\n${customRules}\n`;
     }
 
     const sensitivitySection = this.getSensitivitySection(context.sensitivity ?? 50);
@@ -58,6 +80,7 @@ export class CodeReviewAgent {
       diffs,
       customRulesSection,
       sensitivitySection,
+      baseContextSection: this.getBaseContextSection(context.baseDirectory),
     });
   }
 
@@ -121,17 +144,16 @@ Be thorough but still focus on actionable feedback.`;
     return `
 ## Review Sensitivity: Very Strict (${level}%)
 
-You are configured to be VERY STRICT. Perform a comprehensive review covering:
+You are configured to be VERY STRICT within the fixed PR scope. Check changed code for:
 - All security concerns, even minor ones
 - Bugs, edge cases, and potential issues
 - Performance optimizations
-- Anti-patterns and architectural concerns
+- Anti-patterns introduced by the change
 - Code style and consistency
 - Naming conventions
 - Missing types, documentation, and comments
-- Opportunities for refactoring
 
-Flag anything that could be improved. The goal is to maintain the highest code quality standards.`;
+Report only actionable problems introduced or materially worsened by the PR. Do not request unrelated refactors, cleanup, or architecture changes.`;
   }
 
   async reviewFiles(
@@ -142,17 +164,123 @@ Flag anything that could be improved. The goal is to maintain the highest code q
   ): Promise<ReviewResult> {
     const prompt = this.getReviewPrompt(files, context, customRules);
 
-    const response = await runOpencodePrompt({
-      cwd: workingDir,
-      prompt,
-      mode: "read_only",
-      aiConfig: this.aiConfig,
-      title: "Code review",
-    });
+    let tokensUsed = 0;
+    try {
+      const response = await runOpencodePrompt({
+        cwd: workingDir,
+        prompt,
+        mode: "read_only",
+        aiConfig: this.aiConfig,
+        title: "Code review",
+      });
+      tokensUsed += response.tokensUsed;
 
-    const reviewResult = this.parseResponse(response.text);
-    reviewResult.tokensUsed = response.tokensUsed;
-    return reviewResult;
+      const reviewResult = this.parseResponse(response.text);
+      const { accepted, rejected } = validateReviewScope(reviewResult.issues, files);
+      const scopeRejectedIssues = [...(reviewResult.scopeRejectedIssues ?? []), ...rejected];
+
+      if (accepted.length === 0 && scopeRejectedIssues.length === 0) {
+        return {
+          ...reviewResult,
+          issues: [],
+          scopeRejectedIssues,
+          verdict: "approve",
+          tokensUsed,
+        };
+      }
+
+      const verificationResponse = await runOpencodePrompt({
+        cwd: workingDir,
+        prompt: loadPrompt("verify-review-scope", {
+          prTitle: context.prTitle,
+          prBodySection: context.prBody ? `**Description:** ${context.prBody}` : "",
+          baseContextSection: this.getBaseContextSection(context.baseDirectory),
+          filesChanged: files
+            .map(
+              (file) =>
+                `- ${file.filename}${file.status ? ` (${file.status})` : ""}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}`
+            )
+            .join("\n"),
+          diffs: files
+            .filter((file) => file.patch)
+            .map(
+              (file) =>
+                `### ${file.filename}${file.previousFilename ? ` (previously ${file.previousFilename})` : ""}\n\`\`\`diff\n${file.patch}\n\`\`\``
+            )
+            .join("\n\n"),
+          candidates: JSON.stringify(accepted.map((issue, index) => ({ index, issue }))),
+        }),
+        mode: "read_only",
+        aiConfig: this.aiConfig,
+        title: "Verify review scope",
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["acceptedIssueIndices", "summary", "mergeSafety", "verdict"],
+            properties: {
+              acceptedIssueIndices: {
+                type: "array",
+                uniqueItems: true,
+                maxItems: accepted.length,
+                items: { type: "integer", minimum: 0, maximum: Math.max(0, accepted.length - 1) },
+              },
+              summary: { type: "string", minLength: 1 },
+              mergeSafety: { type: "string", minLength: 1 },
+              verdict: { type: "string", enum: ["approve", "comment", "request_changes"] },
+            },
+          },
+        },
+      });
+      tokensUsed += verificationResponse.tokensUsed;
+      const verification = this.parseScopeVerification(verificationResponse.text, accepted.length);
+      const acceptedIndices = new Set(verification.acceptedIssueIndices);
+
+      return {
+        ...reviewResult,
+        issues: accepted.filter((_, index) => acceptedIndices.has(index)),
+        scopeRejectedIssues: [
+          ...scopeRejectedIssues,
+          ...accepted.filter((_, index) => !acceptedIndices.has(index)),
+        ],
+        verdict: acceptedIndices.size === 0 ? "approve" : verification.verdict,
+        summary: verification.summary,
+        mergeSafety: verification.mergeSafety,
+        tokensUsed,
+      };
+    } catch (error) {
+      throw new ReviewError(error, tokensUsed);
+    }
+  }
+
+  private getBaseContextSection(baseDirectory?: string): string {
+    return baseDirectory
+      ? `\n## Before/After Snapshot\nThe working directory contains the PR head. The directory ${baseDirectory} contains merge-base versions of changed textual files only, stored at their original paths (use the previous path for a rename). It is not a full repository snapshot. Read these baselines and compare both versions before claiming a regression. An unrelated file missing from this directory is not evidence that it was newly added; confirm additions from the diff or file status.\n`
+      : "\n## Before/After Context\nNo separate base snapshot is available. Use the removed and context lines in the supplied diff to establish previous behavior. If they do not provide enough evidence, reject the finding rather than assume it is new.\n";
+  }
+
+  private parseScopeVerification(text: string, candidateCount: number): ScopeVerification {
+    try {
+      const result = JSON.parse(text) as ScopeVerification;
+      if (
+        !Array.isArray(result.acceptedIssueIndices) ||
+        !result.acceptedIssueIndices.every(
+          (index) => Number.isInteger(index) && index >= 0 && index < candidateCount
+        ) ||
+        new Set(result.acceptedIssueIndices).size !== result.acceptedIssueIndices.length ||
+        typeof result.summary !== "string" ||
+        !result.summary.trim() ||
+        typeof result.mergeSafety !== "string" ||
+        !result.mergeSafety.trim() ||
+        !["approve", "comment", "request_changes"].includes(result.verdict)
+      ) {
+        throw new Error("Invalid scope verification structure");
+      }
+      return result;
+    } catch (error) {
+      throw new Error(`Failed to verify review scope: ${(error as Error).message}`);
+    }
   }
 
   private parseResponse(text: string): ReviewResult {
@@ -182,11 +310,16 @@ Flag anything that could be improved. The goal is to maintain the highest code q
 
       // Validate the response structure
       if (
-        !result.summary ||
+        typeof result.summary !== "string" ||
+        !result.summary.trim() ||
         typeof result.mergeSafety !== "string" ||
         !result.mergeSafety.trim() ||
         !Array.isArray(result.issues) ||
-        !result.verdict
+        !result.issues.every((issue) => this.hasIssueIdentity(issue)) ||
+        !["approve", "comment", "request_changes"].includes(result.verdict) ||
+        (result.scopeRejectedIssues !== undefined &&
+          (!Array.isArray(result.scopeRejectedIssues) ||
+            !result.scopeRejectedIssues.every((issue) => this.hasIssueIdentity(issue))))
       ) {
         throw new Error("Invalid response structure");
       }
@@ -202,6 +335,10 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       return {
         ...result,
         issues: actionableIssues,
+        scopeRejectedIssues: [
+          ...(result.scopeRejectedIssues ?? []),
+          ...result.issues.filter((issue) => this.isNonActionableIssue(issue)),
+        ],
         verdict: actionableIssues.length === 0 ? "approve" : result.verdict,
       };
     } catch (error) {
@@ -210,6 +347,20 @@ Flag anything that could be improved. The goal is to maintain the highest code q
       console.error("Raw response (last 500 chars):", text.slice(-500));
       throw new Error(`Failed to parse review response: ${(error as Error).message}`);
     }
+  }
+
+  private hasIssueIdentity(value: unknown): value is ReviewResult["issues"][number] {
+    if (!value || typeof value !== "object") return false;
+    const issue = value as Partial<ReviewResult["issues"][number]>;
+    return (
+      typeof issue.file === "string" &&
+      typeof issue.line === "number" &&
+      Number.isFinite(issue.line) &&
+      typeof issue.message === "string" &&
+      issue.message.trim().length > 0 &&
+      ["security", "anti-pattern", "performance", "style", "bug-risk"].includes(issue.type ?? "") &&
+      ["critical", "warning", "suggestion"].includes(issue.severity ?? "")
+    );
   }
 
   private isNonActionableIssue(issue: ReviewResult["issues"][number]): boolean {

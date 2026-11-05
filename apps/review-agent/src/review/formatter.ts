@@ -18,7 +18,7 @@ export interface SummaryHistory {
 }
 
 type SummaryIssue = Pick<CodeIssue, "type" | "severity" | "file" | "line" | "message"> &
-  Partial<Pick<CodeIssue, "description" | "suggestion" | "suggestedCode" | "endLine">> & {
+  Partial<Pick<CodeIssue, "description" | "suggestion" | "suggestedCode" | "endLine" | "scope">> & {
     fingerprint?: string;
   };
 
@@ -315,8 +315,8 @@ export class ReviewFormatter {
 
     // Include full details for issues that couldn't be shown as inline comments
     if (bodyOnlyIssues.length > 0) {
-      summary += "\n### Not in diff\n\n";
-      summary += "The following issues were found in code outside the changed lines:\n\n";
+      summary += "\n### Additional PR Findings\n\n";
+      summary += "These PR-caused issues could not be attached as inline comments:\n\n";
 
       for (const issue of bodyOnlyIssues) {
         const emoji = SEVERITY_EMOJI[issue.severity];
@@ -401,7 +401,9 @@ export class ReviewFormatter {
     const renderedFingerprints = new Set(
       renderedOpenIssues.map((issue) => issue.fingerprint ?? buildIssueFingerprint(issue))
     );
-    const reviewedFingerprints = new Set(reviewedIssues.map((issue) => buildIssueFingerprint(issue)));
+    const reviewedFingerprints = new Set(
+      reviewedIssues.map((issue) => buildIssueFingerprint(issue))
+    );
 
     if (renderedFingerprints.size !== reviewedFingerprints.size) {
       return false;

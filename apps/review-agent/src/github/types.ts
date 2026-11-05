@@ -18,6 +18,7 @@ export interface PullRequest {
 
 export interface PullRequestFile {
   filename: string;
+  previousFilename?: string;
   status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed" | "unchanged";
   additions: number;
   deletions: number;

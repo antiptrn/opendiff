@@ -246,6 +246,7 @@ export async function recordReview(data: {
   pullTitle?: string | null;
   pullAuthor?: string | null;
   tokensUsed?: number;
+  usageOnly?: boolean;
 }): Promise<string | null> {
   if (!SETTINGS_API_URL) {
     console.warn("SETTINGS_API_URL not configured, skipping review recording");

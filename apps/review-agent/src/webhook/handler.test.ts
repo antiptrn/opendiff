@@ -1,26 +1,27 @@
 import { mock } from "bun:test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CodeReviewAgent } from "../agent/reviewer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CodeReviewAgent } from "../agent/reviewer";
 import type { GitHubClient } from "../github/client";
-import type { ReviewFormatter } from "../review/formatter";
+import { ReviewFormatter } from "../review/formatter";
 import { buildIssueFingerprint } from "../utils/issue-fingerprint";
 import { buildIssueMarker } from "../utils/issue-markers";
+import * as opencode from "../utils/opencode";
+import * as reviewSnapshot from "../utils/review-snapshot";
 
-// Mock simple-git before importing handler
-mock.module("simple-git", () => ({
-  simpleGit: () => ({
-    clone: async () => undefined,
-  }),
-}));
+const mockSnapshotFiles = vi.fn();
+const mockClone = vi.fn(async (_options, callback) => callback("/tmp/review-test", {}));
 
-// Mock fs/promises before importing handler
-mock.module("node:fs/promises", () => ({
-  mkdir: async () => undefined,
-  rm: async () => undefined,
-  readdir: async () => [],
-  readFile: async () => "",
-  writeFile: async () => undefined,
-}));
+mock.module("../utils/git", () => ({ withClonedRepo: mockClone }));
+
+function scopeFor(file = "src/index.ts", line = 1) {
+  return {
+    file,
+    line,
+    side: "RIGHT" as const,
+    before: "The previous implementation handled the input.",
+    after: "The changed implementation fails for that input.",
+  };
+}
 
 // Now import handler after mocks are set up
 import { WebhookHandler } from "./handler";
@@ -172,6 +173,7 @@ describe("WebhookHandler file filtering", () => {
 });
 
 describe("WebhookHandler", () => {
+  afterEach(() => vi.restoreAllMocks());
   let handler: WebhookHandler;
   let mockGitHubClient: MockGitHubClient;
   let mockAgent: MockCodeReviewAgent;
@@ -179,10 +181,13 @@ describe("WebhookHandler", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(reviewSnapshot, "prepareReviewSnapshot").mockImplementation(async () => ({
+      files: await mockSnapshotFiles(),
+      baseDirectory: "/tmp/review-test/base",
+    }));
 
     mockGitHubClient = {
       getPullRequest: vi.fn(),
-      getPullRequestFiles: vi.fn(),
       getFileContent: vi.fn(),
       submitReview: vi.fn().mockResolvedValue({ id: 123 }),
       validateReviewComments: vi
@@ -246,13 +251,13 @@ describe("WebhookHandler", () => {
 
     it("should post the summary comment and approve a first clean review without a status update body", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getFileContent.mockResolvedValue("const x = 1;");
@@ -270,7 +275,11 @@ describe("WebhookHandler", () => {
       const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       expect(result.success).toBe(true);
-      expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalledWith("owner", "repo", 42);
+      expect(mockSnapshotFiles).toHaveBeenCalled();
+      expect(mockClone).toHaveBeenCalledWith(
+        expect.objectContaining({ commit: "abc123" }),
+        expect.any(Function)
+      );
       expect(mockAgent.reviewFiles).toHaveBeenCalled();
       expect(result.reviewId).toBe(123);
       expect(mockGitHubClient.createIssueComment).toHaveBeenCalledWith(
@@ -299,13 +308,13 @@ describe("WebhookHandler", () => {
         mockFormatter as ReviewFormatter
       );
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getFileContent.mockResolvedValue("const x = 1;");
@@ -337,13 +346,13 @@ describe("WebhookHandler", () => {
 
     it("should downgrade invalid inline comments into the summary and still submit the review", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n context\n+new\n+another",
+          patch: "@@ -1 +1,3 @@\n context\n+new\n+another",
         },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
@@ -355,6 +364,7 @@ describe("WebhookHandler", () => {
             file: "src/index.ts",
             line: 2,
             message: "Resolvable issue",
+            scope: scopeFor("src/index.ts", 2),
           },
           {
             type: "bug-risk",
@@ -362,6 +372,7 @@ describe("WebhookHandler", () => {
             file: "src/index.ts",
             line: 3,
             message: "Unresolvable issue",
+            scope: scopeFor("src/index.ts", 3),
           },
         ],
         verdict: "comment",
@@ -382,6 +393,7 @@ describe("WebhookHandler", () => {
             file: "src/index.ts",
             line: 2,
             message: "Resolvable issue",
+            scope: scopeFor("src/index.ts", 2),
           },
           {
             type: "bug-risk",
@@ -389,6 +401,7 @@ describe("WebhookHandler", () => {
             file: "src/index.ts",
             line: 3,
             message: "Unresolvable issue",
+            scope: scopeFor("src/index.ts", 3),
           },
         ],
         bodyOnlyIssues: [],
@@ -443,13 +456,13 @@ describe("WebhookHandler", () => {
 
     it("should avoid creating a GitHub review when there are no inline findings and verdict is comment", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
@@ -488,17 +501,18 @@ describe("WebhookHandler", () => {
         file: "src/index.ts",
         line: 5,
         message: "Repeated issue",
+        scope: scopeFor("src/index.ts", 2),
       };
       const fingerprint = buildIssueFingerprint(repeatedIssue);
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+          patch: "@@ -1 +1,2 @@\n context\n+new",
         },
       ]);
       mockGitHubClient.getReviewComments.mockResolvedValue([
@@ -550,16 +564,17 @@ describe("WebhookHandler", () => {
         file: "src/index.ts",
         line: 5,
         message: "Previously reported issue",
+        scope: scopeFor("src/index.ts", 2),
       };
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+          patch: "@@ -1 +1,2 @@\n context\n+new",
         },
       ]);
       mockGitHubClient.getIssueComments.mockResolvedValue([
@@ -650,6 +665,7 @@ describe("WebhookHandler", () => {
         file: "src/index.ts",
         line: 5,
         message: "Repeated issue",
+        scope: scopeFor("src/index.ts", 2),
       };
       const resolvedIssue = {
         type: "bug-risk" as const,
@@ -657,17 +673,18 @@ describe("WebhookHandler", () => {
         file: "src/old.ts",
         line: 3,
         message: "Resolved issue",
+        scope: scopeFor("src/index.ts", 2),
       };
       const repeatedFingerprint = buildIssueFingerprint(repeatedIssue);
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n context\n+new",
+          patch: "@@ -1 +1,2 @@\n context\n+new",
         },
       ]);
       mockGitHubClient.getIssueComments.mockResolvedValue([
@@ -733,13 +750,13 @@ describe("WebhookHandler", () => {
 
     it("should update the existing review summary comment on re-review", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getIssueComments.mockResolvedValue([
@@ -792,13 +809,13 @@ describe("WebhookHandler", () => {
 
     it("should not duplicate an approval already submitted for the current head", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getPullRequestReviews.mockResolvedValue([
@@ -841,16 +858,17 @@ describe("WebhookHandler", () => {
         file: "src/index.ts",
         line: 5,
         message: "Previously reported issue",
+        scope: scopeFor("src/index.ts", 1),
       };
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getIssueComments.mockResolvedValue([
@@ -910,17 +928,18 @@ describe("WebhookHandler", () => {
         file: "src/index.ts",
         line: 5,
         message: "Previously reported issue",
+        scope: scopeFor("src/index.ts", 1),
       };
       const oldBody = `## Status Update\n\n### Overview\n\n- ⚠️ 1 warning\n\n### Open Issues\n\n- \`src/index.ts:5\` Previously reported issue.\n\n${buildIssueMarker(addressedIssue)}`;
 
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         {
           filename: "src/index.ts",
           status: "modified",
           additions: 10,
           deletions: 5,
-          patch: "@@ -1,5 +1,10 @@\n-old\n+new",
+          patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
       mockGitHubClient.getPullRequestReviews.mockResolvedValue([
@@ -1008,7 +1027,7 @@ describe("WebhookHandler", () => {
 
       // Assume bot is part of ai-reviewers team
       mockGitHubClient.getPullRequest.mockResolvedValue(payload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([]);
+      mockSnapshotFiles.mockResolvedValue([]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "No files to review",
         issues: [],
@@ -1025,13 +1044,13 @@ describe("WebhookHandler", () => {
       ]);
 
       expect(result.success).toBe(true);
-      expect(mockGitHubClient.getPullRequestFiles).toHaveBeenCalled();
+      expect(mockSnapshotFiles).toHaveBeenCalled();
     });
 
     it("should filter out non-code files", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "src/code.ts", status: "modified", patch: "+code" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+code" },
         { filename: "README.md", status: "modified", patch: "+docs" },
         { filename: "package-lock.json", status: "modified", patch: "+lock" },
         { filename: "image.png", status: "added", patch: undefined },
@@ -1058,11 +1077,11 @@ describe("WebhookHandler", () => {
 
     it("should filter out files matching review ignored path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "src/code.ts", status: "modified", patch: "+code" },
-        { filename: "src/config.ts", status: "modified", patch: "+config" },
-        { filename: "generated/client.ts", status: "modified", patch: "+generated" },
-        { filename: "apps/legacy/old.ts", status: "modified", patch: "+legacy" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+code" },
+        { filename: "src/config.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+config" },
+        { filename: "generated/client.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+generated" },
+        { filename: "apps/legacy/old.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+legacy" },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "OK",
@@ -1091,10 +1110,10 @@ describe("WebhookHandler", () => {
 
     it("should only review files matching review included path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "src/code.ts", status: "modified", patch: "+code" },
-        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
-        { filename: "apps/bff/src/index.ts", status: "modified", patch: "+server" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+code" },
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "@@ -0,0 +1 @@\n+page" },
+        { filename: "apps/bff/src/index.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+server" },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "OK",
@@ -1124,9 +1143,13 @@ describe("WebhookHandler", () => {
 
     it("should let review ignored paths override included paths", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
-        { filename: "apps/app/src/generated/client.ts", status: "modified", patch: "+generated" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "@@ -0,0 +1 @@\n+page" },
+        {
+          filename: "apps/app/src/generated/client.ts",
+          status: "modified",
+          patch: "@@ -0,0 +1 @@\n+generated",
+        },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "OK",
@@ -1156,8 +1179,8 @@ describe("WebhookHandler", () => {
 
     it("should drop review findings matching ignored path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "src/code.ts", status: "modified", patch: "+code" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/code.ts", status: "modified", patch: "@@ -0,0 +1 @@\n+code" },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "Found issues",
@@ -1168,6 +1191,7 @@ describe("WebhookHandler", () => {
             file: "src/code.ts",
             line: 1,
             message: "Real issue",
+            scope: scopeFor("src/code.ts"),
           },
           {
             type: "bug-risk",
@@ -1175,6 +1199,7 @@ describe("WebhookHandler", () => {
             file: "generated/client.ts",
             line: 1,
             message: "Ignored issue",
+            scope: scopeFor("src/code.ts"),
           },
           {
             type: "bug-risk",
@@ -1182,6 +1207,7 @@ describe("WebhookHandler", () => {
             file: "src/config.ts",
             line: 1,
             message: "Ignored exact file issue",
+            scope: scopeFor("src/code.ts"),
           },
         ],
         verdict: "comment",
@@ -1207,8 +1233,8 @@ describe("WebhookHandler", () => {
 
     it("should drop review findings outside included path patterns", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "apps/app/src/page.tsx", status: "modified", patch: "+page" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "apps/app/src/page.tsx", status: "modified", patch: "@@ -0,0 +1 @@\n+page" },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "Found issues",
@@ -1219,6 +1245,7 @@ describe("WebhookHandler", () => {
             file: "apps/app/src/page.tsx",
             line: 1,
             message: "Included issue",
+            scope: scopeFor("apps/app/src/page.tsx"),
           },
           {
             type: "bug-risk",
@@ -1226,6 +1253,7 @@ describe("WebhookHandler", () => {
             file: "apps/bff/src/index.ts",
             line: 1,
             message: "Out of scope issue",
+            scope: scopeFor("apps/app/src/page.tsx"),
           },
         ],
         verdict: "comment",
@@ -1250,8 +1278,302 @@ describe("WebhookHandler", () => {
       expect(result.issues?.[0]?.file).toBe("apps/app/src/page.tsx");
     });
 
+    it("should remove rejected findings from summaries, verdicts, returned issues and autofix", async () => {
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+      ]);
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Unrelated architecture rewrite required",
+        mergeSafety: "Not safe to merge. Unrelated architecture rewrite required.",
+        verdict: "request_changes",
+        issues: [
+          {
+            type: "bug-risk",
+            severity: "critical",
+            file: "src/legacy.ts",
+            line: 10,
+            message: "Unrelated architecture rewrite required",
+          },
+        ],
+      });
+      const fixIssue = vi.fn();
+      const realHandler = new WebhookHandler(
+        mockGitHubClient as GitHubClient,
+        mockAgent as CodeReviewAgent,
+        new ReviewFormatter(),
+        undefined,
+        true
+      );
+      const result = await realHandler.handlePullRequestOpened(basePayload, "opendiff-bot", null, {
+        enabled: true,
+        autofixEnabled: true,
+        botUsername: "opendiff-bot",
+        triageAgent: { fixIssue } as never,
+      });
+      expect(result.success).toBe(true);
+      expect(result.issues).toEqual([]);
+      expect(fixIssue).not.toHaveBeenCalled();
+      const summary = mockGitHubClient.createIssueComment.mock.calls[0][3];
+      expect(summary).not.toContain("Unrelated architecture");
+      expect(summary).not.toContain("src/legacy.ts");
+      expect(summary).toContain("src/index.ts");
+      expect(summary).toContain("No in-scope findings remain");
+      expect(mockGitHubClient.submitReview.mock.calls[0][4].event).toBe("APPROVE");
+    });
+
+    it("should retain a PR-caused regression in an unchanged caller", async () => {
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+      ]);
+      mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+      const issue = {
+        type: "bug-risk",
+        severity: "warning",
+        file: "src/caller.ts",
+        line: 10,
+        message: "The changed return type breaks this caller",
+        scope: scopeFor(),
+      };
+      mockAgent.reviewFiles.mockResolvedValue({
+        summary: "Changes the exported API.",
+        mergeSafety: "Not safe to merge. The caller breaks.",
+        verdict: "comment",
+        issues: [issue],
+      });
+      const realHandler = new WebhookHandler(
+        mockGitHubClient as GitHubClient,
+        mockAgent as CodeReviewAgent,
+        new ReviewFormatter()
+      );
+      const result = await realHandler.handlePullRequestReviewRequested(
+        basePayload,
+        "opendiff-bot"
+      );
+      expect(result.issues).toEqual([issue]);
+      const summary = mockGitHubClient.createIssueComment.mock.calls[0][3];
+      expect(summary).toContain("Additional PR Findings");
+      expect(summary).toContain("src/caller.ts:10");
+    });
+
+    it.each([false, true])(
+      "should exclude historical scope rejections without claiming they were fixed (legacy=%s)",
+      async (legacy) => {
+        mockSnapshotFiles.mockResolvedValue([
+          { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+        ]);
+        mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+        const issue = {
+          type: "bug-risk" as const,
+          severity: "warning" as const,
+          file: "src/legacy.ts",
+          line: 10,
+          message: "Existing issue",
+          ...(legacy ? {} : { scope: scopeFor() }),
+        };
+        mockGitHubClient.getIssueComments.mockResolvedValue([
+          {
+            id: 101,
+            user: "opendiff-bot",
+            body: `## OpenDiff Summary\n\n${buildIssueMarker(issue)}`,
+          },
+        ]);
+        mockAgent.reviewFiles.mockResolvedValue({
+          summary: "Changes the API.",
+          mergeSafety: "No in-scope findings remain.",
+          verdict: "approve",
+          issues: [],
+          scopeRejectedIssues: legacy ? [] : [issue],
+        });
+        mockFormatter.formatReview.mockReturnValue({ body: "Review", event: "APPROVE" });
+        await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+        expect(mockFormatter.formatHistoricalSummaryBody.mock.calls[0][2]).toMatchObject({
+          unresolvedHistoricalIssues: [],
+          newIssues: [],
+          addressedIssues: [],
+        });
+        if (legacy) {
+          expect(mockAgent.reviewFiles.mock.calls[0][1].priorReviewContext).toBe("");
+        }
+      }
+    );
+
+    it.each(["head", "base"])(
+      "should preserve both model passes' usage when the PR %s changes after review",
+      async (revision) => {
+        mockSnapshotFiles.mockResolvedValue([
+          { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+        ]);
+        mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
+        const prompt = vi
+          .spyOn(opencode, "runOpencodePrompt")
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: "Found a regression.",
+              mergeSafety: "Review the finding.",
+              verdict: "comment",
+              issues: [
+                {
+                  type: "bug-risk",
+                  severity: "warning",
+                  file: "src/index.ts",
+                  line: 1,
+                  message: "Changed behavior breaks callers.",
+                  scope: scopeFor(),
+                },
+              ],
+            }),
+            tokensUsed: 123,
+          })
+          .mockImplementationOnce(async () => {
+            mockGitHubClient.getPullRequest.mockResolvedValue({
+              ...basePayload.pull_request,
+              [revision]: { ...basePayload.pull_request[revision], sha: "new-commit" },
+            });
+            return {
+              text: JSON.stringify({
+                acceptedIssueIndices: [0],
+                summary: "Verified regression.",
+                mergeSafety: "Review the finding.",
+                verdict: "comment",
+              }),
+              tokensUsed: 77,
+            };
+          });
+        handler = new WebhookHandler(
+          mockGitHubClient as GitHubClient,
+          new CodeReviewAgent(),
+          mockFormatter as ReviewFormatter
+        );
+        const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+        expect(prompt).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({ success: true, skipped: true, tokensUsed: 200 });
+        expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();
+        expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      }
+    );
+
+    it("should preserve both model passes' usage without publishing when the revision lookup fails", async () => {
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+      ]);
+      mockGitHubClient.getPullRequest.mockRejectedValue(new Error("Revision lookup unavailable"));
+      const prompt = vi
+        .spyOn(opencode, "runOpencodePrompt")
+        .mockResolvedValueOnce({
+          text: JSON.stringify({
+            summary: "Found a regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+            issues: [
+              {
+                type: "bug-risk",
+                severity: "warning",
+                file: "src/index.ts",
+                line: 1,
+                message: "Changed behavior breaks callers.",
+                scope: scopeFor(),
+              },
+            ],
+          }),
+          tokensUsed: 123,
+        })
+        .mockResolvedValueOnce({
+          text: JSON.stringify({
+            acceptedIssueIndices: [0],
+            summary: "Verified regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+          }),
+          tokensUsed: 77,
+        });
+      handler = new WebhookHandler(
+        mockGitHubClient as GitHubClient,
+        new CodeReviewAgent(),
+        mockFormatter as ReviewFormatter
+      );
+
+      const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+      expect(prompt).toHaveBeenCalledTimes(2);
+      expect(mockGitHubClient.getPullRequest).toHaveBeenCalledWith("owner", "repo", 42);
+      expect(result).toEqual({
+        success: false,
+        error: "Revision lookup unavailable",
+        tokensUsed: 200,
+      });
+      expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+      expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();
+      expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+      expect(mockFormatter.formatReview).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])(
+      "should preserve consumed usage without publishing when scope verification fails (request error=%s)",
+      async (requestError) => {
+        mockSnapshotFiles.mockResolvedValue([
+          { filename: "src/index.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" },
+        ]);
+        const prompt = vi.spyOn(opencode, "runOpencodePrompt").mockResolvedValueOnce({
+          text: JSON.stringify({
+            summary: "Found a regression.",
+            mergeSafety: "Review the finding.",
+            verdict: "comment",
+            issues: [
+              {
+                type: "bug-risk",
+                severity: "warning",
+                file: "src/index.ts",
+                line: 1,
+                message: "Changed behavior breaks callers.",
+                scope: scopeFor(),
+              },
+            ],
+          }),
+          tokensUsed: 123,
+        });
+        if (requestError) {
+          prompt.mockRejectedValueOnce(new Error("Verifier unavailable"));
+        } else {
+          prompt.mockResolvedValueOnce({
+            text: JSON.stringify({
+              acceptedIssueIndices: [0],
+              summary: "Verified regression.",
+              mergeSafety: " ",
+              verdict: "comment",
+            }),
+            tokensUsed: 77,
+          });
+        }
+        handler = new WebhookHandler(
+          mockGitHubClient as GitHubClient,
+          new CodeReviewAgent(),
+          mockFormatter as ReviewFormatter
+        );
+
+        const result = await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
+
+        expect(prompt).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({
+          success: false,
+          error: requestError
+            ? "Verifier unavailable"
+            : "Failed to verify review scope: Invalid scope verification structure",
+          tokensUsed: requestError ? 123 : 200,
+        });
+        expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updateIssueComment).not.toHaveBeenCalled();
+        expect(mockGitHubClient.updatePullRequestReview).not.toHaveBeenCalled();
+        expect(mockGitHubClient.submitReview).not.toHaveBeenCalled();
+        expect(mockFormatter.formatReview).not.toHaveBeenCalled();
+      }
+    );
+
     it("should handle API errors gracefully", async () => {
-      mockGitHubClient.getPullRequestFiles.mockImplementation(async () => {
+      mockSnapshotFiles.mockImplementation(async () => {
         throw new Error("API error");
       });
 
@@ -1261,11 +1583,11 @@ describe("WebhookHandler", () => {
       expect(result.error).toContain("API error");
     });
 
-    it("should skip deleted files", async () => {
+    it("should include deleted files for removal-caused regressions", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         { filename: "deleted.ts", status: "removed", patch: "-deleted" },
-        { filename: "added.ts", status: "added", patch: "+added" },
+        { filename: "added.ts", status: "added", patch: "@@ -0,0 +1 @@\n+added" },
       ]);
       mockGitHubClient.getFileContent.mockResolvedValue("added code");
       mockAgent.reviewFiles.mockResolvedValue({
@@ -1282,17 +1604,18 @@ describe("WebhookHandler", () => {
       await handler.handlePullRequestReviewRequested(basePayload, "opendiff-bot");
 
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
-      expect(reviewedFiles).toHaveLength(1);
-      expect(reviewedFiles[0].filename).toBe("added.ts");
+      expect(reviewedFiles).toHaveLength(2);
+      expect(reviewedFiles[0].filename).toBe("deleted.ts");
+      expect(reviewedFiles[1].filename).toBe("added.ts");
     });
 
     it("should handle PR with all files filtered out", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
+      mockSnapshotFiles.mockResolvedValue([
         { filename: "README.md", status: "modified", patch: "+docs" },
         { filename: "package-lock.json", status: "modified", patch: "+lock" },
         { filename: ".gitignore", status: "modified", patch: "+ignore" },
-        { filename: "types.d.ts", status: "added", patch: "+types" },
+        { filename: "types.d.ts", status: "added", patch: "@@ -0,0 +1 @@\n+types" },
       ]);
       // No code files, so agent should be called with empty array
       mockAgent.reviewFiles.mockResolvedValue({
@@ -1315,8 +1638,8 @@ describe("WebhookHandler", () => {
 
     it("should pass files without content (OpenCode reads files itself)", async () => {
       mockGitHubClient.getPullRequest.mockResolvedValue(basePayload.pull_request);
-      mockGitHubClient.getPullRequestFiles.mockResolvedValue([
-        { filename: "file.ts", status: "added", patch: "+code" },
+      mockSnapshotFiles.mockResolvedValue([
+        { filename: "file.ts", status: "added", patch: "@@ -0,0 +1 @@\n+code" },
       ]);
       mockAgent.reviewFiles.mockResolvedValue({
         summary: "OK",
@@ -1336,7 +1659,7 @@ describe("WebhookHandler", () => {
       const reviewedFiles = mockAgent.reviewFiles.mock.calls[0][0];
       expect(reviewedFiles[0].content).toBeUndefined();
       expect(reviewedFiles[0].filename).toBe("file.ts");
-      expect(reviewedFiles[0].patch).toBe("+code");
+      expect(reviewedFiles[0].patch).toBe("@@ -0,0 +1 @@\n+code");
     });
 
     it("should pass both reviewer and team check correctly", async () => {
@@ -1353,7 +1676,7 @@ describe("WebhookHandler", () => {
 
       expect(result.success).toBe(true);
       expect(result.skipped).toBe(true);
-      expect(mockGitHubClient.getPullRequestFiles).not.toHaveBeenCalled();
+      expect(mockSnapshotFiles).not.toHaveBeenCalled();
     });
 
     it("should handle no reviewer or team specified", async () => {

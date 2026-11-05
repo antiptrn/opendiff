@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { commentMentionsBot, getBotMentionAliases, isBareBotMention } from "./utils/bot-mentions";
 
 // Store original env vars
@@ -19,6 +19,7 @@ describe("Application endpoints", () => {
     process.env.BOT_TEAMS = "team-a,team-b";
     process.env.SETTINGS_API_URL = "";
     process.env.REVIEW_AGENT_API_KEY = "test-review-agent-key";
+    process.env.REVIEW_QUEUE_RETRY_DELAY_MS = "1";
   });
 
   afterAll(() => {
@@ -43,6 +44,37 @@ describe("Application endpoints", () => {
       expect(body.timestamp).toBeDefined();
       // Verify timestamp is a valid ISO string
       expect(() => new Date(body.timestamp)).not.toThrow();
+    });
+  });
+
+  describe("POST /internal/local-review", () => {
+    it.each([123, 200])("returns consumed usage on failure (%i tokens)", async (tokensUsed) => {
+      const { default: app } = await import("./index");
+      const { CodeReviewAgent, ReviewError } = await import("./agent/reviewer");
+      const reviewFiles = vi
+        .spyOn(CodeReviewAgent.prototype, "reviewFiles")
+        .mockRejectedValueOnce(new ReviewError(new Error("Verification failed"), tokensUsed));
+
+      try {
+        const response = await app.fetch(
+          new Request(`http://localhost:${TEST_PORT}/internal/local-review`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": "test-review-agent-key",
+            },
+            body: JSON.stringify({
+              files: [{ filename: "test.ts", content: "export const value = 1;", patch: "" }],
+              title: "Local change",
+            }),
+          })
+        );
+
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({ error: "Review failed", tokensUsed });
+      } finally {
+        reviewFiles.mockRestore();
+      }
     });
   });
 
@@ -180,6 +212,109 @@ describe("Application endpoints", () => {
       expect(body.jobId).toBeDefined();
       expect(body.reviewQueue).toBeDefined();
     });
+
+    it.each([
+      { tokensUsed: 200, success: true },
+      { tokensUsed: undefined, success: true },
+      { tokensUsed: 200, success: false },
+      { tokensUsed: undefined, success: false },
+    ])(
+      "accounts for unpublished queued reviews with token usage $tokensUsed and success $success",
+      async ({ tokensUsed, success }) => {
+        const { default: app } = await import("./index");
+        const settings = await import("./utils/settings");
+        const { GitHubClient } = await import("./github/client");
+        const { WebhookHandler } = await import("./webhook/handler");
+
+        vi.spyOn(settings, "getRepositorySettings").mockResolvedValue({
+          owner: "owner",
+          repo: "repo",
+          enabled: true,
+          effectiveEnabled: true,
+          approveEnabled: false,
+          autofixEnabled: false,
+          sensitivity: 50,
+        });
+        vi.spyOn(settings, "getRuntimeAiConfig").mockResolvedValue(null);
+        vi.spyOn(settings, "getCustomReviewRules").mockResolvedValue(null);
+        const record = vi.spyOn(settings, "recordReview").mockResolvedValue(null);
+        const comments = vi.spyOn(settings, "recordReviewComments").mockResolvedValue(undefined);
+        const review = vi
+          .spyOn(WebhookHandler.prototype, "handlePullRequestOpened")
+          .mockResolvedValue({ success: true, skipped: true })
+          .mockResolvedValueOnce({
+            success,
+            skipped: success,
+            tokensUsed,
+            ...(success ? {} : { error: "Failed to verify review scope" }),
+          });
+        vi.spyOn(GitHubClient.prototype, "createPullRequestEyesReaction").mockResolvedValue({
+          id: 123,
+        });
+        const cleanup = vi
+          .spyOn(GitHubClient.prototype, "deletePullRequestEyesReaction")
+          .mockResolvedValue(undefined);
+
+        try {
+          const payload = JSON.stringify({
+            action: "opened",
+            repository: { id: 1, owner: { login: "owner" }, name: "repo" },
+            pull_request: {
+              number: 200,
+              title: "Stale review",
+              body: null,
+              head: { sha: "abc123", ref: "feature" },
+              base: { sha: "def456", ref: "main" },
+              user: { login: "author" },
+            },
+          });
+          const response = await app.fetch(
+            new Request(`http://localhost:${TEST_PORT}/webhook`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-hub-signature-256": `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`,
+                "x-github-event": "pull_request",
+              },
+              body: payload,
+            })
+          );
+          expect(response.status).toBe(202);
+          const expectedAttempts = success ? 1 : 2;
+          for (
+            let attempt = 0;
+            attempt < 100 && cleanup.mock.calls.length < expectedAttempts;
+            attempt++
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          expect(cleanup).toHaveBeenCalledTimes(expectedAttempts);
+          expect(review).toHaveBeenCalledTimes(expectedAttempts);
+          if (tokensUsed) {
+            expect(record).toHaveBeenCalledTimes(1);
+            expect(record).toHaveBeenCalledWith({
+              githubRepoId: 1,
+              owner: "owner",
+              repo: "repo",
+              pullNumber: 200,
+              reviewType: "initial",
+              tokensUsed: 200,
+              usageOnly: true,
+            });
+            if (!success) {
+              expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+                review.mock.invocationCallOrder[1]
+              );
+            }
+          } else {
+            expect(record).not.toHaveBeenCalled();
+          }
+          expect(comments).not.toHaveBeenCalled();
+        } finally {
+          vi.restoreAllMocks();
+        }
+      }
+    );
 
     it("should ignore pull_request review triggers without repository identity", async () => {
       const { default: app } = await import("./index");

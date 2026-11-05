@@ -6,7 +6,7 @@ import { prisma } from "../../db";
 import { getAuthUser, requireAuth } from "../../middleware/auth";
 import { getOrgQuotaPool } from "../../middleware/organization";
 import { getOrgAiRuntimeConfig } from "../../utils/ai-config";
-import { postToReviewAgent } from "../../utils/review-agent-client";
+import { postToReviewAgent, ReviewAgentError } from "../../utils/review-agent-client";
 
 const localRoutes = new Hono();
 
@@ -62,7 +62,7 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
     return c.json({ error: "title is required" }, 400);
   }
 
-  let review: ReviewResult;
+  let review: ReviewResult | undefined;
   let totalTokens = 0;
   let aiConfig: Awaited<ReturnType<typeof getOrgAiRuntimeConfig>>;
   try {
@@ -85,7 +85,16 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
     totalTokens = response.tokensUsed || 0;
   } catch (error) {
     console.error("Local review agent error:", error);
-    return c.json({ error: "Review failed" }, 500);
+    if (error instanceof ReviewAgentError) {
+      try {
+        const tokensUsed = JSON.parse(error.body)?.tokensUsed;
+        if (typeof tokensUsed === "number" && Number.isSafeInteger(tokensUsed) && tokensUsed > 0) {
+          totalTokens = tokensUsed;
+        }
+      } catch {
+        // Non-JSON failures do not report consumed usage.
+      }
+    }
   }
 
   if (totalTokens > 0) {
@@ -93,6 +102,10 @@ localRoutes.post("/reviews/local", requireAuth(), async (c) => {
       where: { id: orgId },
       data: { tokensUsedThisCycle: { increment: totalTokens } },
     });
+  }
+
+  if (!review) {
+    return c.json({ error: "Review failed" }, 500);
   }
 
   try {
