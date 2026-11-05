@@ -56,7 +56,8 @@ describe("runOpencodePrompt response selection", () => {
   });
 
   afterEach(() => {
-    if (previousPassword === undefined) Reflect.deleteProperty(process.env, "OPENCODE_SERVER_PASSWORD");
+    if (previousPassword === undefined)
+      Reflect.deleteProperty(process.env, "OPENCODE_SERVER_PASSWORD");
     else process.env.OPENCODE_SERVER_PASSWORD = previousPassword;
   });
 
