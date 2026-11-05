@@ -251,6 +251,7 @@ async function prepareCachedWorktree(
     const authEnv = await getGitAuthEnv(config, token);
     const bareGit = simpleGit(paths.mirrorDir).env(authEnv);
 
+    await initializeBareWorktreeConfig(bareGit, paths.mirrorDir);
     await ensureOriginRemote(bareGit, repoUrl);
     await fetchBranch(bareGit, repoUrl, opts, paths, config);
     await mkdir(dirname(paths.worktreeDir), { recursive: true });
@@ -330,6 +331,9 @@ async function prepareFreshClone(
     );
 
     await validateCommitSha(git, "HEAD", opts);
+    if (opts.mode === "read-write") {
+      await git.raw(["config", "--local", "extensions.worktreeConfig", "true"]);
+    }
 
     return { dir: tempDir, git };
   } catch (error) {
@@ -396,7 +400,6 @@ async function removeWorktreeFromMirror(git: SimpleGit, worktreeDir: string): Pr
 
 async function configureWriteWorkspace(git: SimpleGit, botUsername: string): Promise<void> {
   try {
-    await git.raw(["config", "extensions.worktreeConfig", "true"]);
     await git.raw([
       "config",
       "--worktree",
@@ -483,6 +486,17 @@ async function ensureBareRepo(mirrorDir: string): Promise<void> {
 
   await mkdir(dirname(mirrorDir), { recursive: true });
   await simpleGit().raw(["init", "--bare", mirrorDir]);
+}
+
+async function initializeBareWorktreeConfig(git: SimpleGit, mirrorDir: string): Promise<void> {
+  // Called under the repo lock, including for caches where the extension was
+  // already enabled. Preserve the main repo's bare flag without sharing it
+  // with linked worktrees. Write this file before enabling the extension.
+  await git.raw(["config", "--file", join(mirrorDir, "config.worktree"), "core.bare", "true"]);
+  if ((await git.getConfig("core.bare", "local")).value !== null) {
+    await git.raw(["config", "--local", "--unset-all", "core.bare"]);
+  }
+  await git.raw(["config", "--local", "extensions.worktreeConfig", "true"]);
 }
 
 async function ensureOriginRemote(git: SimpleGit, repoUrl: string): Promise<void> {

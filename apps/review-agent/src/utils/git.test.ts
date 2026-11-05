@@ -1,8 +1,16 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CommitDriftError, getGitCacheConfig, isCommitDriftError, pruneGitCache } from "./git";
+import { simpleGit } from "simple-git";
+import type { GitHubClient } from "../github/client";
+import {
+  CommitDriftError,
+  getGitCacheConfig,
+  isCommitDriftError,
+  pruneGitCache,
+  withClonedRepo,
+} from "./git";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -111,5 +119,101 @@ describe("isCommitDriftError", () => {
       )
     ).toBe(true);
     expect(isCommitDriftError(new Error("other"))).toBe(false);
+  });
+});
+
+describe("cached worktree configuration", () => {
+  it("keeps the cache bare and linked write/read worktrees usable across cache reuse", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "opendiff-worktree-config-test-"));
+    const previousEnv = { ...process.env };
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json({ skills: [] })
+    );
+
+    try {
+      const sourceDir = join(rootDir, "source");
+      await mkdir(sourceDir);
+      const sourceGit = simpleGit(sourceDir);
+      await sourceGit.raw(["init", "--initial-branch=main"]);
+      await sourceGit.addConfig("user.name", "Test");
+      await sourceGit.addConfig("user.email", "test@example.com");
+      await writeFile(join(sourceDir, "example.txt"), "before\n");
+      await sourceGit.add("example.txt");
+      await sourceGit.commit("Initial commit");
+
+      // Redirect the production fetch URL to a real local repository.
+      const globalConfig = join(rootDir, "gitconfig");
+      await sourceGit.raw([
+        "config",
+        "--file",
+        globalConfig,
+        `url.${sourceDir}.insteadOf`,
+        "https://github.com/worktree-test/repo.git",
+      ]);
+      process.env.GIT_CONFIG_GLOBAL = globalConfig;
+      process.env.OPENDIFF_GIT_CACHE_DIR = join(rootDir, "cache");
+      process.env.OPENDIFF_GIT_CACHE_DISABLED = "false";
+
+      const github = {
+        getInstallationToken: async () => "test-token",
+      } as unknown as GitHubClient;
+      let mirrorDir = "";
+      for (const mode of ["read-write", "read-write", "read-only"] as const) {
+        let workspaceDir = "";
+        await withClonedRepo(
+          {
+            github,
+            owner: "worktree-test",
+            repo: "repo",
+            branch: "main",
+            label: "test",
+            mode,
+            botUsername: "test-bot",
+          },
+          async (dir, git) => {
+            workspaceDir = dir;
+            mirrorDir = (await git.raw(["rev-parse", "--git-common-dir"])).trim();
+            expect((await git.raw(["rev-parse", "--is-bare-repository"])).trim()).toBe("false");
+            expect((await git.revparse(["--show-toplevel"])).trim()).toBe(dir);
+            expect((await git.status()).isClean()).toBe(true);
+            if (mode === "read-write") {
+              expect((await git.getConfig("user.name", "worktree")).value).toBe("test-bot[bot]");
+              const patchPath = join(rootDir, "change.patch");
+              await writeFile(
+                patchPath,
+                "diff --git a/example.txt b/example.txt\n--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-before\n+after\n"
+              );
+              await git.raw(["apply", patchPath]);
+              await git.add("example.txt");
+              expect((await git.status()).staged).toContain("example.txt");
+            }
+          }
+        );
+        expect(await exists(workspaceDir)).toBe(false);
+        const bareGit = simpleGit(mirrorDir);
+        expect((await bareGit.raw(["rev-parse", "--is-bare-repository"])).trim()).toBe("true");
+        expect((await bareGit.getConfig("core.bare", "local")).value).toBeNull();
+        expect((await bareGit.getConfig("core.bare", "worktree")).value).toBe("true");
+        expect(await bareGit.raw(["for-each-ref", "refs/heads/opendiff-write/"])).toBe("");
+
+        if (mode === "read-write") {
+          // Reproduce a cache persisted by the old implementation, so the next
+          // job must repair an already-enabled extension as well as a new repo.
+          await bareGit.raw(["config", "--local", "core.bare", "true"]);
+          await bareGit.raw(["config", "--worktree", "--unset-all", "core.bare"]);
+        }
+      }
+    } finally {
+      fetchSpy.mockRestore();
+      for (const key of [
+        "GIT_CONFIG_GLOBAL",
+        "OPENDIFF_GIT_CACHE_DIR",
+        "OPENDIFF_GIT_CACHE_DISABLED",
+      ]) {
+        if (previousEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[key];
+      }
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 });
