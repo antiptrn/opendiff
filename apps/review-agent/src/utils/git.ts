@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendFile,
-  chmod,
   mkdir,
   readFile,
   readdir,
@@ -14,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
 import type { GitHubClient } from "../github/client";
+import { ensureAskPassScript } from "./git-askpass";
 import { withRetry } from "./retry";
 import { cleanupUserSkills, hydrateSkills } from "./skill-hydrator";
 
@@ -928,24 +928,6 @@ async function getGitAuthEnv(
     GIT_TERMINAL_PROMPT: "0",
     OPENDIFF_GIT_TOKEN: token,
   };
-}
-
-async function ensureAskPassScript(rootDir: string): Promise<string> {
-  const binDir = join(rootDir, "bin");
-  const scriptPath = join(binDir, "git-askpass.sh");
-  const script = [
-    "#!/bin/sh",
-    'case "$1" in',
-    '  *Username*) printf "%s\\n" "x-access-token" ;;',
-    '  *) printf "%s\\n" "$OPENDIFF_GIT_TOKEN" ;;',
-    "esac",
-    "",
-  ].join("\n");
-
-  await mkdir(binDir, { recursive: true });
-  await writeFile(scriptPath, script, { mode: 0o700 });
-  await chmod(scriptPath, 0o700);
-  return scriptPath;
 }
 
 function getRepoUrl(owner: string, repo: string): string {
