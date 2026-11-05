@@ -590,7 +590,9 @@ async function writeWorktreeMeta(
       },
       null,
       2
-    )}\n`
+    )}\n`,
+    // Never overwrite or follow a repository-controlled checkout entry.
+    { flag: "wx" }
   );
 }
 

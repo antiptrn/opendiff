@@ -1,5 +1,16 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
@@ -123,6 +134,80 @@ describe("isCommitDriftError", () => {
 });
 
 describe("cached worktree configuration", () => {
+  it.each(["read-only", "read-write"] as const)(
+    "rejects a committed metadata symlink without changing its target in %s mode",
+    async (mode) => {
+      const rootDir = await mkdtemp(join(tmpdir(), "opendiff-worktree-symlink-test-"));
+      const previousEnv = { ...process.env };
+
+      try {
+        const sourceDir = join(rootDir, "source");
+        const targetPath = join(rootDir, "target.json");
+        const targetContent = "must remain unchanged\n";
+        await writeFile(targetPath, targetContent);
+        await mkdir(sourceDir);
+        const sourceGit = simpleGit(sourceDir);
+        await sourceGit.raw(["init", "--initial-branch=main"]);
+        await sourceGit.addConfig("user.name", "Test");
+        await sourceGit.addConfig("user.email", "test@example.com");
+        await symlink(targetPath, join(sourceDir, ".opendiff-worktree.json"));
+        await sourceGit.add(".opendiff-worktree.json");
+        await sourceGit.commit("Commit metadata symlink");
+
+        const globalConfig = join(rootDir, "gitconfig");
+        await sourceGit.raw([
+          "config",
+          "--file",
+          globalConfig,
+          `url.${sourceDir}.insteadOf`,
+          "https://github.com/worktree-test/repo.git",
+        ]);
+        process.env.GIT_CONFIG_GLOBAL = globalConfig;
+        process.env.OPENDIFF_GIT_CACHE_DIR = join(rootDir, "cache");
+        process.env.OPENDIFF_GIT_CACHE_DISABLED = "false";
+
+        const github = {
+          getInstallationToken: async () => "test-token",
+        } as unknown as GitHubClient;
+        let callbackCalled = false;
+        await expect(
+          withClonedRepo(
+            {
+              github,
+              owner: "worktree-test",
+              repo: "repo",
+              branch: "main",
+              label: "test",
+              mode,
+              botUsername: "test-bot",
+            },
+            async () => {
+              callbackCalled = true;
+            }
+          )
+        ).rejects.toMatchObject({ code: "EEXIST" });
+
+        expect(callbackCalled).toBe(false);
+        expect(await readFile(targetPath, "utf8")).toBe(targetContent);
+        const config = getGitCacheConfig();
+        expect(await readdir(config.worktreesDir)).toEqual([]);
+        const [mirrorName] = await readdir(config.reposDir);
+        const bareGit = simpleGit(join(config.reposDir, mirrorName!));
+        expect(await bareGit.raw(["for-each-ref", "refs/heads/opendiff-write/"])).toBe("");
+      } finally {
+        for (const key of [
+          "GIT_CONFIG_GLOBAL",
+          "OPENDIFF_GIT_CACHE_DIR",
+          "OPENDIFF_GIT_CACHE_DISABLED",
+        ]) {
+          if (previousEnv[key] === undefined) delete process.env[key];
+          else process.env[key] = previousEnv[key];
+        }
+        await rm(rootDir, { recursive: true, force: true });
+      }
+    }
+  );
+
   it("keeps the cache bare and linked write/read worktrees usable across cache reuse", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "opendiff-worktree-config-test-"));
     const previousEnv = { ...process.env };
