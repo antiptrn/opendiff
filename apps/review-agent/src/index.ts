@@ -526,6 +526,8 @@ async function processPullRequestReviewJob(
       return;
     }
 
+    const pullNumber = reviewPayload.pull_request.number;
+
     if (reviewPayload.pull_request.draft) {
       console.log(`Skipping draft PR ${owner}/${repo}#${reviewPayload.pull_request.number}`);
       return;
@@ -591,7 +593,7 @@ async function processPullRequestReviewJob(
       } catch (error) {
         if (isCommitDriftError(error)) {
           console.log(
-            `Skipping stale queued PR review for ${owner}/${repo}#${reviewPayload.pull_request.number}: ${error.message}`
+            `Skipping stale queued PR review for ${owner}/${repo}#${pullNumber}: ${error.message}`
           );
           return null;
         }

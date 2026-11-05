@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, chmod, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { type SimpleGit, simpleGit } from "simple-git";
@@ -156,7 +166,10 @@ export async function withClonedRepo<T>(
   }
 }
 
-export async function pushHeadToBranch(git: Pick<SimpleGit, "raw">, branch: string): Promise<void> {
+export async function pushHeadToBranch(
+  git: { raw: (args: string[]) => Promise<unknown> },
+  branch: string
+): Promise<void> {
   await withRetry(
     () => git.raw(["push", "origin", `HEAD:refs/heads/${branch}`]),
     `git push origin HEAD:${branch}`
