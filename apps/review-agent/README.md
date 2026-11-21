@@ -92,6 +92,8 @@ Configure a GitHub webhook pointing to this service:
 - With autofix disabled, fix metadata is collected without pushing commits.
 - In review comment threads, the bot can distinguish between discussion and explicit "do this" requests and trigger a fix attempt for executable requests.
 
+To turn off autofix for a single pull request, create and apply a GitHub label named `no-autofix`. Reviews and discussion replies still work, but OpenDiff skips fix attempts, including those requested in review comments. OpenDiff checks the current labels when work starts and again before a push, so adding the label also protects work already queued. It does not undo changes already pushed or block fixes explicitly accepted through the app.
+
 ## Task-specific models
 
 Reviews, summaries, and comment responses use the review defaults. Actual fix attempts use the autofix defaults, regardless of whether a fix was triggered automatically or requested in a comment. Without task-specific settings, both continue to use `OPENCODE_MODEL` and `OPENCODE_REASONING_EFFORT`. Each setting falls back independently; configuring only an autofix model does not change its reasoning effort.

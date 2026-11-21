@@ -42,6 +42,7 @@ interface PullRequestInfo {
 
 // Maximum number of issues to process per triage cycle to prevent runaway loops
 const MAX_ISSUES_PER_CYCLE = 10;
+const NO_AUTOFIX_LABEL = "no-autofix";
 
 export async function handleTriageAfterReview(
   github: GitHubClient,
@@ -91,7 +92,26 @@ export async function handleTriageAfterReview(
     );
   }
 
+  const skipIfLabeled = async (): Promise<boolean> => {
+    const current = await github.getPullRequest(owner, repo, pullRequest.number);
+    if (!current.labels?.some(({ name }) => name.toLowerCase() === NO_AUTOFIX_LABEL)) {
+      return false;
+    }
+
+    const reason = `This pull request has the \`${NO_AUTOFIX_LABEL}\` label.`;
+    console.log(`Skipping autofix for ${owner}/${repo}#${pullRequest.number}: ${reason}`);
+    result.fixedIssues = [];
+    result.clarificationIssues = [];
+    result.skippedIssues = fixableIssues.map((issue) => ({ issue, reason }));
+    return true;
+  };
+
+  let fixesPushed = false;
   try {
+    if (await skipIfLabeled()) {
+      return result;
+    }
+
     console.log(`Cloning ${owner}/${repo} branch ${pullRequest.head.ref} for triage`);
 
     await withClonedRepo(
@@ -114,6 +134,9 @@ export async function handleTriageAfterReview(
 
         // Process each issue one by one using the OpenCode SDK
         for (const issue of fixableIssues) {
+          if (await skipIfLabeled()) {
+            return;
+          }
           console.log(`Processing issue: ${issue.type} in ${issue.file}:${issue.line}`);
 
           try {
@@ -250,8 +273,19 @@ export async function handleTriageAfterReview(
 
         // Push all commits if any fixes were made and autofix is enabled
         if (result.fixedIssues.length > 0 && autofixEnabled) {
-          console.log(`Pushing ${result.fixedIssues.length} commits to ${pullRequest.head.ref}`);
-          await withRetry(() => git.push("origin", pullRequest.head.ref), "git push");
+          fixesPushed = await withRetry(async () => {
+            if (await skipIfLabeled()) {
+              return false;
+            }
+            console.log(`Pushing ${result.fixedIssues.length} commits to ${pullRequest.head.ref}`);
+            await git.push("origin", pullRequest.head.ref);
+            return true;
+          }, "git push");
+          if (!fixesPushed) {
+            return;
+          }
+        } else if (await skipIfLabeled()) {
+          return;
         }
 
         // Reply to inline comments or just match comment IDs for DB storage
@@ -319,6 +353,10 @@ export async function handleTriageAfterReview(
     );
   } catch (error) {
     console.error("Triage error:", error);
+    if (!fixesPushed) {
+      result.fixedIssues = [];
+      result.clarificationIssues = [];
+    }
     result.success = false;
     result.error = error instanceof Error ? error.message : String(error);
   }
