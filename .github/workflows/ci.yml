@@ -52,6 +52,9 @@ jobs:
       - name: Run tests
         run: cd "$CI_DIR" && bun run test
 
+      - name: Test review-agent triage
+        run: cd "$CI_DIR" && bun test apps/review-agent/src/webhook/triage-handler.test.ts
+
       - name: Cleanup workspace
         if: always()
         run: rm -rf "$CI_DIR"

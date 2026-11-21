@@ -4,16 +4,20 @@ import type { TriageAgent } from "../agent/triage";
 import type { CodeIssue } from "../agent/types";
 import type { GitHubClient } from "../github/client";
 
+const push = vi.fn();
+const clone = vi.fn();
+
 mock.module("../utils/git", () => ({
   withClonedRepo: async (
     _options: unknown,
     callback: (tempDir: string, git: unknown) => Promise<unknown>
   ) => {
+    clone();
     const git = {
       add: async () => undefined,
       commit: async () => ({ commit: "abc123" }),
       diff: async () => "",
-      push: async () => undefined,
+      push,
       raw: async () => undefined,
     };
 
@@ -30,9 +34,20 @@ import {
 describe("handleTriageAfterReview", () => {
   let mockGitHubClient: Partial<GitHubClient>;
   let mockTriageAgent: Partial<TriageAgent>;
+  const issue: CodeIssue = {
+    type: "bug-risk",
+    severity: "warning",
+    file: "src/example.ts",
+    line: 1,
+    message: "Return the expected value",
+  };
+  const pullRequest = { number: 42, head: { sha: "abc123", ref: "feature-branch" } };
 
   beforeEach(() => {
+    clone.mockClear();
+    push.mockReset();
     mockGitHubClient = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...pullRequest, labels: [] }),
       getIssueComments: vi.fn().mockResolvedValue([]),
       getReviewComments: vi.fn().mockResolvedValue([]),
       createIssueComment: vi.fn().mockResolvedValue({ id: 9001 }),
@@ -43,6 +58,95 @@ describe("handleTriageAfterReview", () => {
     mockTriageAgent = {
       fixIssue: vi.fn(),
     };
+  });
+
+  function runTriage(issues: CodeIssue[] = [issue], autofixEnabled = true) {
+    return handleTriageAfterReview(
+      mockGitHubClient as GitHubClient,
+      mockTriageAgent as TriageAgent,
+      pullRequest,
+      issues,
+      "owner",
+      "repo",
+      "opendiff-bot",
+      autofixEnabled
+    );
+  }
+
+  it.each([true, false])(
+    "skips cloning and model calls for a labeled PR (autofix=%s)",
+    async (autofixEnabled) => {
+      mockGitHubClient.getPullRequest = vi.fn().mockResolvedValue({
+        ...pullRequest,
+        labels: [{ name: "No-Autofix" }],
+      });
+
+      const result = await runTriage([issue], autofixEnabled);
+
+      expect(result.success).toBe(true);
+      expect(result.skippedIssues).toEqual([
+        { issue, reason: "This pull request has the `no-autofix` label." },
+      ]);
+      expect(clone).not.toHaveBeenCalled();
+      expect(mockTriageAgent.fixIssue).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([1, 2])(
+    "discards local fixes when the label is added during model work (%s findings)",
+    async (count) => {
+      let labeled = false;
+      mockGitHubClient.getPullRequest = vi.fn().mockImplementation(async () => ({
+        ...pullRequest,
+        labels: labeled ? [{ name: "no-autofix" }] : [],
+      }));
+      mockTriageAgent.fixIssue = vi.fn().mockImplementation(async () => {
+        labeled = true;
+        return { fixed: true, explanation: "Fixed locally" };
+      });
+
+      const result = await runTriage([issue, { ...issue, line: 2 }].slice(0, count));
+
+      expect(result.success).toBe(true);
+      expect(result.fixedIssues).toHaveLength(0);
+      expect(result.skippedIssues).toHaveLength(count);
+      expect(mockTriageAgent.fixIssue).toHaveBeenCalledTimes(1);
+      expect(push).not.toHaveBeenCalled();
+      expect(mockGitHubClient.createIssueComment).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rechecks labels before a push retry", async () => {
+    let labeled = false;
+    mockGitHubClient.getPullRequest = vi.fn().mockImplementation(async () => ({
+      ...pullRequest,
+      labels: labeled ? [{ name: "no-autofix" }] : [],
+    }));
+    mockTriageAgent.fixIssue = vi
+      .fn()
+      .mockResolvedValue({ fixed: true, explanation: "Fixed locally" });
+    push.mockImplementationOnce(async () => {
+      labeled = true;
+      throw new Error("Network error");
+    });
+
+    const result = await runTriage();
+
+    expect(result.success).toBe(true);
+    expect(result.fixedIssues).toHaveLength(0);
+    expect(result.skippedIssues[0]?.reason).toContain("no-autofix");
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run fixes when the current labels cannot be fetched", async () => {
+    mockGitHubClient.getPullRequest = vi.fn().mockRejectedValue(new Error("GitHub unavailable"));
+
+    const result = await runTriage();
+
+    expect(result).toMatchObject({ success: false, error: "GitHub unavailable", fixedIssues: [] });
+    expect(clone).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("should not post an autofix summary on a clean autofix push", async () => {
@@ -95,6 +199,7 @@ describe("handleTriageAfterReview", () => {
 
     expect(result.success).toBe(true);
     expect(result.fixedIssues).toHaveLength(1);
+    expect(push).toHaveBeenCalledWith("origin", "feature-branch");
     const createIssueComment = mockGitHubClient.createIssueComment as unknown as {
       mock: { calls: unknown[][] };
     };

@@ -3,6 +3,7 @@ export interface PullRequest {
   title: string;
   body: string | null;
   draft?: boolean;
+  labels?: Array<{ name: string }>;
   head: {
     sha: string;
     ref: string;
